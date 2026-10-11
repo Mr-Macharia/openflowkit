@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTestDocument, createTestNode } from '../src/opencanvas/testing/builders/documentBuilder';
 import { decryptDocument, encryptDocument } from '../src/services/share/shareCrypto';
-import { FakeBucket } from './fakeBucket';
+import { FakeBucket, FakeQuotaNamespace } from './fakeBucket';
 import { handle, MAX_BODY_BYTES, type Env } from './index';
 
 /** Cloudflare's documented siteverify shapes. */
@@ -17,11 +17,14 @@ const siteverify = (result: unknown): typeof fetch => async (input, init) => {
 };
 
 let bucket: FakeBucket;
+let quota: FakeQuotaNamespace;
 let env: Env;
 beforeEach(() => {
   bucket = new FakeBucket();
-  env = { SHARES: bucket, TURNSTILE_SECRET: 'secret' };
+  quota = new FakeQuotaNamespace();
+  env = { SHARES: bucket, QUOTA: quota, TURNSTILE_SECRET: 'secret' };
 });
+const usage = () => quota.storage.values.get('usage') as { bytes: number; month: string; uploads: number } | undefined;
 
 const post = (body: Uint8Array | string, headers: Record<string, string> = {}) =>
   new Request('https://share.openflowkit.com/s', { method: 'POST', body, headers: { 'X-Turnstile-Token': 'tok', ...headers } });
@@ -105,6 +108,8 @@ describe('share worker', () => {
       handle(new Request(url(id), { headers: origin }), env),
       handle(new Request(url(id), { method: 'DELETE', headers: { ...origin, Authorization: `Bearer ${deleteToken}` } }), env),
     ]);
+    // The failed upload gave its reserved bytes back; only the first upload counts.
+    expect(usage()?.bytes).toBe(envelope().length);
     for (const response of responses) {
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({ error: 'storage-error' });
@@ -183,5 +188,30 @@ describe('share worker', () => {
     expect((await preflight('https://evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull();
     const { response } = await upload();
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('507 once stored bytes would pass the cap, nothing stored; a delete frees the room', async () => {
+    quota = new FakeQuotaNamespace({ storedBytes: 100, uploadsPerMonth: 10 });
+    env.QUOTA = quota;
+    const first = await upload(envelope(60));
+    expect(first.response.status).toBe(201);
+    const full = await handle(post(envelope(60)), env, siteverify(TURNSTILE_OK));
+    expect(full.status).toBe(507);
+    expect(await full.json()).toEqual({ error: 'storage-full' });
+    expect(bucket.objects.size).toBe(1);
+    await handle(new Request(url(first.id), { method: 'DELETE', headers: { Authorization: `Bearer ${first.deleteToken}` } }), env);
+    expect(usage()?.bytes).toBe(0);
+    expect((await upload(envelope(60))).response.status).toBe(201);
+  });
+
+  it('507 after the month\'s upload cap; a new month resets uploads but keeps stored bytes', async () => {
+    quota = new FakeQuotaNamespace({ storedBytes: 1_000, uploadsPerMonth: 2 });
+    env.QUOTA = quota;
+    expect((await upload()).response.status).toBe(201);
+    expect((await upload()).response.status).toBe(201);
+    expect((await upload()).response.status).toBe(507);
+    quota.storage.values.set('usage', { ...usage()!, month: '2000-01' });
+    expect((await upload()).response.status).toBe(201);
+    expect(usage()).toMatchObject({ bytes: envelope().length * 3, uploads: 1 });
   });
 });

@@ -3,6 +3,8 @@
 //   POST   /s      body = ciphertext, X-Turnstile-Token header → 201 { id, deleteToken }
 //   GET    /s/:id  → the ciphertext, 404 when unknown or deleted
 //   DELETE /s/:id  Authorization: Bearer <deleteToken> → 204
+// A Quota Durable Object keeps R2 inside its free tier: POST answers 507 once stored bytes or this
+// month's uploads reach the cap. Reads need no cap while the account is on Workers Free (below).
 // Types are the minimum this file uses from Workers; no @cloudflare/workers-types dependency.
 
 export interface R2ObjectLike {
@@ -21,8 +23,18 @@ export interface R2BucketLike {
 export interface RateLimiterLike {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
+/** The Durable Object namespace binding, as far as this file calls it. */
+export interface QuotaNamespaceLike {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(input: string, init?: RequestInit): Promise<Response> };
+}
+export interface StorageLike {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+}
 export interface Env {
   SHARES: R2BucketLike;
+  QUOTA: QuotaNamespaceLike;
   TURNSTILE_SECRET: string;
   /** Cloudflare Rate Limiting binding; absent means no limit (local dev). */
   RATE_LIMITER?: RateLimiterLike;
@@ -31,6 +43,10 @@ export interface Env {
 }
 
 export const MAX_BODY_BYTES = 1_048_576;
+// R2's free tier is 10 GB stored, 1M Class A (uploads) and 10M Class B (reads) a month; stop short of both.
+// ponytail: reads are capped by Workers Free itself (100k requests a day ≈ 3.1M a month); on Workers Paid,
+// count GETs here too.
+export const QUOTA_LIMITS = { storedBytes: 8_000_000_000, uploadsPerMonth: 900_000 };
 const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const ID_PATTERN = /^\/s\/([0-9a-f]{32})$/;
 const DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -111,9 +127,15 @@ async function create(request: Request, env: Env, fetcher: typeof fetch): Promis
   if (!body) return json(413, { error: 'too-large' });
   // Only our own envelope is stored: this is not general file hosting.
   if (body.length < MIN_ENVELOPE_BYTES || body[0] !== ENVELOPE_VERSION) return json(400, { error: 'not-an-envelope' });
+  if ((await quota(env, 'reserve', body.length)).status !== 204) return json(507, { error: 'storage-full' });
   const id = randomHex(16);
   const deleteToken = randomHex(32);
-  await env.SHARES.put(id, body, { customMetadata: { deleteHash: await sha256Hex(deleteToken) } });
+  try {
+    await env.SHARES.put(id, body, { customMetadata: { deleteHash: await sha256Hex(deleteToken) } });
+  } catch (error) {
+    await quota(env, 'release', body.length);
+    throw error;
+  }
   return json(201, { id, deleteToken });
 }
 
@@ -135,7 +157,40 @@ async function remove(id: string, request: Request, env: Env): Promise<Response>
   const matches = constantTimeEqual(await sha256Hex(token), object.customMetadata?.deleteHash ?? '');
   if (!matches) return json(403, { error: 'bad-delete-token' });
   await env.SHARES.delete(id);
+  await quota(env, 'release', object.size);
   return new Response(null, { status: 204 });
+}
+
+function quota(env: Env, action: 'reserve' | 'release', bytes: number): Promise<Response> {
+  return env.QUOTA.get(env.QUOTA.idFromName('global')).fetch(`https://quota/${action}?bytes=${bytes}`);
+}
+
+type Usage = { bytes: number; month: string; uploads: number };
+
+/** One global counter. A Durable Object runs one event at a time across its storage awaits, so reserve never races.
+ *  ponytail: a takedown through wrangler doesn't release its bytes, so the count only errs high (safe side). */
+export class Quota {
+  constructor(private readonly state: { storage: StorageLike }, _env?: unknown, private readonly limits = QUOTA_LIMITS) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const { pathname, searchParams } = new URL(request.url);
+    const bytes = Number(searchParams.get('bytes'));
+    if (!Number.isFinite(bytes) || bytes < 0) return new Response(null, { status: 400 });
+    const month = new Date().toISOString().slice(0, 7);
+    const stored = await this.state.storage.get<Usage>('usage');
+    const usage: Usage = stored?.month === month ? stored : { bytes: stored?.bytes ?? 0, month, uploads: 0 };
+    if (pathname === '/reserve') {
+      if (usage.bytes + bytes > this.limits.storedBytes || usage.uploads >= this.limits.uploadsPerMonth) {
+        return new Response(null, { status: 507 });
+      }
+      usage.bytes += bytes;
+      usage.uploads += 1;
+    } else {
+      usage.bytes = Math.max(0, usage.bytes - bytes);
+    }
+    await this.state.storage.put('usage', usage);
+    return new Response(null, { status: 204 });
+  }
 }
 
 function json(status: number, body: unknown): Response {

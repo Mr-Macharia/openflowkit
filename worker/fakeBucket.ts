@@ -1,4 +1,4 @@
-import type { R2BucketLike } from './index';
+import { Quota, QUOTA_LIMITS, type QuotaNamespaceLike, type R2BucketLike, type StorageLike } from './index';
 
 /** In-memory stand-in with R2's return shapes: put resolves an object, get/head resolve null when missing, delete resolves undefined. */
 export class FakeBucket implements R2BucketLike {
@@ -17,4 +17,19 @@ export class FakeBucket implements R2BucketLike {
     return found ? { size: found.bytes.length, customMetadata: found.customMetadata } : null;
   }
   async delete(key: string) { this.objects.delete(key); }
+}
+
+export class MemoryStorage implements StorageLike {
+  readonly values = new Map<string, unknown>();
+  async get<T>(key: string) { return structuredClone(this.values.get(key)) as T | undefined; }
+  async put<T>(key: string, value: T) { this.values.set(key, structuredClone(value)); }
+}
+
+/** The namespace binding over one in-process Quota, reached through fetch as in production. */
+export class FakeQuotaNamespace implements QuotaNamespaceLike {
+  readonly storage = new MemoryStorage();
+  readonly quota: Quota;
+  constructor(limits = QUOTA_LIMITS) { this.quota = new Quota({ storage: this.storage }, undefined, limits); }
+  idFromName(name: string) { return name; }
+  get() { return { fetch: (input: string, init?: RequestInit) => this.quota.fetch(new Request(input, init)) }; }
 }

@@ -22,3 +22,13 @@ namespace_id = "1001"
   period = 60
 
 # Secret, set with `npx wrangler secret put TURNSTILE_SECRET` (never written to this file).
+
+# Free-tier guard: one global counter refuses uploads before R2 could bill (QUOTA_LIMITS in index.ts).
+# SQLite-backed Durable Objects run on Workers Free.
+[[durable_objects.bindings]]
+name = "QUOTA"
+class_name = "Quota"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Quota"]

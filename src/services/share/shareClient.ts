@@ -6,7 +6,7 @@ const SHARE_ORIGIN: string = import.meta.env.VITE_SHARE_ORIGIN ?? 'https://share
 /** Same ceiling as the Worker's (worker/index.ts); checked here first so an oversize document never leaves the browser. */
 const MAX_SHARE_BYTES = 1_048_576;
 
-type ShareErrorCode = 'too-large' | 'offline' | 'unreachable' | 'turnstile' | 'rate-limited' | 'not-found' | 'server' | 'forbidden' | 'no-site-key';
+type ShareErrorCode = 'too-large' | 'offline' | 'unreachable' | 'turnstile' | 'rate-limited' | 'not-found' | 'server' | 'forbidden' | 'no-site-key' | 'full';
 
 export class ShareError extends Error {
   constructor(readonly code: ShareErrorCode, message: string) {
@@ -32,6 +32,8 @@ async function uploadShare(
   if (response.status === 413) throw new ShareError('too-large', 'This diagram is too big to share as a link.');
   if (response.status === 403) throw new ShareError('turnstile', 'The human check failed. Try again.');
   if (response.status === 429) throw new ShareError('rate-limited', 'Too many links from this network. Wait a minute and try again.');
+  // The server's free-tier cap (worker/index.ts QUOTA_LIMITS); editable links need no server.
+  if (response.status === 507) throw new ShareError('full', 'View-only links are paused for now. Copy an editable link instead.');
   if (response.status !== 201) throw new ShareError('server', `The share service failed (${response.status}). Try again later.`);
   return await response.json() as { id: string; deleteToken: string };
 }

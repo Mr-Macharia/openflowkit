@@ -2,7 +2,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { FakeBucket } from '../../../worker/fakeBucket';
+import { FakeBucket, FakeQuotaNamespace } from '../../../worker/fakeBucket';
 import { handle, type Env } from '../../../worker/index';
 import { createTestDocument, createTestNode } from '../../opencanvas/testing/builders/documentBuilder';
 import {
@@ -12,7 +12,7 @@ import { encryptDocument } from './shareCrypto';
 
 // Real HTTP, real sockets: the Worker's handler behind a Node server, and a port nobody listens on.
 const bucket = new FakeBucket();
-const env: Env = { SHARES: bucket, TURNSTILE_SECRET: 's' };
+const env: Env = { SHARES: bucket, QUOTA: new FakeQuotaNamespace(), TURNSTILE_SECRET: 's' };
 const passing: typeof fetch = async () => Response.json({ success: true, 'error-codes': [] });
 let server: Server;
 let origin: string;
@@ -125,6 +125,17 @@ describe('share client against a real server', () => {
     const { id } = idKey((await share()).url);
     const other = idKey((await share()).url).key;
     expect(await loadSharedDocument(id, other, origin)).toMatchObject({ problem: { title: 'This link couldn’t be opened.' } });
+  });
+
+  it('a share server at its storage cap says view-only links are paused, and points at the editable link', async () => {
+    const roomy = env.QUOTA;
+    env.QUOTA = new FakeQuotaNamespace({ storedBytes: 0, uploadsPerMonth: 0 });
+    try {
+      await expect(share()).rejects.toSatisfy((error: unknown) => error instanceof ShareError && error.code === 'full'
+        && /editable link/.test(error.message));
+    } finally {
+      env.QUOTA = roomy;
+    }
   });
 
   it('over 1 MB: refused before any request (dead origin proves none was made)', async () => {
