@@ -10,8 +10,8 @@ The Worker only reads, except `feedback.read_at` ("Mark all read").
 ## Two locks
 
 1. A Cloudflare Access application on the domain lets in one email.
-2. The Worker checks Access's JWT itself (RS256 against the team's keys, audience, issuer, expiry). With either var
-   empty, or any token problem, every request gets a 403 page with no data.
+2. The Worker checks Access's JWT itself (RS256 against the team's keys, audience, issuer, expiry). With either secret
+   missing, or any token problem, every request gets a 403 page with no data.
 
 ## Owner setup (one time)
 
@@ -25,8 +25,8 @@ The Worker only reads, except `feedback.read_at` ("Mark all read").
    4. Add a policy: name `Owner`, action **Allow**, Include → **Emails** → `varun@openflowkit.com`.
    5. Save the application.
    6. Open the application again → Overview (or Basic information) → copy the **Application Audience (AUD) tag**.
-3. **Vars:** in `stats/wrangler.toml` set `TEAM_DOMAIN = "<team>.cloudflareaccess.com"` and `POLICY_AUD = "<the AUD tag>"`.
-   Neither is a secret (the AUD tag is in every token).
+3. **Secrets:** from `stats/`, `npx wrangler secret put TEAM_DOMAIN` (`<team>.cloudflareaccess.com`, from Access
+   settings) and `npx wrangler secret put POLICY_AUD` (the AUD tag). Neither is a password, but they stay out of the repo.
 4. **Deploy:** `cd stats && npx wrangler deploy`. The custom domain is created on first deploy.
 5. Open `https://stats.openflowkit.com`: Access asks for the email code, then the page loads.
 
