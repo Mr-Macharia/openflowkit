@@ -42,6 +42,9 @@ export const FOOTER_COLUMNS: readonly { readonly title: string; readonly links: 
       { label: 'Issues', href: `${REPO_URL}/issues` },
       { label: 'Discussions', href: `${REPO_URL}/discussions` },
       { label: 'npm', href: NPM_URL },
+      { label: 'X', href: 'https://x.com/openflowkit' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/company/openflowkit/' },
+      { label: 'YouTube', href: 'https://www.youtube.com/channel/UC3vnYLzGo-0r9CB9T3i7nKw' },
     ],
   },
 ];
