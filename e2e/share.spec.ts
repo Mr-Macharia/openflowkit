@@ -1,4 +1,4 @@
-import { FakeBucket } from '../worker/fakeBucket';
+import { FakeBucket, FakeQuotaNamespace } from '../worker/fakeBucket';
 import { handle, type Env } from '../worker/index';
 import { expect, test, type BrowserContext, type Page } from './test';
 
@@ -23,7 +23,7 @@ interface Backend { readonly bucket: FakeBucket; online: boolean }
 
 async function serve(context: BrowserContext): Promise<Backend> {
   const backend: Backend = { bucket: new FakeBucket(), online: true };
-  const env: Env = { SHARES: backend.bucket, TURNSTILE_SECRET: 'secret' };
+  const env: Env = { SHARES: backend.bucket, QUOTA: new FakeQuotaNamespace(), TURNSTILE_SECRET: 'secret' };
   const siteverify: typeof fetch = async (_url, init) =>
     Response.json((init?.body as URLSearchParams).get('response') === 'stub-token'
       ? { success: true, 'error-codes': [] } : { success: false, 'error-codes': ['invalid-input-response'] });
