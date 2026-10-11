@@ -45,7 +45,8 @@
     "build:map-viewer": "vite build -c vite.map-viewer.config.ts",
     "eval:agent": "npm --prefix mcp-server run eval:agent",
     "skill:sync": "node scripts/sync-llms.mjs",
-    "eval:validity": "npm --prefix mcp-server run eval:validity"
+    "eval:validity": "npm --prefix mcp-server run eval:validity",
+    "stats": "node scripts/stats.mjs"
   },
   "dependencies": {
     "@tabler/icons-react": "^3.47.0",

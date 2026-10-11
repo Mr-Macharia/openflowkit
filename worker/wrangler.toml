@@ -13,7 +13,7 @@ ALLOWED_ORIGINS = "https://app.openflowkit.com,https://v2.openflowkit-app.pages.
 binding = "SHARES"
 bucket_name = "openflowkit-shares"
 
-# Per-IP limit on POST /s: 10 uploads per 60 s, counted per Cloudflare location (soft, eventually consistent).
+# Per-IP limit, 10 per 60 s per route (keys `ip`, `e:ip`, `f:ip`): POST /s, /e and /feedback, counted per Cloudflare location (soft, eventually consistent).
 [[ratelimits]]
 name = "RATE_LIMITER"
 namespace_id = "1001"
@@ -21,7 +21,22 @@ namespace_id = "1001"
   limit = 10
   period = 60
 
-# Secret, set with `npx wrangler secret put TURNSTILE_SECRET` (never written to this file).
+# Usage beacons and feedback: one office IP can carry many people, each beaconing every few minutes.
+[[ratelimits]]
+name = "EVENT_LIMITER"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+# Secrets, set with `npx wrangler secret put TURNSTILE_SECRET` and `... USAGE_SALT` (never written to this file).
+
+# Usage `sessions` (POST /e) and `feedback` (POST /feedback); schema in migrations/. Id from `npx wrangler d1 create openflowkit-data`.
+[[d1_databases]]
+binding = "DB"
+database_name = "openflowkit-data"
+database_id = "9798b7a3-5d7d-4196-8bcc-d80c1d291581"
+migrations_dir = "migrations"
 
 # Free-tier guard: one global counter refuses uploads before R2 could bill (QUOTA_LIMITS in index.ts).
 # SQLite-backed Durable Objects run on Workers Free.

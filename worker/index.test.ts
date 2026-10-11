@@ -1,8 +1,10 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTestDocument, createTestNode } from '../src/opencanvas/testing/builders/documentBuilder';
 import { decryptDocument, encryptDocument } from '../src/services/share/shareCrypto';
-import { FakeBucket, FakeQuotaNamespace } from './fakeBucket';
+import { USAGE_EVENTS } from '../src/services/usage/usageEvents';
+import { FakeBucket, FakeD1, FakeQuotaNamespace } from './fakeBucket';
 import { handle, MAX_BODY_BYTES, type Env } from './index';
 
 /** Cloudflare's documented siteverify shapes. */
@@ -213,5 +215,201 @@ describe('share worker', () => {
     quota.storage.values.set('usage', { ...usage()!, month: '2000-01' });
     expect((await upload()).response.status).toBe(201);
     expect(usage()).toMatchObject({ bytes: envelope().length * 3, uploads: 1 });
+  });
+});
+
+const NOW = new Date('2026-10-11T09:30:00Z');
+const UID = '0123456789abcdef0123456789abcdef';
+const beacon = (overrides: Record<string, unknown> = {}) => ({
+  v: 1, uid: UID, firstSeen: '2026-10-01', source: 'hn', entry: 'home', version: '2.1.0', returning: true,
+  counts: { session: 1, created_draw: 2, active_seconds: 300 }, ...overrides,
+});
+const sendBeacon = (body: unknown, headers: Record<string, string> = {}, now = NOW) => handle(Object.assign(
+  new Request('https://share.openflowkit.com/e', {
+    method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body),
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'CF-Connecting-IP': '198.51.100.4', 'User-Agent': 'Mozilla/5.0 Test', ...headers },
+  }), { cf: { country: 'IN' } }), env, undefined, now);
+
+describe('usage beacon (POST /e)', () => {
+  let db: FakeD1;
+  beforeEach(() => { db = new FakeD1(); env.DB = db; env.USAGE_SALT = 'salt'; });
+  const sessions = () => db.table('sessions');
+
+  it('204 and one sessions row: the fields, then one column per event in contract order', async () => {
+    const response = await sendBeacon(beacon());
+    expect(response.status).toBe(204);
+    expect(sessions()).toHaveLength(1);
+    const row = sessions()[0];
+    expect(row).toMatchObject({
+      received_at: '2026-10-11T09:30:00.000Z', day: '2026-10-11', first_seen: '2026-10-01', source: 'hn', entry: 'home',
+      version: '2.1.0', returning: 1, country: 'IN',
+    });
+    expect(row.user).toMatch(/^[0-9a-f]{32}$/);
+    expect(Object.keys(row).slice(-USAGE_EVENTS.length)).toEqual([...USAGE_EVENTS]);
+    expect(USAGE_EVENTS.map((event) => row[event])).toEqual(USAGE_EVENTS.map((event) =>
+      ({ session: 1, created_draw: 2, active_seconds: 300 } as Record<string, number>)[event] ?? 0));
+  });
+
+  it('keeps only known counts, clamped: 0..1000, active_seconds 0..86400', async () => {
+    await sendBeacon(beacon({ counts: { session: -4, created_ai: 5_000, export_image: 2.9, code_opened: '7', active_seconds: 1e9, bogus: 9 } }));
+    const row = sessions()[0];
+    expect(row).toMatchObject({ session: 0, created_ai: 1_000, export_image: 2, code_opened: 0, active_seconds: 86_400 });
+    expect(row).not.toHaveProperty('bogus');
+  });
+
+  it('never stores the install id, ip or user agent; the user key is stable across days, distinct per install', async () => {
+    await sendBeacon(beacon());
+    await sendBeacon(beacon(), {}, new Date('2026-11-20T23:59:00Z'));
+    await sendBeacon(beacon({ uid: 'f'.repeat(32) }));
+    const stored = JSON.stringify(db.rows);
+    for (const secret of [UID, '198.51.100.4', 'Mozilla']) expect(stored).not.toContain(secret);
+    const [first, nextMonth, other] = sessions().map((row) => row.user);
+    expect(nextMonth).toBe(first);
+    expect(other).not.toBe(first);
+    env.USAGE_SALT = 'another-salt';
+    await sendBeacon(beacon());
+    expect(sessions()[3].user).not.toBe(first);
+  });
+
+  it('first_seen: a real day from launch to today, else today', async () => {
+    for (const firstSeen of ['2026-01-01', '2026-10-11', '2026-10-12', '2025-12-31', '2026-02-30', '11/10/2026', 42, undefined]) {
+      await sendBeacon(beacon({ firstSeen }));
+    }
+    expect(sessions().map((row) => row.first_seen)).toEqual([
+      '2026-01-01', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11',
+    ]);
+  });
+
+  it('source and version: lowercase slugs, cut to 40 / 20, anything else "other"', async () => {
+    await sendBeacon(beacon({ source: ' ProductHunt ', version: '2.1.0-beta.3' }));
+    await sendBeacon(beacon({ source: 'evil<script>', version: 'v 2' }));
+    await sendBeacon(beacon({ source: 'a'.repeat(60), version: '1'.repeat(30) }));
+    expect(sessions().map((row) => [row.source, row.version])).toEqual([
+      ['producthunt', '2.1.0-beta.3'], ['other', 'other'], ['a'.repeat(40), '1'.repeat(20)],
+    ]);
+  });
+
+  it('400 on a bad beacon, nothing stored', async () => {
+    const bad = [
+      'not json', [], beacon({ v: 2 }), beacon({ uid: UID.toUpperCase() }), beacon({ uid: 'abc' }), beacon({ uid: undefined }),
+      beacon({ entry: 'admin' }), beacon({ returning: 'yes' }), beacon({ counts: [1, 2] }), beacon({ source: 3 }), beacon({ version: null }),
+    ];
+    for (const body of bad) expect((await sendBeacon(body)).status).toBe(400);
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('413 over 4 KiB', async () => {
+    expect((await sendBeacon(beacon({ source: 'x'.repeat(5_000) }))).status).toBe(413);
+  });
+
+  it('429 from the rate limiter, keyed e:<ip> so beacons and uploads keep separate budgets', async () => {
+    const keys: string[] = [];
+    env.EVENT_LIMITER = { limit: async ({ key }) => { keys.push(key); return { success: false }; } };
+    expect((await sendBeacon(beacon())).status).toBe(429);
+    expect(keys).toEqual(['e:198.51.100.4']);
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('204 without writing when DB or USAGE_SALT is absent (local dev)', async () => {
+    env.USAGE_SALT = undefined;
+    expect((await sendBeacon(beacon())).status).toBe(204);
+    env.USAGE_SALT = 'salt';
+    env.DB = undefined;
+    expect((await sendBeacon(beacon())).status).toBe(204);
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('405 for GET /e', async () => {
+    expect((await handle(new Request('https://share.openflowkit.com/e'), env)).status).toBe(405);
+  });
+
+  it('the migration declares an integer column for every usage event (a new event needs a migration)', () => {
+    const sql = readFileSync(new URL('./migrations/0001_init.sql', import.meta.url), 'utf8');
+    const table = /CREATE TABLE sessions \(([\s\S]*?)\n\);/.exec(sql)?.[1] ?? '';
+    const declared = new Set([...table.matchAll(/^\s*"?(\w+)"?\s+INTEGER NOT NULL DEFAULT 0/gm)].map((match) => match[1]));
+    expect(USAGE_EVENTS.filter((event) => !declared.has(event))).toEqual([]);
+  });
+});
+
+const sendFeedback = (body: unknown, fetcher: typeof fetch = siteverify(TURNSTILE_OK), headers: Record<string, string> = {}) =>
+  handle(Object.assign(new Request('https://share.openflowkit.com/feedback', {
+    method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.4', 'X-Turnstile-Token': 'tok', ...headers },
+  }), { cf: { country: 'DE' } }), env, fetcher, NOW);
+const noTurnstile: typeof fetch = async () => { throw new Error('siteverify should not run'); };
+
+describe('feedback (POST /feedback)', () => {
+  let db: FakeD1;
+  beforeEach(() => { db = new FakeD1(); env.DB = db; });
+  const rows = () => db.table('feedback');
+
+  it('201 and one row with the validated fields; pay deduped into a comma list', async () => {
+    const response = await sendFeedback({
+      kind: 'product', pmf: 'very', pay: ['sync', 'collaboration', 'sync'], text: '  Love the repo map  ', email: 'ada@example.com', version: '2.1.0', extra: 'ignored',
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(rows()).toEqual([{
+      created_at: '2026-10-11T09:30:00.000Z', kind: 'product', feature: null, rating: null, pmf: 'very', pay: 'sync,collaboration',
+      text: 'Love the repo map', email: 'ada@example.com', version: '2.1.0', country: 'DE',
+    }]);
+  });
+
+  it('a bare thumbs or PMF answer needs no Turnstile', async () => {
+    expect((await sendFeedback({ kind: 'feature', feature: 'repo_map', rating: 'up', version: '2.1.0' }, noTurnstile)).status).toBe(201);
+    expect((await sendFeedback({ kind: 'product', pmf: 'not', pay: ['free'], version: '2.1.0' }, noTurnstile)).status).toBe(201);
+    expect(rows().map((row) => [row.feature, row.rating, row.pmf, row.pay])).toEqual([['repo_map', 'up', null, null], [null, null, 'not', 'free']]);
+  });
+
+  it('text or email needs Turnstile: 403 rejected, 503 unreachable, nothing stored', async () => {
+    const down: typeof fetch = async () => { throw new TypeError('fetch failed'); };
+    expect((await sendFeedback({ kind: 'general', text: 'hi', version: '2.1.0' }, siteverify(TURNSTILE_BAD))).status).toBe(403);
+    expect((await sendFeedback({ kind: 'general', email: 'a@b.co', version: '2.1.0' }, down)).status).toBe(503);
+    expect(rows()).toHaveLength(0);
+  });
+
+  it('400 on anything outside the contract, nothing stored', async () => {
+    const ok = { kind: 'general', text: 'hi', version: '2.1.0' };
+    const bad = [
+      'not json', [], { ...ok, kind: 'rant' }, { ...ok, kind: undefined }, { kind: 'feature', rating: 'up', version: '2.1.0' },
+      { kind: 'feature', feature: 'billing', rating: 'up', version: '2.1.0' }, { ...ok, rating: 'meh' }, { ...ok, pmf: 'extremely' },
+      { ...ok, pay: ['crypto'] }, { ...ok, pay: 'sync' }, { ...ok, text: 'x'.repeat(2_001) }, { ...ok, text: 7 },
+      { ...ok, email: 'not-an-email' }, { ...ok, email: 'a b@c.d' }, { ...ok, email: `${'a'.repeat(250)}@b.co` },
+      { ...ok, version: '1'.repeat(21) }, { ...ok, version: undefined }, { kind: 'general', text: '   ', pay: [], version: '2.1.0' },
+    ];
+    for (const body of bad) expect((await sendFeedback(body)).status, JSON.stringify(body)).toBe(400);
+    expect(rows()).toHaveLength(0);
+  });
+
+  it('413 over 8 KiB', async () => {
+    expect((await sendFeedback({ kind: 'general', text: 'x'.repeat(9_000), version: '2.1.0' })).status).toBe(413);
+  });
+
+  it('429 from the rate limiter keyed f:<ip>, before Turnstile', async () => {
+    const keys: string[] = [];
+    env.EVENT_LIMITER = { limit: async ({ key }) => { keys.push(key); return { success: false }; } };
+    expect((await sendFeedback({ kind: 'general', text: 'hi', version: '2.1.0' }, noTurnstile)).status).toBe(429);
+    expect(keys).toEqual(['f:198.51.100.4']);
+  });
+
+  it('503 feedback-unavailable without a DB binding', async () => {
+    env.DB = undefined;
+    const response = await sendFeedback({ kind: 'feature', feature: 'ai', rating: 'down', version: '2.1.0' }, noTurnstile);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'feedback-unavailable' });
+  });
+
+  it('500 JSON with CORS headers when D1 fails, on /e and /feedback', async () => {
+    env.USAGE_SALT = 'salt';
+    env.DB = { prepare: () => { throw new Error('D1 is down'); } };
+    const origin = { Origin: 'https://app.openflowkit.com' };
+    for (const response of [
+      await sendBeacon(beacon(), origin),
+      await sendFeedback({ kind: 'feature', feature: 'ai', rating: 'up', version: '2.1.0' }, noTurnstile, origin),
+    ]) {
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: 'storage-error' });
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.openflowkit.com');
+    }
   });
 });

@@ -3,9 +3,16 @@
 //   POST   /s      body = ciphertext, X-Turnstile-Token header → 201 { id, deleteToken }
 //   GET    /s/:id  → the ciphertext, 404 when unknown or deleted
 //   DELETE /s/:id  Authorization: Bearer <deleteToken> → 204
+//   POST   /e      usage beacon (text/plain JSON UsageBeacon) → 204; one D1 `sessions` row, install id kept only as an HMAC
+//   POST   /feedback  JSON FeedbackBody (X-Turnstile-Token when it carries text or email) → 201 { ok }; one D1 row
 // A Quota Durable Object keeps R2 inside its free tier: POST answers 507 once stored bytes or this
 // month's uploads reach the cap. Reads need no cap while the account is on Workers Free (below).
 // Types are the minimum this file uses from Workers; no @cloudflare/workers-types dependency.
+
+import {
+  FEEDBACK_FEATURES, PAY_OPTIONS, USAGE_ENTRIES, USAGE_EVENTS,
+  type FeedbackFeature, type PayOption, type UsageEntry, type UsageEvent,
+} from '../src/services/usage/usageEvents';
 
 export interface R2ObjectLike {
   readonly size: number;
@@ -32,17 +39,32 @@ export interface StorageLike {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
 }
+export interface D1DatabaseLike {
+  prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown> } };
+}
 export interface Env {
   SHARES: R2BucketLike;
   QUOTA: QuotaNamespaceLike;
   TURNSTILE_SECRET: string;
   /** Cloudflare Rate Limiting binding; absent means no limit (local dev). */
   RATE_LIMITER?: RateLimiterLike;
+  /** Looser per-IP limit for usage beacons and feedback (many people can share one office IP); absent: no limit. */
+  EVENT_LIMITER?: RateLimiterLike;
   /** Comma-separated app origins allowed by CORS. Default: https://app.openflowkit.com. localhost and 127.0.0.1 are always allowed (dev). */
   ALLOWED_ORIGINS?: string;
+  /** D1 with the `sessions` and `feedback` tables (migrations/). Absent: /e drops beacons, /feedback answers 503. */
+  DB?: D1DatabaseLike;
+  /** Secret HMAC key that turns an install id into the stored `user`; absent means /e drops beacons (local dev). */
+  USAGE_SALT?: string;
 }
 
 export const MAX_BODY_BYTES = 1_048_576;
+const MAX_BEACON_BYTES = 4_096;
+const MAX_FEEDBACK_BYTES = 8_192;
+const MAX_COUNT = 1_000;
+const MAX_ACTIVE_SECONDS = 86_400;
+// Before launch: an older first-seen day is a bad clock or a forged beacon.
+const FIRST_DAY = '2026-01-01';
 // R2's free tier is 10 GB stored, 1M Class A (uploads) and 10M Class B (reads) a month; stop short of both.
 // ponytail: reads are capped by Workers Free itself (100k requests a day ≈ 3.1M a month); on Workers Paid,
 // count GETs here too.
@@ -161,6 +183,142 @@ async function remove(id: string, request: Request, env: Env): Promise<Response>
   return new Response(null, { status: 204 });
 }
 
+const country = (request: Request): string => (request as Request & { cf?: { country?: string } }).cf?.country ?? 'XX';
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const oneOf = <T extends string>(list: readonly T[], value: unknown): value is T => list.includes(value as T);
+/** Lowercase slug for a D1 column; anything outside [a-z0-9._-] becomes 'other'. */
+const slug = (value: string, max: number): string => {
+  const cleaned = value.trim().toLowerCase().slice(0, max);
+  return /^[a-z0-9._-]+$/.test(cleaned) ? cleaned : 'other';
+};
+
+async function readJson(request: Request, limit: number): Promise<unknown | 'too-large'> {
+  if (Number(request.headers.get('Content-Length') ?? 0) > limit) return 'too-large';
+  const body = await readCapped(request, limit);
+  if (!body) return 'too-large';
+  try { return JSON.parse(new TextDecoder().decode(body)); } catch { return undefined; }
+}
+
+async function rateLimited(env: Env, key: string): Promise<boolean> {
+  return !!env.EVENT_LIMITER && !(await env.EVENT_LIMITER.limit({ key })).success;
+}
+
+type Beacon = {
+  uid: string; firstSeen: string; source: string; entry: UsageEntry; version: string; returning: boolean;
+  counts: Record<UsageEvent, number>;
+};
+const UID = /^[0-9a-f]{32}$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar day between launch and today, else today. */
+const cohortDay = (value: unknown, today: string): string =>
+  typeof value === 'string' && DAY.test(value) && !Number.isNaN(Date.parse(value)) &&
+  new Date(value).toISOString().startsWith(value) && value >= FIRST_DAY && value <= today ? value : today;
+
+function parseBeacon(value: unknown, today: string): Beacon | null {
+  if (!isRecord(value) || value.v !== 1 || typeof value.uid !== 'string' || !UID.test(value.uid)) return null;
+  if (!oneOf(USAGE_ENTRIES, value.entry) || typeof value.returning !== 'boolean') return null;
+  if (typeof value.source !== 'string' || typeof value.version !== 'string' || !isRecord(value.counts)) return null;
+  const given = value.counts;
+  const counts = Object.fromEntries(USAGE_EVENTS.map((event) => {
+    const count = given[event];
+    const max = event === 'active_seconds' ? MAX_ACTIVE_SECONDS : MAX_COUNT;
+    return [event, typeof count === 'number' && Number.isFinite(count) ? Math.min(max, Math.max(0, Math.trunc(count))) : 0];
+  })) as Record<UsageEvent, number>;
+  return {
+    uid: value.uid, firstSeen: cohortDay(value.firstSeen, today), source: slug(value.source, 40), entry: value.entry,
+    version: slug(value.version, 20), returning: value.returning, counts,
+  };
+}
+
+/** The install id, keyed: stable across days (MAU, retention) but not reversible to the id on the device. */
+async function userKey(salt: string, uid: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(salt), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(uid)))).slice(0, 32);
+}
+
+// Quoted: `returning` is an SQLite keyword. Event columns come from the contract, so code and table can't drift
+// (index.test.ts checks the migration declares each one).
+const SESSION_COLUMNS = ['received_at', 'day', 'user', 'first_seen', 'source', 'entry', 'version', 'returning', 'country', ...USAGE_EVENTS];
+const insert = (table: string, columns: readonly string[]): string =>
+  `INSERT INTO ${table} (${columns.map((column) => `"${column}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
+const INSERT_SESSION = insert('sessions', SESSION_COLUMNS);
+
+async function usageBeacon(request: Request, env: Env, now: Date): Promise<Response> {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+  // Own limiter and key prefix: beacons never eat the upload budget, nor feedback the beacon budget.
+  if (await rateLimited(env, `e:${ip}`)) return json(429, { error: 'rate-limited' });
+  const body = await readJson(request, MAX_BEACON_BYTES);
+  if (body === 'too-large') return json(413, { error: 'too-large' });
+  const receivedAt = now.toISOString();
+  const day = receivedAt.slice(0, 10);
+  const beacon = parseBeacon(body, day);
+  if (!beacon) return json(400, { error: 'bad-beacon' });
+  if (!env.DB || !env.USAGE_SALT) return new Response(null, { status: 204 });
+  await env.DB.prepare(INSERT_SESSION).bind(
+    receivedAt, day, await userKey(env.USAGE_SALT, beacon.uid), beacon.firstSeen, beacon.source, beacon.entry,
+    beacon.version, beacon.returning ? 1 : 0, country(request), ...USAGE_EVENTS.map((event) => beacon.counts[event]),
+  ).run();
+  return new Response(null, { status: 204 });
+}
+
+type Feedback = {
+  kind: 'feature' | 'product' | 'general'; feature: FeedbackFeature | null; rating: 'up' | 'down' | null;
+  pmf: 'very' | 'somewhat' | 'not' | null; pay: PayOption[] | null; text: string | null; email: string | null; version: string;
+};
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const INVALID = Symbol('invalid');
+/** null when absent, the value when it is in the list, INVALID otherwise. */
+const pick = <T extends string>(list: readonly T[], value: unknown): T | null | typeof INVALID =>
+  value === undefined || value === null ? null : oneOf(list, value) ? value : INVALID;
+/** Trimmed text, null when absent or blank, INVALID when not a string or longer than `max`. */
+const words = (value: unknown, max: number): string | null | typeof INVALID => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || value.trim().length > max) return INVALID;
+  return value.trim() || null;
+};
+
+function parseFeedback(value: unknown): Feedback | null {
+  if (!isRecord(value) || typeof value.version !== 'string' || value.version.length > 20) return null;
+  const kind = pick(['feature', 'product', 'general'] as const, value.kind);
+  const feature = pick(FEEDBACK_FEATURES, value.feature);
+  const rating = pick(['up', 'down'] as const, value.rating);
+  const pmf = pick(['very', 'somewhat', 'not'] as const, value.pmf);
+  const text = words(value.text, 2_000);
+  const email = words(value.email, 254);
+  if (kind === null || kind === INVALID || feature === INVALID || rating === INVALID || pmf === INVALID) return null;
+  if (text === INVALID || email === INVALID || (email !== null && !EMAIL.test(email))) return null;
+  if (kind === 'feature' && feature === null) return null;
+  if (value.pay !== undefined && !(Array.isArray(value.pay) && value.pay.every((option) => oneOf(PAY_OPTIONS, option)))) return null;
+  const pay = [...new Set((value.pay ?? []) as PayOption[])];
+  const parsed: Feedback = { kind, feature, rating, pmf, pay: pay.length ? pay : null, text, email, version: slug(value.version, 20) };
+  return rating || pmf || parsed.pay || text || email ? parsed : null;
+}
+
+const INSERT_FEEDBACK = insert('feedback', ['created_at', 'kind', 'feature', 'rating', 'pmf', 'pay', 'text', 'email', 'version', 'country']);
+
+async function feedback(request: Request, env: Env, fetcher: typeof fetch, now: Date): Promise<Response> {
+  const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+  if (await rateLimited(env, `f:${ip}`)) return json(429, { error: 'rate-limited' });
+  const body = await readJson(request, MAX_FEEDBACK_BYTES);
+  if (body === 'too-large') return json(413, { error: 'too-large' });
+  const entry = parseFeedback(body);
+  if (!entry) return json(400, { error: 'bad-feedback' });
+  if (!env.DB) return json(503, { error: 'feedback-unavailable' });
+  // Free words or an address are what a spammer wants in; a bare thumbs or PMF answer is not worth a challenge.
+  if (entry.text || entry.email) {
+    const verdict = await turnstilePasses(request.headers.get('X-Turnstile-Token') ?? '', ip, env, fetcher);
+    if (verdict === 'unavailable') return json(503, { error: 'turnstile-unavailable' });
+    if (!verdict) return json(403, { error: 'turnstile-failed' });
+  }
+  await env.DB.prepare(INSERT_FEEDBACK).bind(
+    now.toISOString(), entry.kind, entry.feature, entry.rating, entry.pmf, entry.pay?.join(',') ?? null,
+    entry.text, entry.email, entry.version, country(request),
+  ).run();
+  return json(201, { ok: true });
+}
+
 function quota(env: Env, action: 'reserve' | 'release', bytes: number): Promise<Response> {
   return env.QUOTA.get(env.QUOTA.idFromName('global')).fetch(`https://quota/${action}?bytes=${bytes}`);
 }
@@ -197,7 +355,7 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-export async function handle(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+export async function handle(request: Request, env: Env, fetcher: typeof fetch = fetch, now = new Date()): Promise<Response> {
   const cors = corsHeaders(request, env);
   const respond = (response: Response): Response => {
     for (const [name, value] of Object.entries(cors)) response.headers.set(name, value);
@@ -206,15 +364,19 @@ export async function handle(request: Request, env: Env, fetcher: typeof fetch =
   if (request.method === 'OPTIONS') return respond(new Response(null, { status: 204 }));
   const { pathname } = new URL(request.url);
   const id = ID_PATTERN.exec(pathname)?.[1];
+  const post = request.method === 'POST';
   try {
-    if (pathname === '/s' && request.method === 'POST') return respond(await create(request, env, fetcher));
+    if (pathname === '/s' && post) return respond(await create(request, env, fetcher));
+    if (pathname === '/e' && post) return respond(await usageBeacon(request, env, now));
+    if (pathname === '/feedback' && post) return respond(await feedback(request, env, fetcher, now));
     if (id && request.method === 'GET') return respond(await read(id, env));
     if (id && request.method === 'DELETE') return respond(await remove(id, request, env));
   } catch {
-    // R2 failed: say so with CORS headers, so the browser reads a server error, not "offline".
+    // R2 or D1 failed: say so with CORS headers, so the browser reads a server error, not "offline".
     return respond(json(500, { error: 'storage-error' }));
   }
-  return respond(json(id || pathname === '/s' ? 405 : 404, { error: id || pathname === '/s' ? 'method-not-allowed' : 'not-found' }));
+  const known = id || ['/s', '/e', '/feedback'].includes(pathname);
+  return respond(json(known ? 405 : 404, { error: known ? 'method-not-allowed' : 'not-found' }));
 }
 
 export default {
