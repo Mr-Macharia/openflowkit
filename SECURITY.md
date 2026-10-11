@@ -37,8 +37,9 @@ OpenFlowKit is a browser-first, local-first application. Relevant security areas
 
 ## Data Storage Model
 
-Documents and keys stay in your browser. The only OpenFlowKit server is the share-link store, and it only
-ever holds ciphertext of a diagram you chose to share (below). No key and no readable diagram is sent to the
+Documents and keys stay in your browser. The only OpenFlowKit server is the share service: it holds the
+ciphertext of a diagram you chose to share (below), basic usage stats (turn them off in Settings), and feedback
+you send. No key and no readable diagram is sent to the
 project. A hosted remote MCP endpoint is planned; it is not running today.
 
 ### Diagram data

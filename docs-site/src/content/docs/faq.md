@@ -21,13 +21,15 @@ Every request the app makes, and when:
 | Ask the [AI assistant](/ai-generation/) | Your message, the diagrams in scope, any images you attached, and your key | Only the provider you picked |
 | Copy a **view-only link** | The document, encrypted in the browser first; the key stays in the link's `#fragment` and is never sent | The share Worker (`share.openflowkit.com`), after a Cloudflare Turnstile check |
 | Open a view-only link | A request for the encrypted copy | The share Worker |
+| Use the app | Basic usage stats: which features are used, and how often | `share.openflowkit.com` (turn off in Settings) |
+| Answer a feedback question, or **Send feedback…** in the main menu | Your answer, and your email if you add one | `share.openflowkit.com` |
 | Copy or open an **editable copy** link | Nothing: the diagram's code rides in the link's `#fragment` | Nowhere |
 | Map a repo, or turn a repo into a diagram | Requests for the repo's file list and files (plus your GitHub token, if you gave one) | `api.github.com` and `raw.githubusercontent.com` |
 | [Connect an agent](/mcp-server/) | Tool calls and their results | The MCP server on your own machine, at `127.0.0.1` |
 | Paste an image URL | A normal image request | That URL |
 | Open Home | A request for the repository's star count, at most once a day (no diagram data) | `api.github.com` |
 
-There is no analytics, telemetry or crash reporting in the app. Everything else, including
+Usage stats help us improve OpenFlowKit; turn them off in Settings. Everything else, including
 compiling, layout, icons and every export, runs in the page.
 
 ## Where does my data live?

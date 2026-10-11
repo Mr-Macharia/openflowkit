@@ -1,15 +1,39 @@
 # Changelog
 
-Notable changes to the OpenFlowKit app. The MCP server ships on its own version
-line — see [`mcp-server/package.json`](mcp-server/package.json) — because it has
-npm consumers whose upgrades should not be driven by the app's brand version.
+What changed in OpenFlowKit, newest first. Each release has a version number (major.minor.patch,
+[Semantic Versioning](https://semver.org/)) and a matching [GitHub release](https://github.com/Vrun-design/openflowkit/releases).
+Work that has landed but not shipped yet sits under **Unreleased**.
 
-This project follows [Semantic Versioning](https://semver.org/).
+The MCP server (`@vrun-design/openflowkit-mcp` on npm) has its own version line, because agents install it
+separately; its changes are listed under *For developers* in each release.
 
 ## [Unreleased]
 
+The first public release of the new editor, shipping as **2.1.0** when `v2` merges to `main`.
+
+### Highlights
+
+- **Map any GitHub repo.** Paste `owner/repo` and get its architecture. Click into any part, and every arrow shows the
+  file and line it came from.
+- **Hand it to your agent.** Claude Code, Cursor, VS Code and other MCP clients edit the same canvas you see.
+- **Draw, write or ask.** An infinite canvas, diagrams as code (paste Mermaid, D2 or Structurizr), and an AI
+  assistant with your own key or a local model.
+- **Share two ways:** a view-only link, or an editable copy.
+- **A home for your diagrams:** recents, stars, templates and search. Your v1 diagrams come with you.
+- **Export anywhere:** PNG, SVG, PDF, JSON, Mermaid, and animated GIF, MP4, WebM or SVG.
+
 ### Added
 
+- **Hand your diagram to an agent in one click.** The Connect panel has Add to Cursor and Add to VS Code buttons, and
+  agents running in the browser can use OpenFlowKit through WebMCP (experimental).
+- **Figma-style editing.** Hold Shift while resizing to keep proportions, Alt to resize from the centre; Shift-drag
+  moves along one axis, Alt-drag leaves a copy; Shift- or ⌘-click adds to the selection; double-click enters a group
+  and Escape climbs out.
+- **Square** is the first basic shape and the rail's default.
+- **Layers panel** follows the canvas: rename, drag to reorder or into a section, hide, and select either way.
+- **Official Google Cloud icons**, found by product name in the icon library and drawn automatically from labels.
+- **Feedback from inside the app:** Send feedback… in the main menu, and an occasional one-tap question after you use a feature.
+- **Basic usage stats** help us see what people use; turn them off in Settings.
 - **Map mode.** A Canvas | Map switch on every document (`M`) draws the architecture model as boxes that open in
   place: Top level, One level in or All levels; arrow keys walk, Enter opens, Escape backs out, ⌘F finds. An arrow
   lists the relations (or, on a repo map, the `file:line` evidence) behind it. Edit as drawing (⇧M) copies the map to
@@ -21,8 +45,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   goes to `api.github.com` only.
 - **C4 views are pages.** Every view of an architecture workspace (and of an imported Structurizr workspace) is its
   own page, grouped by level; regenerating matches pages by stable id.
-- **Encrypted share links.** Copy share link encrypts the document in the browser; the share Worker stores only
-  ciphertext, and the key stays in the link's `#` fragment. Read-only for viewers; Delete link removes it.
+- **Two kinds of share link.** A *view-only link* encrypts the whole document in your browser and stores only
+  the encrypted copy (the key stays in the link); viewers can look, or make their own copy, and you can delete the
+  link later. An *editable copy* puts one diagram's code in the link itself, so nothing is uploaded.
 - **PR diagrams Action** (`action/`): comments on a pull request with node/connector counts, the DSL diff and drift,
   and refreshes stale committed SVGs.
 - **Copy as Mermaid** in the Export panel, for flowchart and sequence diagrams, listing what Mermaid cannot carry.
@@ -32,8 +57,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Saves are compare-and-swap: a second tab that saved first shows "Another tab saved first" with Reload and Save as
   copy. A damaged diagram offers Download raw data.
 
-- CLI: `openflowkit map <dir> [--depth overview|detailed|everything]` prints a repository's parts, files, lines, resolved and unresolved imports, and the folders that import each other. `--html out.html` writes the interactive map as one offline page (no network; evidence links to GitHub only for a github.com checkout root, at the commit HEAD). In a git checkout only tracked files are mapped.
-- MCP (0.2.0): remote MCP Apps endpoint (`start:http`) with render_diagram + inline viewer; stores nothing.
 - **A real home page.** A sidebar with Recents, Starred, Templates and Archive, search (`/`), your starred diagrams,
   a dated What's new page, and links to request a feature or star the project (with its live star count). Diagrams show as a grid
   or a list with a live thumbnail, sorted by last edited or name. Each card has star, rename, duplicate, open in a
@@ -55,39 +78,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   Open file accepts that backup. Bring-your-own-key settings carry over.
 - Old links resolve: `#/flow/:id` opens the imported diagram, `#/view?flow=…` explains
   what it was, and the other v1 routes land on home. The v1 service worker removes itself.
-- **MCP: Mermaid, Structurizr and D2 in.** `create_diagram`, `update_diagram` and
-  `validate_openflow_dsl` take Mermaid (fenced or not, front matter included), Structurizr DSL
-  or D2 and return `converted: { from, dsl, losses }`, losses on the agent's own line numbers.
-  Unconvertible Mermaid families say which ones convert.
 - **D2 import** in the code panel and the agent tools: flowchart with groups, sequence, or erd
   from `sql_table`s, tested on the D2 project's own example files.
 - **Agent skill** (`skills/openflowkit/SKILL.md`) and a `llms.txt` that describes v2 (it still
   described the 1.x DSL). `npm run eval:validity` measures how often a model's diagrams compile.
-- **`openflowkit` CLI covers every op.** `openflowkit op <name>` runs any MCP op on a
-  `.openflow.json` (new ops appear without CLI code), plus `render` (→ SVG), `convert`
-  (→ `.openflow.json`), `validate` and `ops`. Stdin, `--json`, `--strict`, exit codes 0/1/2.
-- **MCP: headless layout is ELK**, the editor's engine, so file mode and the CLI draw the same
-  diagram as the app. Over 1000 shapes or 400 connections stops with a message.
-- **MCP schema fix (0.2.0): `add_shape` advertises its fields.** Its refined schema exposed only
-  `documentId`, so clients sent no `kind`/`label` and every call failed validation.
-- **MCP (0.2.0, schema change): `openflow_save` takes an optional `svg` boolean** (default false). When true it also
-  writes the first page as `<same name>.svg` next to the file and returns its path as `svg`. CLI: `--svg` on
-  `convert -o` and `op --doc`; `openflowkit discover --out` now writes `<name>.svg` beside the model too (`--no-svg` to skip). If the SVG
-  fails after the file is saved, the save stands: the CLI exits 1 naming the saved path, `openflow_save` returns `svgError`.
-- **MCP (0.2.0, schema change): page-scoped ops take `pageId`** (`update_diagram`, `move`, `style`, `delete`,
-  `add_shape`, joining `create_diagram`, `get_diagram`, `get_document`, `export`, `screenshot`), in file and live mode;
-  a two-page C4 document could not be edited past page 1. `get_syntax`'s `family` is an enum of the families, so an
-  unknown one is an error that lists them (it returned the whole grammar), and works before any document is open.
-  `add_shape`'s `kind` lists `ellipse` once. Without a `documentId`, file mode targets the document opened or created last.
-- **MCP (0.2.0, output change):** `screenshot` and PNG/GIF `export` return the picture as an MCP image block (the JSON
-  keeps a short summary); base64 inside the text was over clients' output cap. `whoami` and `server_info` report
-  `bridge: { port, state }` (`listening`, `paired`, `port-in-use`). `create_diagram` / `update_diagram` refuse DSL with
-  nothing drawable (every line dropped) with its diagnostics, instead of leaving an empty frame.
-- **MCP (0.2.0, schema change): `export` takes an optional `path`** (inside the server's working directory, in file
-  and live mode) and writes the file there, returning `{ saved, bytes, mime }`. An image over 1 MB is not sent as a
-  block; the summary says to pass `path` or a lower scale.
-- **MCP: icons in headless exports.** File-mode SVG and animated SVG, and the
-  `openflowkit build` site, draw the same icon art as the editor.
 - **The assistant edits hand-drawn shapes, not only diagrams.** "Make the selected box red and move it right" now
   works: `move_shapes`, `style_shapes`, `delete_shapes`, `add_shape` and `list_shapes` queue into the same review as
   diagram changes, each row rebuilt on the page the rows before it leave, and apply as one undo step. Shapes inside a
@@ -99,6 +93,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Zoom shortcuts match other design tools:** ⌘0 is 100%, ⇧1 fits everything.
+- **Tips and notifications look finished.** Toasts stack (up to three), pause on hover and merge repeats; tips appear
+  only on an idle canvas and step aside from open panels.
+- Clearer page title and description for search results and link previews.
 - The code panel (Diagram as code) opens with ⌥C; ⌥A / D / W / S stay align left / right / top / bottom.
 - **A diagram names its document.** Starting from a template, an import or Generate in an untitled document names
   it after the diagram's `title:`, in the same undo step, so Home is not a wall of "Untitled diagram".
@@ -120,32 +118,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   The server also answers browser preflights now, for clients that send the token as a header, and the editor says
   so when a server rejects the token.
 - Edits at 5,000 nodes cost about half as much: the document is checked once per command, not twice.
-- **MCP server 0.2.0 is a breaking release** for 0.1.x users: `create_viewer_url` and
-  `find_icon` are gone (use `create_diagram` + `export`, and `search_icons`), and the
-  `convert_mermaid_to_openflow` prompt is gone because the tools take Mermaid directly.
-- The `openflowkit build` CLI compiles with the editor's icon rule (icons from labels on).
-
-### Thanks
-
-V1's contributors: [@Ken-vdE](https://github.com/Ken-vdE) (edge dash animation loop, #76) and
-[@Mr-Macharia](https://github.com/Mr-Macharia) (retired Groq model IDs, #79; one `AIProvider` type, #80).
-Their work shipped in v1; v2 is a rewrite, so the code itself did not carry over. Thank you.
 
 ### Fixed
 
-- **MCP server (0.2.0).** Installed bins run: `openflowkit` and `start:http` compared the npm symlink to the real
-  file and silently did nothing (so `openflowkit drift` never failed CI). `validate_openflow_dsl` runs the same
-  parse-and-compile check as `openflowkit validate` (it skipped compiling, so dropped lines passed), and both warn when
-  the first line is a misspelled family (`flowchrt`). `drift_report` / `explain_element` read `architecture.ofk` unless
-  given a `documentId` (they took whichever document was open). The bridge refuses a `Host` other than
-  127.0.0.1/localhost/[::1] on its port (DNS rebinding) and a malformed hello (a phantom editor); the token stays opt-in.
-  Node 20.11+ (it said 18.3), `server_info` lists itself, the shipped grammar drops its research notes, the npm
-  package carries the LICENSE. The editor shows a refused hello as an error and keeps an error up while it retries;
-  "Copy" says when the clipboard refused.
-- **MCP server and agent pairing.** The server exits when its client closes stdin (an orphan kept the bridge port and
-  refused the next pairing). A closed or reloaded editor tab is noticed at once: calls say so instead of hanging 45 s.
-  A second server on a taken port says another server owns it. The Connect panel offers a `claude mcp add` one-liner,
-  says each change is one undo step (not "you review every change"), and shows only the fix for a rejected token.
 - **Ollama:** the provider dialog lists the installed models on open and defaults to one when `gemma4` is not
   installed; the Think chip is hidden (Ollama is sent no think flag); the OLLAMA_ORIGINS advice shows only on a page
   not served from localhost.
@@ -187,6 +162,63 @@ Their work shipped in v1; v2 is a rewrite, so the code itself did not carry over
 
 - The Slides workspace button: it opened a mock-up that saved nothing. It returns when slides are real.
 - The `gh-pages` deploy script and `public/CNAME`; the app deploys on Cloudflare Pages.
+
+### For developers: MCP server 0.2.0 and the CLI
+
+- CLI: `openflowkit map <dir> [--depth overview|detailed|everything]` prints a repository's parts, files, lines, resolved and unresolved imports, and the folders that import each other. `--html out.html` writes the interactive map as one offline page (no network; evidence links to GitHub only for a github.com checkout root, at the commit HEAD). In a git checkout only tracked files are mapped.
+- MCP (0.2.0): remote MCP Apps endpoint (`start:http`) with render_diagram + inline viewer; stores nothing.
+- **MCP: Mermaid, Structurizr and D2 in.** `create_diagram`, `update_diagram` and
+  `validate_openflow_dsl` take Mermaid (fenced or not, front matter included), Structurizr DSL
+  or D2 and return `converted: { from, dsl, losses }`, losses on the agent's own line numbers.
+  Unconvertible Mermaid families say which ones convert.
+- **`openflowkit` CLI covers every op.** `openflowkit op <name>` runs any MCP op on a
+  `.openflow.json` (new ops appear without CLI code), plus `render` (→ SVG), `convert`
+  (→ `.openflow.json`), `validate` and `ops`. Stdin, `--json`, `--strict`, exit codes 0/1/2.
+- **MCP: headless layout is ELK**, the editor's engine, so file mode and the CLI draw the same
+  diagram as the app. Over 1000 shapes or 400 connections stops with a message.
+- **MCP schema fix (0.2.0): `add_shape` advertises its fields.** Its refined schema exposed only
+  `documentId`, so clients sent no `kind`/`label` and every call failed validation.
+- **MCP (0.2.0, schema change): `openflow_save` takes an optional `svg` boolean** (default false). When true it also
+  writes the first page as `<same name>.svg` next to the file and returns its path as `svg`. CLI: `--svg` on
+  `convert -o` and `op --doc`; `openflowkit discover --out` now writes `<name>.svg` beside the model too (`--no-svg` to skip). If the SVG
+  fails after the file is saved, the save stands: the CLI exits 1 naming the saved path, `openflow_save` returns `svgError`.
+- **MCP (0.2.0, schema change): page-scoped ops take `pageId`** (`update_diagram`, `move`, `style`, `delete`,
+  `add_shape`, joining `create_diagram`, `get_diagram`, `get_document`, `export`, `screenshot`), in file and live mode;
+  a two-page C4 document could not be edited past page 1. `get_syntax`'s `family` is an enum of the families, so an
+  unknown one is an error that lists them (it returned the whole grammar), and works before any document is open.
+  `add_shape`'s `kind` lists `ellipse` once. Without a `documentId`, file mode targets the document opened or created last.
+- **MCP (0.2.0, output change):** `screenshot` and PNG/GIF `export` return the picture as an MCP image block (the JSON
+  keeps a short summary); base64 inside the text was over clients' output cap. `whoami` and `server_info` report
+  `bridge: { port, state }` (`listening`, `paired`, `port-in-use`). `create_diagram` / `update_diagram` refuse DSL with
+  nothing drawable (every line dropped) with its diagnostics, instead of leaving an empty frame.
+- **MCP (0.2.0, schema change): `export` takes an optional `path`** (inside the server's working directory, in file
+  and live mode) and writes the file there, returning `{ saved, bytes, mime }`. An image over 1 MB is not sent as a
+  block; the summary says to pass `path` or a lower scale.
+- **MCP: icons in headless exports.** File-mode SVG and animated SVG, and the
+  `openflowkit build` site, draw the same icon art as the editor.
+- **MCP server 0.2.0 is a breaking release** for 0.1.x users: `create_viewer_url` and
+  `find_icon` are gone (use `create_diagram` + `export`, and `search_icons`), and the
+  `convert_mermaid_to_openflow` prompt is gone because the tools take Mermaid directly.
+- The `openflowkit build` CLI compiles with the editor's icon rule (icons from labels on).
+- **MCP server (0.2.0).** Installed bins run: `openflowkit` and `start:http` compared the npm symlink to the real
+  file and silently did nothing (so `openflowkit drift` never failed CI). `validate_openflow_dsl` runs the same
+  parse-and-compile check as `openflowkit validate` (it skipped compiling, so dropped lines passed), and both warn when
+  the first line is a misspelled family (`flowchrt`). `drift_report` / `explain_element` read `architecture.ofk` unless
+  given a `documentId` (they took whichever document was open). The bridge refuses a `Host` other than
+  127.0.0.1/localhost/[::1] on its port (DNS rebinding) and a malformed hello (a phantom editor); the token stays opt-in.
+  Node 20.11+ (it said 18.3), `server_info` lists itself, the shipped grammar drops its research notes, the npm
+  package carries the LICENSE. The editor shows a refused hello as an error and keeps an error up while it retries;
+  "Copy" says when the clipboard refused.
+- **MCP server and agent pairing.** The server exits when its client closes stdin (an orphan kept the bridge port and
+  refused the next pairing). A closed or reloaded editor tab is noticed at once: calls say so instead of hanging 45 s.
+  A second server on a taken port says another server owns it. The Connect panel offers a `claude mcp add` one-liner,
+  says each change is one undo step (not "you review every change"), and shows only the fix for a rejected token.
+
+### Thanks
+
+V1's contributors: [@Ken-vdE](https://github.com/Ken-vdE) (edge dash animation loop, #76) and
+[@Mr-Macharia](https://github.com/Mr-Macharia) (retired Groq model IDs, #79; one `AIProvider` type, #80).
+Their work shipped in v1; v2 is a rewrite, so the code itself did not carry over. Thank you.
 
 ## [2.0.0] — 2026-09-22
 

@@ -353,7 +353,8 @@ security policy, AI providers on your own network, and share links:
 
 Your diagrams stay in your browser. Something leaves it only when you choose: AI with your own key
 goes to that provider, a share link uploads an encrypted copy, a repo map reads from GitHub.
-No account, no telemetry. Back up any time with **Export → JSON**.
+No account needed. We collect basic usage stats to improve OpenFlowKit; turn them off in Settings.
+Back up any time with **Export → JSON**.
 
 <details>
 <summary><b>FAQ</b></summary>

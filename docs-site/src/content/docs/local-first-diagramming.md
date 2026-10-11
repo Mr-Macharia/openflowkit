@@ -57,12 +57,12 @@ A document holds pages; the document bar names the active page and opens the pag
 are created, renamed, duplicated, reordered and deleted there. Exports can cover the current
 page, the selection, or every page (one file per page).
 
-## No account, no telemetry
+## No account
 
-There is no sign-in, no license check and no analytics in the app. Nothing about your diagrams
-leaves the machine unless you export it, share it (encrypted; the server never sees the key),
-send it to the AI provider you picked, or connect an agent, which talks to a local bridge on
-`127.0.0.1` (see [MCP Server](/mcp-server/)). The [FAQ](/faq/#what-leaves-my-browser) lists
+There is no sign-in and no license check. Basic usage stats help us improve the app (turn them off
+in Settings). Your diagrams stay on your machine unless you export them, share them (encrypted; the
+server never sees the key), send them to the AI provider you picked, or connect an agent, which
+talks to a local bridge on `127.0.0.1` (see [MCP Server](/mcp-server/)). The [FAQ](/faq/#what-leaves-my-browser) lists
 every request the app makes.
 
 ## What it cannot do

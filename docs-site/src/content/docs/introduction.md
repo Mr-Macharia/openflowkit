@@ -38,7 +38,7 @@ API -> Database : query
 
 Your diagrams stay in your browser. Something leaves it only when you choose: AI with your own
 key goes to that provider, a share link uploads an encrypted copy, a repo map reads from GitHub.
-There is no account and no telemetry; exports are files you download. See
+There is no account, exports are files you download, and basic usage stats can be turned off in Settings. See
 [Local-first diagramming](/local-first-diagramming/) for crash recovery and what "opening a
 file" does, and the [FAQ](/faq/) for every network request the app makes.
 
