@@ -10,7 +10,7 @@ import { planMotion } from '../../../application/map/planMotion';
 import type { CanvasCamera } from '../../../domain/camera/types';
 import type { SceneNode, ScenePage } from '../../../domain/document/types';
 import type { PixiRendererHost } from '../../../infrastructure/pixi/PixiRendererHost';
-import { clearance, fitAll, landOn, mapCamera, refitKind, sceneExtent, showsAll, type HeldFit, type TaggedScene } from './mapMode';
+import { clearance, fitAll, landOn, presetCamera, refitKind, sceneExtent, showsAll, type HeldFit, type TaggedScene } from './mapMode';
 
 interface Options {
   readonly mapPage: ScenePage | null;
@@ -103,8 +103,10 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
       const at = focusRef.current;
       focusRef.current = null;
       const whole = !(at?.id && rects.has(at.id));
-      const cam = whole ? mapCamera(extent, clearance(host), firstBox(model, rects)) : landOn(extent, rects.get(at!.id!)!, clearance(host));
+      // Entering frames the map exactly as pressing its depth does.
+      const cam = whole ? presetCamera(extent, clearance(host), firstBox(model, rects)) : landOn(extent, rects.get(at!.id!)!, clearance(host));
       fitted.current = whole ? { cam, all: false } : null;
+      if (whole && !showsAll(extent, cam, clearance(host))) partialRef.current?.();
       updateCamera(cam);
       return;
     }
@@ -113,9 +115,10 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
     mapPage.nodes.forEach((node) => drawn.current.set(node.id, node));
     const focus = focusRef.current;
     focusRef.current = null;
-    // A depth preset lands like entering; a box click follows the box; otherwise the fit the untouched camera holds is redone.
+    // A depth preset lands like entering; a box click follows the box; otherwise the fit the untouched camera holds is
+    // redone (a landing too, so a growing map is framed the same way at every size).
     const kind = focus ? (focus.id === null ? 'start' : null) : refitKind(fitted.current, cameraRef.current, cameraRef.current === mine.current);
-    const camTo = kind === 'all' ? fitAll(extent, clearance(host)) : kind === 'start' ? mapCamera(extent, clearance(host), firstBox(model, rects))
+    const camTo = kind === 'all' ? fitAll(extent, clearance(host)) : kind === 'start' ? presetCamera(extent, clearance(host), firstBox(model, rects))
       : focus?.id && rects.has(focus.id) ? landOn(extent, rects.get(focus.id), clearance(host), cameraRef.current) : null;
     fitted.current = kind && camTo ? { cam: camTo, all: kind === 'all' } : null;
     if (focus?.id === null && camTo && !showsAll(extent, camTo, clearance(host))) partialRef.current?.();

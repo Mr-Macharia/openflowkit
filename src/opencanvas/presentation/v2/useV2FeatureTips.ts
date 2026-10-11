@@ -13,18 +13,22 @@ export interface V2FeatureTipsOptions {
   readonly motionOpen: boolean;
   /** Any panel, menu or label editor open: not the moment for a tip. */
   readonly blocked: boolean;
+  /** An export succeeded this session: the motion tip is due once Export has closed. */
+  readonly exported: boolean;
   readonly announce: (message: string) => void;
 }
 
 /** One hint at the moment it pays off, at most one a session, never twice. */
 export function useV2FeatureTips(options: V2FeatureTipsOptions) {
-  const { page, readOnly, rendererReady, selectedCount, aiConfigured, workspace, motionOpen, blocked, announce } = options;
+  const { page, readOnly, rendererReady, selectedCount, aiConfigured, workspace, motionOpen, blocked, exported, announce } = options;
   const [tip, setTip] = useState<V2TipId | null>(null);
 
   const offer = (id: V2TipId) => {
-    // Never over an open panel, menu or dialog (passive tooltips do not count), nor where nothing can be edited (Map, a shared view),
-    // nor on a phone, where it would cover the toolbar.
-    if (tip || readOnly || window.innerWidth < 600 || !mayShowTip(id) || document.querySelector('.ofk-panel, .ofk-popover:not([data-passive]), dialog[open]')) return;
+    // Only on an idle canvas: never over an open panel, menu or dialog (passive tooltips do not count), never while a
+    // selection's context bar is up (the connect tip is about the selection itself), nor where nothing can be edited
+    // (Map, a shared view), nor on a phone, where it would cover the toolbar.
+    if (tip || readOnly || window.innerWidth < 600 || !mayShowTip(id) || (selectedCount > 0 && id !== 'connect')
+      || document.querySelector('.ofk-panel, .ofk-popover:not([data-passive]), dialog[open]')) return;
     recordTipShown(id);
     setTip(id);
     announce(`Tip: ${V2_TIPS[id].title}. ${V2_TIPS[id].text}`);
@@ -44,14 +48,16 @@ export function useV2FeatureTips(options: V2FeatureTipsOptions) {
   useEffect(() => {
     if (!page || readOnly || !rendererReady || blocked) return;
     const generated = page.nodes.some((node) => node.kind === 'frame');
-    const id: V2TipId | null = page.nodes.length >= 3 && !generated ? 'code'
+    // Right after an export is when animating it pays off; `blocked` holds it until the Export panel has closed.
+    const id: V2TipId | null = exported && mayShowTip('motion') ? 'motion'
+      : page.nodes.length >= 3 && !generated ? 'code'
       : page.nodes.length >= 5 && !aiConfigured ? 'assistant'
         : selectedCount === 2 && page.connectors.length === 0 ? 'connect' : null;
     if (!id || !mayShowTip(id)) return;
     const timer = window.setTimeout(() => offer(id), TIP_QUIET_MS);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- offer reads the latest state; these are the triggers
-  }, [page, readOnly, selectedCount, rendererReady, blocked, aiConfigured]);
+  }, [page, readOnly, selectedCount, rendererReady, blocked, aiConfigured, exported]);
 
   return { tip, offer, dismiss: () => setTip(null) };
 }

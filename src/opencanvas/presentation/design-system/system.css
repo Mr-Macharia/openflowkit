@@ -503,17 +503,31 @@
 .ofk-panel[data-side='end'] {
   inset-inline-end: var(--ofk-layout-edgeInset);
 }
-.ofk-panel-header {
+/* One header for every panel and popover: 14px/600 title, a 32px close, the title on the body's left edge. */
+.ofk-panel-header,
+.ofk-popover-header {
   display: flex;
   align-items: center;
   gap: var(--ofk-space-sm);
-  padding: var(--ofk-space-sm) var(--ofk-space-sm) var(--ofk-space-sm) var(--ofk-space-lg);
+  padding: 6px 6px 6px var(--ofk-space-lg);
   border-bottom: 1px solid var(--ofk-border);
 }
-.ofk-panel-title {
+/* Popover bodies sit 12px in (panels 16px): the title starts where they do. */
+.ofk-popover-header { padding-inline-start: var(--ofk-space-md); }
+.ofk-panel-header > .ofk-icon-button,
+.ofk-popover-header > .ofk-icon-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  flex: none;
+  color: var(--ofk-secondary);
+}
+.ofk-panel-title,
+.ofk-popover-title {
   margin: 0;
   flex: 1;
-  font-size: var(--ofk-type-label);
+  font-size: var(--ofk-type-body);
   font-weight: var(--ofk-weight-emphasis);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -780,13 +794,26 @@
   border-radius: calc(var(--ofk-radius-control) - 2px);
   font-size: var(--ofk-type-label);
   font-weight: var(--ofk-weight-label);
-  color: var(--ofk-secondary);
+  color: var(--ofk-muted);
+  white-space: nowrap;
   cursor: pointer;
 }
 .ofk-segmented label[data-selected] {
-  background: var(--ofk-surface);
+  background: var(--ofk-thumb);
   color: var(--ofk-text);
-  box-shadow: var(--ofk-material-shadowRaised);
+  box-shadow: var(--ofk-material-shadowThumb);
+}
+/* A segmented row with its caption beside it: the same label column as every popover row. */
+.ofk-segmented-field {
+  display: grid;
+  grid-template-columns: var(--ofk-row-label, 72px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ofk-space-md);
+}
+.ofk-segmented-caption {
+  font-size: var(--ofk-type-caption);
+  font-weight: var(--ofk-weight-label);
+  color: var(--ofk-muted);
 }
 .ofk-segmented input {
   position: absolute;
@@ -907,35 +934,39 @@
   from { opacity: 0; transform: translateY(6px); }
 }
 
-/* Toasts */
+/* Toasts: bottom centre, newest nearest the edge, on the same raised card as tips and menus. */
 .ofk-toasts {
   position: absolute;
   bottom: var(--ofk-layout-edgeInset);
   inset-inline-start: 50%;
   transform: translateX(-50%);
   z-index: var(--ofk-layer-toast);
-  display: grid;
-  gap: var(--ofk-space-sm);
-  width: min(420px, calc(100% - 2 * var(--ofk-layout-edgeInset)));
+  /* As wide as the widest toast, 320–440: a stack shares one width. */
+  width: max-content;
+  min-width: min(320px, calc(100vw - 2 * var(--ofk-layout-edgeInset)));
+  max-width: min(440px, calc(100vw - 2 * var(--ofk-layout-edgeInset)));
   pointer-events: none;
 }
 .ofk-toasts > div {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--ofk-space-sm);
 }
 .ofk-toast {
   pointer-events: auto;
+  box-sizing: border-box;
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 10px 8px 10px 14px;
+  padding: 10px 10px 10px 14px;
   border-radius: var(--ofk-radius-surface);
-  animation: ofk-toast-in var(--ofk-motion-reveal) var(--ofk-curve-enter) both;
+  animation: ofk-toast-in 180ms var(--ofk-curve-enter) both;
 }
 @keyframes ofk-toast-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(6px);
   }
 }
 .ofk-toast-text {
@@ -943,11 +974,13 @@
   min-width: 0;
   display: grid;
   gap: 2px;
+  padding-block: 4px;
 }
 .ofk-toast-text strong {
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  font-weight: var(--ofk-weight-label);
+  line-height: 20px;
+  margin-block: -2px;
   color: var(--ofk-text);
 }
 .ofk-toast-text p {
@@ -959,16 +992,23 @@
 .ofk-toast-mark {
   flex: none;
   display: inline-flex;
-  align-self: flex-start;
-  margin-top: 1px;
+  margin-top: 6px;
 }
-.ofk-toast-mark svg { width: 18px; height: 18px; }
+.ofk-toast-mark svg { width: 16px; height: 16px; }
 .ofk-toast[data-tone='success'] .ofk-toast-mark { color: var(--ofk-success); }
 .ofk-toast[data-tone='warning'] .ofk-toast-mark { color: var(--ofk-warning); }
 .ofk-toast[data-tone='danger'] .ofk-toast-mark { color: var(--ofk-danger); }
-.ofk-toast > .ofk-button { flex: none; min-height: 28px; padding-inline: 10px; font-size: 12.5px; }
-.ofk-toast > .ofk-icon-button { flex: none; width: 28px; height: 28px; min-width: 28px; color: var(--ofk-muted); }
-.ofk-toast > .ofk-icon-button .ofk-icon { width: 16px; height: 16px; }
+.ofk-toast[data-tone='info'] .ofk-toast-mark { color: var(--ofk-info); }
+.ofk-system .ofk-toast > .ofk-button { flex: none; min-height: 28px; padding: 0 10px; font-size: 12.5px; }
+/* Close: a quiet 24px badge on the corner, shown while the toast is hovered or holds focus (always on touch), so it
+   takes no room from the words. */
+.ofk-system .ofk-toast > .ofk-icon-button { position: absolute; inset-block-start: -9px; inset-inline-end: -9px; width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 0; border: 1px solid var(--ofk-border); border-radius: 50%; background: var(--ofk-surface); box-shadow: var(--ofk-material-shadowRaised); color: var(--ofk-secondary); opacity: 0; transition: opacity var(--ofk-motion-feedback) var(--ofk-ease); }
+.ofk-system .ofk-toast > .ofk-icon-button:hover { background: var(--ofk-raised); }
+.ofk-toast > .ofk-icon-button svg { width: 12px; height: 12px; margin: auto; }
+.ofk-toast:is(:hover, :focus-within) > .ofk-icon-button { opacity: 1; }
+@media (hover: none) { .ofk-system .ofk-toast > .ofk-icon-button { opacity: 1; } }
+/* A toast's compact secondary action: a hairline, not the full control border (the label names it). */
+.ofk-system .ofk-toast > .ofk-button[data-variant='secondary'] { border-color: var(--ofk-border); box-shadow: var(--ofk-material-shadowRaised); }
 
 /* Tree */
 .ofk-tree,
@@ -1115,23 +1155,6 @@
   color: var(--ofk-secondary);
   font-size: var(--ofk-type-label);
   padding-inline: var(--ofk-space-sm) 0;
-}
-.ofk-popover-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ofk-space-md);
-  padding: var(--ofk-space-sm) var(--ofk-space-sm) var(--ofk-space-sm) var(--ofk-space-lg);
-  border-bottom: 1px solid var(--ofk-border);
-}
-.ofk-popover-title {
-  font-weight: var(--ofk-weight-emphasis);
-  font-size: var(--ofk-type-body);
-}
-.ofk-popover-body {
-  display: grid;
-  gap: var(--ofk-space-md);
-  padding: var(--ofk-space-lg);
 }
 
 /* Color picker */

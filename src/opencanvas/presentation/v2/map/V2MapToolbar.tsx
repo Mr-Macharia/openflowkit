@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Depth, LinkKind } from '../../../../dsl/map/types';
 import { Button, Menu, MenuItem, Toolbar, Tooltip } from '../../design-system';
+import { platformKeys } from '../v2Shortcuts';
 
 /** What each kind of connection is called, as the arrows say it ("calls", "uses"): the Connections menu, the box panel and the CLI viewer. */
 export const MAP_LINK_WORDS: Readonly<Record<LinkKind, string>> = { import: 'imports', call: 'calls', data: 'uses', build: 'builds' };
@@ -53,7 +54,7 @@ export function V2MapToolbar(p: V2MapToolbarProps): React.JSX.Element {
         {p.onPin ? (
           <>
             <span className="ofk-v2-divider" aria-hidden="true" />
-            <Tooltip content="Copies this map to a new Canvas page you can rearrange and draw on" shortcut="⇧M">
+            <Tooltip content="Copies this map to a new Canvas page you can rearrange and draw on" shortcut={platformKeys('⇧M')}>
               <Button variant="quiet" disabled={!p.canPin} onClick={p.onPin}>Edit as drawing</Button>
             </Tooltip>
           </>

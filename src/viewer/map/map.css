@@ -44,7 +44,7 @@
 .ov rect { fill: var(--ofk-canvas); stroke: var(--ofk-selection); stroke-width: 1; }
 .ov text { font: 600 10px var(--ofk-mono); fill: var(--ofk-selection); }
 
-.map-note { position: absolute; left: 12px; bottom: 56px; padding: 6px 10px; background: var(--ofk-canvas); border: 1px solid var(--ofk-selection); border-radius: 6px; font: 400 11px var(--ofk-mono); color: var(--ofk-selection); }
+.map-note { position: absolute; left: 12px; bottom: 56px; box-sizing: border-box; min-height: 32px; padding: 6px 10px; background: var(--ofk-surface); border: 1px solid var(--ofk-border); border-radius: var(--ofk-radius-control); box-shadow: var(--ofk-material-shadowChrome); font: 400 12px/1.4 var(--ofk-font); color: var(--ofk-secondary); }
 
 .mb.dim, .edge.dim, .lbl.dim { opacity: 0.35; }
 .edge:focus-visible { outline: none; }
@@ -76,8 +76,9 @@
 .map-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .map-empty { padding: 8px 10px; font: 400 12px var(--ofk-font); color: var(--ofk-muted); }
 .map-status { position: absolute; left: 12px; bottom: 12px; display: grid; gap: 6px; justify-items: start; }
-.map-chip { padding: 4px 10px; background: var(--ofk-surface); border: 1px solid var(--ofk-border); border-radius: 8px; font: 400 11px var(--ofk-mono); color: var(--ofk-secondary); }
+.map-chip, .map-links-chip { box-sizing: border-box; min-height: 32px; padding: 3px 10px; background: var(--ofk-surface); border: 1px solid var(--ofk-border); border-radius: var(--ofk-radius-control); box-shadow: var(--ofk-material-shadowChrome); font: 400 12px/1.4 var(--ofk-font); font-variant-numeric: tabular-nums; color: var(--ofk-secondary); }
 .map-chip .ofk-progress { min-width: 220px; }
-.map-links-chip { position: absolute; top: 72px; left: 16px; display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; background: var(--ofk-surface); border: 1px solid var(--ofk-border); border-radius: 8px; font: 400 11px var(--ofk-mono); color: var(--ofk-secondary); }
+.map-links-chip { position: absolute; top: 72px; left: 16px; display: flex; align-items: center; gap: 2px; padding-inline-end: 3px; }
+.ofk-system .map-links-chip > .ofk-button { min-height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: var(--ofk-weight-label); color: var(--ofk-text); }
 /* Wide screens: beside the toolbar, so it never covers the map's corner. */
 @media (min-width: 1200px) { .map-links-chip { top: 20px; left: 612px; } }

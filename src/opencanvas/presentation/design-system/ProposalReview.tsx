@@ -4,7 +4,7 @@ import { Button, IconButton } from './Button';
 import { Icon } from './Icon';
 import { Kbd } from './Kbd';
 import { Status } from './Status';
-export type ProposalChangeKind = 'addition' | 'modification' | 'removal';
+type ProposalChangeKind = 'addition' | 'modification' | 'removal';
 export interface ProposalChange {
   id: string;
   kind: ProposalChangeKind;

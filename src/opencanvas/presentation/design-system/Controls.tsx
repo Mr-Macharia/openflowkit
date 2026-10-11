@@ -220,6 +220,8 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
 });
 export interface SegmentedProps<T extends string> {
   label: string;
+  /** Show `label` as a caption beside the control (a settings row), not only to assistive tech. */
+  showLabel?: boolean;
   value: T;
   onChange: (value: T) => void;
   options: readonly { value: T; label: ReactNode; title?: string; disabled?: boolean }[];
@@ -227,13 +229,15 @@ export interface SegmentedProps<T extends string> {
 /** Exclusive choice rendered as a radio group; arrows move selection, Tab leaves the group. */
 export function Segmented<T extends string>({
   label,
+  showLabel = false,
   value,
   onChange,
   options,
 }: SegmentedProps<T>) {
   const name = useId();
-  return (
-    <div className="ofk-segmented" role="radiogroup" aria-label={label}>
+  const group = (
+    <div className="ofk-segmented" role="radiogroup" aria-label={showLabel ? undefined : label}
+      aria-labelledby={showLabel ? `${name}-label` : undefined}>
       {options.map((o) => (
         <label key={o.value} title={o.title} data-selected={o.value === value || undefined}>
           <input
@@ -249,6 +253,12 @@ export function Segmented<T extends string>({
       ))}
     </div>
   );
+  return showLabel ? (
+    <div className="ofk-segmented-field">
+      <span className="ofk-segmented-caption" id={`${name}-label`}>{label}</span>
+      {group}
+    </div>
+  ) : group;
 }
 /** Displays a color; the host opens its picker. Mixed values show a split swatch. */
 export const ColorSwatch = forwardRef<

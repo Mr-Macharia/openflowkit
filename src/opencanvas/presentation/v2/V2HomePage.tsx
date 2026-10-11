@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
-  IconAlertTriangle, IconArrowBackUp, IconArrowUpRight, IconBrandGithub, IconBulb, IconChevronDown, IconClock, IconFileImport, IconHierarchy2,
+  IconAlertTriangle, IconArrowBackUp, IconArrowUpRight, IconBook2, IconBrandGithub, IconBulb, IconChevronDown, IconClock, IconFileImport, IconHierarchy2,
   IconKeyboard, IconLayoutGrid, IconLayoutList, IconLock, IconMoon, IconPlus, IconSearch, IconSpeakerphone, IconStar,
   IconArchive, IconStarFilled, IconSun, IconTemplate, IconTrashX, IconUpload, IconX,
 } from '@tabler/icons-react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { HomeNotice } from './V2LegacyRoutes';
 import {
-  Button, Dialog, EmptyState, ErrorState, Icon, IconButton, Kbd, Menu, MenuItem, Segmented, SystemRoot, ToastRegion,
+  Button, Dialog, EmptyState, ErrorState, Icon, IconButton, Kbd, Menu, MenuItem, Segmented, SystemRoot, ToastRegion, withToast,
   Tooltip, type IconComponent, type ToastItem,
 } from '../design-system';
 import { CommandPalette, type Command } from '../design-system/CommandPalette';
@@ -20,18 +20,18 @@ import { buildV2Thumbnail } from './v2Thumbnail';
 import { STARTER_TEMPLATES } from '../../../agent/starterTemplates';
 import { ISSUE_URL } from '../../application/ai/assistantReport';
 import { forgetMapMode } from './map/mapDepth';
-import { forgetLastDocument, mintV2Id, type V2StartIntent } from './v2Document';
+import { forgetLastDocument, forgetPageId, mintV2Id, type V2StartIntent } from './v2Document';
 import {
   CHIP_ICON, DiagramCard, HomeCard, HomeNoticeStrip, SkeletonCard, StartCard, StartChip, ArchivedCard, type CardSelection, type StartKind,
 } from './V2HomeCards';
 import { V2StateHero } from './V2StateHero';
 import { HOME_NEWS } from './homeNews';
-import { REPO_URL, formatStars, useGitHubStars } from './homeStars';
+import { DOCS_URL, REPO_URL, formatStars, useGitHubStars } from './homeStars';
 import {
   IMPORT_ACCEPT, arrange, copyName, gridStep, importKind, parseView, selectRange, toggleId,
   useHomeState, type HomeSort, type HomeView,
 } from './homeLibrary';
-import { COMMAND } from './v2Shortcuts';
+import { platformKeys } from './v2Shortcuts';
 import { useV2Appearance } from './useV2Appearance';
 import { useV2Preferences } from './useV2Preferences';
 import './v2EditorPage.css';
@@ -104,10 +104,9 @@ export function V2HomePage(): React.JSX.Element {
   const fileRef = useRef<HTMLInputElement>(null);
   const renameCancelled = useRef(false);
   const failed = Object.entries(readV1ImportMarker()?.docs ?? {}).filter(([, entry]) => entry.status === 'failed');
-  const mod = COMMAND();
 
   const toast = useCallback((item: Omit<ToastItem, 'id'>) =>
-    setToasts((current) => [...current.slice(-2), { id: `home-${Date.now()}-${Math.random()}`, ...item }]), []);
+    setToasts((current) => withToast(current, { id: `home-${Date.now()}-${Math.random()}`, ...item })), []);
   const setProblem = (text: string) => setNotice({ notice: text, tone: 'danger' });
   const fail = (error: unknown) => toast({ tone: 'danger', title: describeStorageFailure(error).message });
   const refresh = useCallback(() => {
@@ -209,9 +208,9 @@ export function V2HomePage(): React.JSX.Element {
     const name = byId.get(ids[0]!)?.name ?? 'Diagram';
     try {
       await repository.archiveDocuments(ids);
-      ids.forEach((id) => { forgetLastDocument(id); forgetMapMode(id); });
+      ids.forEach((id) => { forgetLastDocument(id); forgetMapMode(id); forgetPageId(id); });
       toast({
-        title: ids.length === 1 ? `“${name}” archived.` : `${plural(ids.length, 'diagram')} archived.`,
+        title: ids.length === 1 ? `“${name}” archived` : `${plural(ids.length, 'diagram')} archived`,
         action: { label: 'Undo', onClick: () => void restore(ids, false) },
       });
     } catch (error) {
@@ -226,7 +225,7 @@ export function V2HomePage(): React.JSX.Element {
     const next = view === 'archive' ? survivor(ids) : ids[0] ?? null;
     try {
       await repository.restoreDocuments(ids);
-      if (announce) toast({ tone: 'success', title: `${plural(ids.length, 'diagram')} restored.`, action: { label: 'Show', onClick: () => navigate(viewLink('recents')) } });
+      if (announce) toast({ tone: 'success', title: `${plural(ids.length, 'diagram')} restored`, action: { label: 'Show', onClick: () => navigate(viewLink('recents')) } });
     } catch (error) {
       fail(error);
     }
@@ -254,14 +253,14 @@ export function V2HomePage(): React.JSX.Element {
   async function importFiles(files: readonly File[]): Promise<void> {
     const usable = files.filter((file) => importKind(file.name));
     if (!usable.length) {
-      toast({ tone: 'danger', title: 'Nothing here to import.', description: 'OpenFlowKit imports its own .json files, and Mermaid, D2, Structurizr or OpenFlow DSL text files.' });
+      toast({ tone: 'danger', title: 'Nothing here to import', description: 'OpenFlowKit imports its own .json files, and Mermaid, D2, Structurizr or OpenFlow DSL text files.' });
       return;
     }
     const sources = usable.filter((file) => importKind(file.name) === 'source');
     // A text diagram is drawn by the editor's compiler, so it opens there — one at a time.
     if (usable.length === 1 && sources.length === 1) {
       const text = await sources[0]!.text();
-      if (text.length > MAX_IMPORT_CHARS) toast({ tone: 'danger', title: `“${sources[0]!.name}” is too big to draw.` });
+      if (text.length > MAX_IMPORT_CHARS) toast({ tone: 'danger', title: `“${sources[0]!.name}” is too big to draw` });
       else create({ source: text });
       return;
     }
@@ -301,7 +300,7 @@ export function V2HomePage(): React.JSX.Element {
     const description = [...(problems.length ? [`Couldn’t open ${problems.join('; ')}`.replace(/([^.])$/, '$1.')] : []), ...notes].join(' ');
     toast({
       tone: problems.length ? (imported ? 'warning' : 'danger') : notes.length ? 'warning' : 'success',
-      title: imported ? `Imported ${plural(imported, 'diagram')}.` : 'Nothing was imported.',
+      title: imported ? `Imported ${plural(imported, 'diagram')}` : 'Nothing was imported',
       ...(description ? { description } : {}),
     });
   }
@@ -586,6 +585,10 @@ export function V2HomePage(): React.JSX.Element {
               <span>What’s new</span>
               {unseenNews ? <span className="ofk-home-dot" aria-label="New" /> : null}
             </Link>
+            <a className="ofk-home-nav-item" href={DOCS_URL} target="_blank" rel="noreferrer">
+              <Icon icon={IconBook2} /><span>Docs</span>
+              <Icon icon={IconArrowUpRight} />
+            </a>
             <a className="ofk-home-nav-item" href={ISSUE_URL} target="_blank" rel="noreferrer">
               <Icon icon={IconBulb} /><span>Request a feature</span>
               <Icon icon={IconArrowUpRight} />
@@ -690,8 +693,8 @@ export function V2HomePage(): React.JSX.Element {
           actions={<Button variant="quiet" onClick={() => setOpen(null)}>Close</Button>}>
           <dl className="ofk-home-keys">
             {([
-              [['N'], 'New diagram'], [[mod, 'K'], 'Find anything'], [['/'], 'Search this view'], [['↑', '↓', '←', '→'], 'Move between diagrams'],
-              [['Enter'], 'Open'], [['Space'], 'Select'], [['Shift', '↓'], 'Select a range'], [[mod, 'A'], 'Select all'],
+              [['N'], 'New diagram'], [[platformKeys('⌘K')], 'Find anything'], [['/'], 'Search this view'], [['↑', '↓', '←', '→'], 'Move between diagrams'],
+              [[platformKeys('↵')], 'Open'], [['Space'], 'Select'], [[platformKeys('⇧↓')], 'Select a range'], [[platformKeys('⌘A')], 'Select all'],
               [['S'], 'Star'], [['F2'], 'Rename'], [['Del'], 'Archive'], [['Esc'], 'Clear selection'],
             ] as const).map(([keys, what]) => <div key={what}><dt>{what}</dt><dd><Kbd keys={keys} /></dd></div>)}
           </dl>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type HTMLAttributes, type KeyboardEvent } from 'react';
-export interface ToolbarProps extends HTMLAttributes<HTMLDivElement> {
+interface ToolbarProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
   orientation?: 'horizontal' | 'vertical';
 }

@@ -1,6 +1,5 @@
 # Design-system implementation contract
 
-Start with `docs/plan/README.md`.
 Read this module's README before adding or consuming primitives.
 
 - This directory is presentation infrastructure for the editor, not a document theme engine.
@@ -20,8 +19,6 @@ Read this module's README before adding or consuming primitives.
 - New interactions require keyboard/touch paths, explicit cancellation, focus
   recovery, and no motion-induced delay to document commits.
 - Every new component must have a real roadmap consumer. Do not build speculative
-  catalogues or fork a second copy under a feature folder. The one review surface is
-  `../V2LabPage.tsx` (`/_labs/v2`, `VITE_V2_LAB=1`); add each shipped primitive's
-  states there so the owner can review them in both themes. It is not a consumer.
+  catalogues or fork a second copy under a feature folder.
 - Update implementation-status with exact shipped coverage and actual checks.
   Do not describe token tests or component screenshots as complete editor acceptance.

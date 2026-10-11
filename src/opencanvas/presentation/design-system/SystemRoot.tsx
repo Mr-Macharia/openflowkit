@@ -50,7 +50,7 @@ const SystemRootContext = createContext<{ element: HTMLElement | null; appearanc
 export function useSystemRoot() {
   return useContext(SystemRootContext);
 }
-export interface SystemRootProps extends HTMLAttributes<HTMLDivElement> {
+interface SystemRootProps extends HTMLAttributes<HTMLDivElement> {
   /** Host resolves user/system preference. This layer owns no settings persistence. */
   appearance: Appearance;
   density?: 'comfortable' | 'compact';

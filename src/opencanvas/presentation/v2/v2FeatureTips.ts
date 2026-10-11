@@ -1,26 +1,32 @@
+import { IconArrowUpRight, IconCode, IconMovie, IconSparkles } from '@tabler/icons-react';
 import type { Placement } from '../design-system/Popover';
 
 export type V2TipId = 'code' | 'connect' | 'assistant' | 'motion';
 
-export interface V2TipCopy {
+interface V2TipCopy {
   readonly title: string;
+  /** At most two lines at the tip's width (300px). */
   readonly text: string;
+  /** The feature's own glyph, the same one its control wears. */
+  readonly icon: typeof IconCode;
   /** The control the tip points at. */
   readonly anchor: string;
   readonly placement: Placement;
   readonly action?: string;
+  /** The action's shortcut in Mac glyphs (platformKeys formats it), shown on the action button. */
+  readonly keys?: string;
 }
 
 const RAIL = '[role="toolbar"][aria-label="Workspace"]';
 export const V2_TIPS: Readonly<Record<V2TipId, V2TipCopy>> = {
-  code: { title: 'Draw it from text', text: 'A few lines in Diagram as code lay out a whole diagram — and stay editable.',
-    anchor: `${RAIL} button[aria-label="Diagram as code"]`, placement: 'left-start', action: 'Open Diagram as code' },
-  connect: { title: 'Connect them', text: 'Press A, then drag from one shape to the other.',
+  code: { title: 'Draw it from text', text: 'Write a few lines and Diagram as code lays them out. It stays editable.', icon: IconCode,
+    anchor: `${RAIL} button[aria-label="Diagram as code"]`, placement: 'left-start', action: 'Open Diagram as code', keys: '⌥C' },
+  connect: { title: 'Connect them', text: 'Press A, then drag from one shape to the other.', icon: IconArrowUpRight,
     anchor: '[role="toolbar"][aria-label="Create"] button[aria-label^="Connector"]', placement: 'right-start' },
-  assistant: { title: 'Ask for changes in plain words', text: 'Bring your own key: the assistant drafts the edit, you review it.',
-    anchor: `${RAIL} button[aria-label="AI assistant"]`, placement: 'left-start', action: 'Open the assistant' },
-  motion: { title: 'Make it move', text: 'Export → Animate this page turns it into a GIF, MP4 or animated SVG.',
-    anchor: 'button[aria-label="Canvas menu"]', placement: 'bottom-start', action: 'Animate this page' },
+  assistant: { title: 'Ask for changes in plain words', text: 'Bring your own key. The assistant drafts the edit; you review it.', icon: IconSparkles,
+    anchor: `${RAIL} button[aria-label="AI assistant"]`, placement: 'left-start', action: 'Open the assistant', keys: '⌘J' },
+  motion: { title: 'Make it move', text: 'In Export: turn this page into a GIF, MP4 or animated SVG.', icon: IconMovie,
+    anchor: '[role="toolbar"][aria-label="Share and export"]', placement: 'left-start', action: 'Animate this page' },
 };
 
 /** A trigger must hold this long before its tip shows (a label editor opening a render later sweeps it). */

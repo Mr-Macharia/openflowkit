@@ -38,8 +38,8 @@ export function useV2EditorNotices(pushToast: (toast: ToastItem) => void): void 
       pushToast({
         id: 'v1-import', tone: failures.length ? 'warning' : 'success', persistent: failures.length > 0,
         title: imported.length
-          ? `Brought over ${imported.length} ${imported.length === 1 ? 'diagram' : 'diagrams'} from the previous editor.`
-          : 'Diagrams from the previous editor could not be brought over yet.',
+          ? `Brought over ${imported.length} ${imported.length === 1 ? 'diagram' : 'diagrams'} from the previous editor`
+          : 'Couldn’t bring over diagrams from the previous editor yet',
         ...(failures.length ? { description: `Not yet: ${names}${failures.length > 3 ? ` and ${failures.length - 3} more` : ''}. They stay safe in this browser.` } : {}),
         action: { label: 'See all diagrams', onClick: () => navigate('/home') },
       });

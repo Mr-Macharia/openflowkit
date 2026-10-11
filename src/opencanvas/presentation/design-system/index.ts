@@ -34,7 +34,7 @@ export type {
   SegmentedProps,
   TabsProps,
 } from './Controls';
-export { ToastRegion } from './Toast';
+export { ToastRegion, TOAST_LIMIT, withToast } from './Toast';
 export type { ToastItem } from './Toast';
 export { Tree } from './Tree';
 export type { TreeNode, TreeProps } from './Tree';

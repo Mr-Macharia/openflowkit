@@ -3,6 +3,9 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { V2CanvasWelcome } from './V2Workspace';
 
+// jsdom has no ResizeObserver; the welcome moves its arrows out of the centre with one.
+vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+
 function Where(): React.JSX.Element { return <p data-testid="at">{useLocation().pathname}</p>; }
 
 describe('V2CanvasWelcome', () => {

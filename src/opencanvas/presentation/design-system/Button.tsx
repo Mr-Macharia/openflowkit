@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   busy?: boolean;
   selected?: boolean;
@@ -42,7 +42,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     </button>
   );
 });
-export interface IconButtonProps extends Omit<ButtonProps, 'children' | 'aria-label'> {
+interface IconButtonProps extends Omit<ButtonProps, 'children' | 'aria-label'> {
   label: string;
   icon: ReactNode;
 }

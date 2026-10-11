@@ -45,7 +45,7 @@ describe('Copy as Mermaid', () => {
   it('blames the clipboard only when the clipboard refused', async () => {
     toMermaid.fail = null;
     expect(await copyMermaid(() => Promise.reject(new DOMException('denied', 'NotAllowedError'))))
-      .toEqual(['This browser blocked copying to the clipboard.', 'danger']);
+      .toEqual(['Couldn’t copy', 'danger', { description: 'This browser blocked the clipboard.' }]);
   });
 
   it('says what went wrong when the diagram could not be written as Mermaid', async () => {
@@ -62,21 +62,72 @@ describe('Download', () => {
     render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={document} pageId={document.pages[0]!.id}
       selectedNodeIds={[]} onClose={onClose} onToast={onToast} onOpenAnimation={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith('diagram-page-1.svg downloaded.', 'success'));
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith('diagram-page-1.svg downloaded', 'success'));
     expect(exporter.download).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
   });
 });
 
-describe('Copy share link', () => {
+describe('Share', () => {
+  const renderShare = (document: ReturnType<typeof createTestDocument>, extra: { canShare?: boolean } = {}) => {
+    const onToast = vi.fn();
+    render(<V2ExportMenu open section="share" anchorRef={{ current: window.document.body }} document={document} pageId={document.pages[0]!.id}
+      {...extra} selectedNodeIds={[]} onClose={vi.fn()} onToast={onToast} onOpenAnimation={vi.fn()} />);
+    return onToast;
+  };
+
+  const codeDocument = async (source: string) => {
+    const compiled = await compile(source);
+    return createTestDocument({ nodes: [compiled.frame, ...compiled.groups, ...compiled.nodes], connectors: compiled.connectors });
+  };
+
+  it('offers both kinds of link and nothing from Export', async () => {
+    renderShare(await codeDocument('flowchart\nA -> B\n'), { canShare: true });
+    expect(screen.getAllByRole('radio').map((radio) => radio.closest('label')!.textContent))
+      .toEqual([expect.stringMatching(/^View-only link/), expect.stringMatching(/^Editable copy/)]);
+    expect(screen.getByRole('button', { name: 'Copy view-only link' })).toBeTruthy();
+    expect(screen.getByText(/never change yours/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete link' })).toBeNull();
+  });
+
+  it('says why a link is unavailable instead of hiding it, and picks the one that works', async () => {
+    renderShare(await codeDocument('flowchart\nA -> B\n'));
+    const [viewOnly, editable] = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(viewOnly!.disabled).toBe(true);
+    expect(viewOnly!.closest('label')!.textContent).toMatch(/Needs a share server/);
+    expect(editable!.checked).toBe(true);
+    expect(screen.getByRole('button', { name: 'Copy editable link' })).toBeTruthy();
+  });
+
+  it('with neither a share service nor code, it hands over the file', () => {
+    renderShare(createTestDocument({ nodes: [] }));
+    expect(screen.getAllByRole('radio').every((radio) => (radio as HTMLInputElement).disabled)).toBe(true);
+    expect(screen.getAllByRole('radio')[1]!.closest('label')!.textContent).toMatch(/Needs a diagram made from code/);
+    expect(screen.getByRole('button', { name: 'Download file' })).toBeTruthy();
+  });
+
+  it('copies an editable link that carries the diagram’s code, uploading nothing', async () => {
+    const writeText = vi.fn((_text: string) => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const source = 'flowchart right\nClient -> API : login\n';
+    const onToast = renderShare(await codeDocument(source), { canShare: true });
+    fireEvent.click(screen.getAllByRole('radio')[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy editable link' }));
+    await waitFor(() => expect(onToast).toHaveBeenCalled());
+    expect(onToast.mock.calls[0]!.slice(0, 2)).toEqual(['Editable link copied', 'success']);
+    const url = new URL(writeText.mock.calls[0]![0]);
+    const payload = new URLSearchParams(url.hash.split('?')[1]).get('d');
+    expect(url.hash.startsWith('#/from/dsl?d=')).toBe(true);
+    const { decodeDslPayload } = await import('../../../services/discovery/dslLink');
+    expect(await decodeDslPayload(payload)).toBe(source);
+  });
+
   it('a share service that is down is not blamed on the connection, and the file is offered', async () => {
     const { ShareError } = await import('../../../services/share/shareClient');
     share.fail = new ShareError('unreachable', 'The share service isn’t reachable right now.');
-    const document = createTestDocument({ nodes: [] });
-    const onToast = vi.fn();
-    render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={document} pageId={document.pages[0]!.id} canShare
-      selectedNodeIds={[]} onClose={vi.fn()} onToast={onToast} onOpenAnimation={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Copy share link' }));
+    const onToast = renderShare(createTestDocument({ nodes: [] }), { canShare: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy view-only link' }));
     await waitFor(() => expect(onToast).toHaveBeenCalled());
     const [title, tone, extra] = onToast.mock.calls[0]!;
     expect([title, tone]).toEqual(['The share service isn’t reachable right now.', 'danger']);
@@ -85,12 +136,11 @@ describe('Copy share link', () => {
   });
 });
 
-describe('Share caption', () => {
-  it('mentions “Delete link” only when there is a link to delete', () => {
+describe('Export', () => {
+  it('has no share links: sharing is its own panel', () => {
     const document = createTestDocument({ nodes: [] });
     render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={document} pageId={document.pages[0]!.id} canShare
       selectedNodeIds={[]} onClose={vi.fn()} onToast={vi.fn()} onOpenAnimation={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: 'Delete link' })).toBeNull();
-    expect(screen.getByText(/Share link: the whole document/).textContent).not.toContain('Delete link');
+    expect(screen.queryByRole('button', { name: /link/i })).toBeNull();
   });
 });

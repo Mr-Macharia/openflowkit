@@ -23,7 +23,7 @@ test('generated nodes get icons from their labels, and each scale of "no" works'
   expect((await nodeById(page, 'web-app')).content.icon).toBe('developer/frontend-reactjs');
   expect((await nodeById(page, 'api')).content.icon).toBe('developer/backend-nodejs');
   expect((await nodeById(page, 'validate-input')).content.icon).toBeUndefined();
-  await expect(page.getByText('3 icons added from labels.')).toBeVisible();
+  await expect(page.getByText('3 icons added from labels')).toBeVisible();
   await page.getByRole('button', { name: 'Close panel' }).click();
 
   // One node: right-click → Remove icon, then undo.

@@ -3,35 +3,36 @@
 // serves both entry points — the canvas menu's Export… and an element's
 // context menu — so scope always matches what the user pointed at.
 import { useState } from 'react';
-import { dslFrames, frameScene } from '../../../dsl/frameScene';
+import { dslFrames, frameScene, frameSource } from '../../../dsl/frameScene';
 import { diagramToMermaid, mermaidLossSummary } from '../../../dsl/mermaid/toMermaid';
 import { dslFrameMeta } from '../../../dsl/sceneMeta';
-import { IconCopy, IconDownload, IconLink, IconLinkOff, IconMovie, IconTopologyStar3 } from '@tabler/icons-react';
+import { IconChevronRight, IconCode, IconCopy, IconDownload, IconLink, IconLinkOff, IconLock, IconMovie, IconPhoto } from '@tabler/icons-react';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
-import { Button, Icon, IconButton, Popover, PopoverHeader, Segmented, Tooltip, type ToastItem } from '../design-system';
+import { Button, Icon, Popover, PopoverHeader, Segmented, Tooltip, type ToastItem } from '../design-system';
 import { createShareLink, browserStorage, deleteShare, forgetShare, latestShareFor, rememberShare, ShareError } from '../../../services/share/shareClient';
 import { getTurnstileToken } from '../../../services/share/turnstile';
+import { dslLink } from '../../../services/discovery/dslLink';
 import {
   buildV2Export, copyImageToClipboard, downloadV2Export, printV2Export,
   type V2ExportFormat, type V2ExportScope, type V2ExportTheme,
 } from './v2Export';
 
-export interface V2ExportMenuProps {
+interface V2ExportMenuProps {
   readonly open: boolean;
   readonly anchorRef: React.RefObject<HTMLElement | null>;
   readonly document: SceneDocumentV1;
   /** The stored document, when `document` is a view of it (a Map scene stands in for the page): JSON and share links carry this, never the view. */
   readonly sourceDocument?: SceneDocumentV1;
   readonly pageId: string;
-  /** Sharing needs a Turnstile site key, and is hidden in a shared viewer (its URL holds another link's key). */
+  /** The view-only link needs the share service (a Turnstile site key); the editable link needs nothing. */
   readonly canShare?: boolean;
   readonly selectedNodeIds: readonly string[];
   /** Connector ids when the selection is connections, not nodes. */
   readonly selectedConnectorIds?: readonly string[];
   /** The scope this entry point implies: Page from the document bar, Selection from an element. */
   readonly initialScope?: V2ExportScope;
-  /** Share from the top-right bar shows only the link; every other door shows the whole panel. */
+  /** Share shows the two kinds of link; Export the files. */
   readonly section?: 'export' | 'share';
   /** The bar at the right edge opens its panel toward the inside. */
   readonly placement?: 'bottom-start' | 'bottom-end';
@@ -60,8 +61,8 @@ function selectionCaption(nodeIds: readonly string[], connectorIds: readonly str
     : 'The selected element.';
 }
 
-/** The code diagram a Mermaid copy is about: the one holding the selection, else the first on the page. */
-function mermaidFrame(page: SceneDocumentV1['pages'][number] | undefined, selectedNodeIds: readonly string[]) {
+/** The code diagram a Mermaid copy or an editable link is about: the one holding the selection, else the first on the page. */
+function codeFrame(page: SceneDocumentV1['pages'][number] | undefined, selectedNodeIds: readonly string[]) {
   if (!page) return null;
   const frames = dslFrames(page);
   const byId = new Map(page.nodes.map((node) => [node.id, node]));
@@ -88,7 +89,8 @@ export function V2ExportMenu({
   const [theme, setTheme] = useState<V2ExportTheme>('light');
   const [transparent, setTransparent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] = useState<'snapshot' | 'code' | null>(null);
+  const [linkKind, setLinkKind] = useState<'snapshot' | 'code'>('snapshot');
   // Re-reads this browser's delete tokens after a share or a delete.
   const [, setShareTick] = useState(0);
   const latestLink = latestShareFor(browserStorage(), document.id);
@@ -116,7 +118,7 @@ export function V2ExportMenu({
       : effectiveScope === 'document' ? (effectiveFormat === 'pdf' ? 'Every page, one sheet each.' : 'Every page as its own file.') : 'The current page.';
 
   // Only while the panel is open: closed, it costs nothing per render.
-  const mermaidTarget = open ? mermaidFrame(activePage, selectedNodeIds) : null;
+  const mermaidTarget = open ? codeFrame(activePage, selectedNodeIds) : null;
   const mermaidFamily = mermaidTarget ? dslFrameMeta(mermaidTarget).family : undefined;
   const mermaidReason = !mermaidTarget ? 'Copy as Mermaid needs a diagram made from code; this page has none.'
     : mermaidFamily !== 'flowchart' && mermaidFamily !== 'sequence' ? `Copy as Mermaid supports flowchart and sequence, not ${mermaidFamily}.` : '';
@@ -128,17 +130,16 @@ export function V2ExportMenu({
     try {
       mermaid = diagramToMermaid(scene);
     } catch (error) {
-      onToast(error instanceof Error ? error.message : 'This diagram could not be written as Mermaid.', 'danger');
+      onToast(error instanceof Error ? error.message : 'Couldn’t write this diagram as Mermaid', 'danger');
       return;
     }
     try {
       await navigator.clipboard.writeText(mermaid.text);
     } catch {
-      onToast('This browser blocked copying to the clipboard.', 'danger');
+      onToast('Couldn’t copy', 'danger', { description: 'This browser blocked the clipboard.' });
       return;
     }
-    const name = (typeof mermaidTarget.content.label === 'string' && mermaidTarget.content.label) || dslFrameMeta(mermaidTarget).title || `${mermaidFamily} diagram`;
-    onToast(`Copied “${name}” as Mermaid.`, 'success', mermaid.losses.length > 0 ? { description: mermaidLossSummary(mermaid.losses) } : undefined);
+    onToast(`Copied “${frameName(mermaidTarget)}” as Mermaid`, 'success', mermaid.losses.length > 0 ? { description: mermaidLossSummary(mermaid.losses) } : undefined);
     onClose();
   }
 
@@ -147,22 +148,22 @@ export function V2ExportMenu({
     try {
       if (effectiveFormat === 'pdf') {
         await printV2Export(request);
-        onToast('Print dialog opened — choose "Save as PDF".', 'info');
+        onToast('Print dialog opened', 'info', { description: 'Choose “Save as PDF” to keep a file.' });
       } else if (action === 'copy-png') {
-        const [file] = await buildV2Export({ ...request, format: 'png', scale: 2 });
+        const [file] = await buildV2Export({ ...request, format: 'png', scale });
         if (!file?.bytes || !(await copyImageToClipboard(file.bytes, 'image/png'))) {
-          onToast('This browser cannot copy images to the clipboard.', 'danger');
+          onToast('Couldn’t copy the image', 'danger', { description: 'This browser can’t copy images to the clipboard.' });
         } else {
-          onToast('PNG copied to the clipboard.', 'success');
+          onToast('PNG copied', 'success');
         }
       } else {
         const files = await buildV2Export(request);
         downloadV2Export(files);
-        onToast(files.length > 1 ? `${files.length} files downloaded.` : `${files[0]?.filename ?? 'Export'} downloaded.`, 'success');
+        onToast(files.length > 1 ? `${files.length} files downloaded` : `${files[0]?.filename ?? 'Export'} downloaded`, 'success');
       }
       // The panel stays open: the next variant (theme, scale, format) is one click, not a reopen.
     } catch (error) {
-      onToast(error instanceof Error ? error.message : 'Export failed.', 'danger');
+      onToast(error instanceof Error ? error.message : 'Export failed', 'danger');
     } finally {
       setBusy(false);
     }
@@ -170,83 +171,121 @@ export function V2ExportMenu({
 
   /** Encrypts the whole document in the browser, uploads the ciphertext, copies a link whose key stays in the #fragment. */
   async function copyShareLink(): Promise<void> {
-    setSharing(true);
+    setSharing('snapshot');
     try {
       const link = await createShareLink(whole, { appUrl: window.location.href, getTurnstileToken });
       rememberShare(browserStorage(), document.id, link.id, link.deleteToken);
       setShareTick((tick) => tick + 1);
       const copied = await navigator.clipboard.writeText(link.url).then(() => true, () => false);
       // No clipboard permission: the link is shown instead of lost.
-      onToast(copied ? 'Share link copied.' : 'Share link ready — copy it from here.', 'success',
-        copied ? { description: 'Anyone with the link can open it. The key never leaves the link.' } : { description: link.url, persistent: true });
+      onToast(copied ? 'View-only link copied' : 'View-only link ready', 'success',
+        copied ? { description: 'Anyone with it can view every page. The key never leaves the link.' } : { description: link.url, persistent: true });
       onClose();
     } catch (error) {
       if (error instanceof ShareError && (error.code === 'too-large' || error.code === 'unreachable')) {
         const tooLarge = error.code === 'too-large';
-        onToast(tooLarge ? 'Too big to share as a link.' : error.message, 'danger', {
+        onToast(tooLarge ? 'Too big to share as a link' : error.message, 'danger', {
           description: tooLarge ? 'Links hold up to 1 MB. Send the file instead.' : 'Try again in a minute, or send the file instead.', persistent: true,
           action: { label: 'Download file', onClick: () => { void buildV2Export({ document: whole, format: 'json', scope: 'document', pageId }).then(downloadV2Export); } },
         });
       } else {
-        onToast(error instanceof Error ? error.message : 'Couldn’t create the link.', 'danger');
+        onToast(error instanceof Error ? error.message : 'Couldn’t create the link', 'danger');
       }
     } finally {
-      setSharing(false);
+      setSharing(null);
+    }
+  }
+
+  /** Puts this diagram's code inside a link: nothing is uploaded, and whoever opens it gets their own copy. */
+  async function copyCodeLink(): Promise<void> {
+    const scene = mermaidTarget && activePage ? frameScene(activePage, mermaidTarget.id) : null;
+    if (!mermaidTarget || !scene) return;
+    setSharing('code');
+    try {
+      const url = await dslLink(frameSource(scene), window.location.href);
+      if (!url) {
+        onToast('Too long for an editable link', 'danger', { description: canShare ? 'Share a view-only link instead, or send the file.' : 'Send the file instead.' });
+        return;
+      }
+      const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
+      onToast(copied ? 'Editable link copied' : 'Editable link ready', 'success',
+        copied ? { description: `Opens “${frameName(mermaidTarget)}” as a new copy to edit. Nothing was uploaded.` } : { description: url, persistent: true });
+      onClose();
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : 'Couldn’t create the link', 'danger');
+    } finally {
+      setSharing(null);
     }
   }
 
   /** Deletes the newest link made here for this document, the one the button is about. */
   async function deleteLink(): Promise<void> {
     if (!latestLink) return;
-    setSharing(true);
+    setSharing('snapshot');
     try {
       await deleteShare(latestLink.id, latestLink.deleteToken);
       forgetShare(browserStorage(), latestLink.id);
-      onToast('Link deleted. It no longer opens.', 'success');
+      onToast('Link deleted', 'success', { description: 'It no longer opens.' });
     } catch (error) {
       // The server doesn't know this token: it will never work, so stop offering it.
       if (error instanceof ShareError && error.code === 'forbidden') forgetShare(browserStorage(), latestLink.id);
-      onToast(error instanceof Error ? error.message : 'Couldn’t delete the link.', 'danger');
+      onToast(error instanceof Error ? error.message : 'Couldn’t delete the link', 'danger');
     } finally {
       setShareTick((tick) => tick + 1);
-      setSharing(false);
+      setSharing(null);
     }
   }
 
-  const sharingOnly = section === 'share' && canShare;
+  const sharingOnly = section === 'share';
+  // Two jobs, like Excalidraw's live session vs link: show the finished document, or hand over a diagram to change.
+  const linkKinds = [
+    { value: 'snapshot', icon: IconLock, title: 'View-only link', available: canShare,
+      detail: canShare ? 'Every page, encrypted in your browser.' : 'Needs a share server.' },
+    { value: 'code', icon: IconCode, title: 'Editable copy', available: Boolean(mermaidTarget),
+      detail: mermaidTarget ? 'Its code, in the link. Nothing uploaded.' : 'Needs a diagram made from code.' },
+  ] as const;
+  // The chosen kind, or the one that works here; neither → the file.
+  const kind = linkKinds.find(({ value, available }) => available && value === linkKind)?.value
+    ?? linkKinds.find(({ available }) => available)?.value ?? null;
   const title = sharingOnly ? 'Share' : 'Export';
 
   return (
     <Popover role="dialog" aria-label={title} open={open} anchorRef={anchorRef} onClose={onClose} placement={placement}>
-      <PopoverHeader title={title} close={<Button variant="quiet" onClick={onClose}>Done</Button>} />
-      <div className="ofk-v2-properties">
+      <PopoverHeader title={title} onClose={onClose} />
+      <div className="ofk-v2-properties ofk-v2-export">
         {sharingOnly ? null : <>
-        <Button className="ofk-v2-export-animate" variant="quiet"
+        {/* The one export no other diagram tool has: a row of its own, not a footnote. */}
+        <button type="button" className="ofk-v2-export-animate" aria-label="Animate this page…"
           onClick={() => { onClose(); onOpenAnimation(); }}>
-          <Icon icon={IconMovie} /> Animate this page…
-        </Button>
-        <Segmented<V2ExportFormat> label="Format" value={effectiveFormat} onChange={setFormat}
+          <span className="ofk-v2-share-glyph" aria-hidden="true"><Icon icon={IconMovie} /></span>
+          <span className="ofk-v2-share-text">
+            <span className="ofk-v2-share-title">Animate this page</span>
+            <span className="ofk-v2-share-detail">GIF, MP4, WebM or animated SVG</span>
+          </span>
+          <Icon icon={IconChevronRight} />
+        </button>
+        <Segmented<V2ExportFormat> label="Format" showLabel value={effectiveFormat} onChange={setFormat}
           options={effectiveScope === 'selection'
             ? FORMATS.map((option) => option.value === 'json'
               ? { ...option, disabled: true, title: 'JSON is the whole document' } : option)
             : FORMATS} />
-        <Segmented<V2ExportScope> label="Scope" value={effectiveScope} onChange={setScope}
+        <Segmented<V2ExportScope> label="Pages" showLabel value={effectiveScope} onChange={setScope}
           options={[
             { value: 'selection', label: 'Selection', disabled: !hasSelection, title: 'Select shapes first' },
             { value: 'page', label: 'Page' },
             { value: 'document', label: 'All pages', title: effectiveFormat === 'pdf' ? 'One sheet per page' : 'One file per page' },
           ]} />
         {effectiveFormat === 'png' ? (
-          <Segmented<'1' | '2'> label="Resolution" value={scale === 2 ? '2' : '1'}
+          <Segmented<'1' | '2'> label="Size" showLabel value={scale === 2 ? '2' : '1'}
             onChange={(value) => setScale(value === '2' ? 2 : 1)}
             options={[{ value: '1', label: '1×' }, { value: '2', label: '2×' }]} />
         ) : null}
         {effectiveFormat !== 'json' ? (
-          <Segmented<V2ExportTheme> label="Theme" value={theme} onChange={setTheme}
+          <Segmented<V2ExportTheme> label="Theme" showLabel value={theme} onChange={setTheme}
             options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'print', label: 'Print' }]} />
         ) : null}
         {effectiveFormat === 'png' || effectiveFormat === 'svg' ? (
-          <Segmented<'opaque' | 'transparent'> label="Background" value={transparent ? 'transparent' : 'opaque'}
+          <Segmented<'opaque' | 'transparent'> label="Background" showLabel value={transparent ? 'transparent' : 'opaque'}
             onChange={(value) => setTransparent(value === 'transparent')}
             options={[
               { value: 'opaque', label: 'Canvas', title: 'Theme background' },
@@ -257,35 +296,69 @@ export function V2ExportMenu({
           <Button variant="primary" disabled={busy || empty} onClick={() => { void run('download'); }}>
             <Icon icon={IconDownload} /> {effectiveFormat === 'pdf' ? 'Print / PDF' : 'Download'}
           </Button>
+        </div>
+        <div className="ofk-v2-export-copies">
           {effectiveFormat === 'png' ? (
-            <Button variant="quiet" disabled={busy || empty} onClick={() => { void run('copy-png'); }}>
-              <Icon icon={IconCopy} /> Copy 2×
+            <Button variant="secondary" disabled={busy || empty} onClick={() => { void run('copy-png'); }}>
+              <Icon icon={IconPhoto} /> Copy PNG
             </Button>
           ) : null}
-          <Tooltip content={mermaidReason || 'Copy as Mermaid text (flowchart or sequence)'}>
-            <IconButton variant="quiet" label="Copy as Mermaid" icon={<Icon icon={IconTopologyStar3} />}
-              disabled={Boolean(mermaidReason)} onClick={() => { void copyMermaid(); }} />
+          <Tooltip content={mermaidReason || 'Copy the code diagram as Mermaid text (flowchart or sequence)'}>
+            <Button variant="secondary" disabled={Boolean(mermaidReason)} onClick={() => { void copyMermaid(); }}>
+              <Icon icon={IconCopy} /> Copy as Mermaid
+            </Button>
           </Tooltip>
         </div>
         <p className="ofk-caption">{caption}</p>
         </>}
-        {canShare ? (
-          <>
-            <div className="ofk-v2-export-actions">
-              <Button variant="quiet" disabled={sharing} onClick={() => { void copyShareLink(); }}>
-                <Icon icon={IconLink} /> {sharing ? 'Working…' : 'Copy share link'}
+        {sharingOnly ? (
+          <div className="ofk-v2-share">
+            <div className="ofk-v2-share-kinds" role="radiogroup" aria-label="Kind of link">
+              {linkKinds.map(({ value, icon, title, detail, available }) => (
+                <label key={value} className="ofk-v2-share-kind" data-disabled={available ? undefined : 'true'}>
+                  <input type="radio" name="ofk-share-kind" value={value} checked={kind === value} disabled={!available}
+                    onChange={() => setLinkKind(value)} />
+                  <span className="ofk-v2-share-glyph" aria-hidden="true"><Icon icon={icon} /></span>
+                  <span className="ofk-v2-share-text">
+                    <span className="ofk-v2-share-title">{title}</span>
+                    <span className="ofk-v2-share-detail">{detail}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="ofk-v2-share-effect" aria-live="polite">
+              {kind === 'snapshot' ? 'Viewers can look at every page and make their own copy, but never change yours.'
+                : kind === 'code' ? `Opens “${frameName(mermaidTarget!)}” as their own copy to change. Copy again after you edit.`
+                  : 'No link can be made here. Send the file instead; it opens in any browser.'}
+            </p>
+            {kind ? (
+              <Button variant="primary" className="ofk-v2-share-copy" disabled={sharing !== null}
+                aria-label={kind === 'code' ? 'Copy editable link' : 'Copy view-only link'}
+                onClick={() => { void (kind === 'code' ? copyCodeLink() : copyShareLink()); }}>
+                <Icon icon={IconLink} /> {sharing ? 'Working…' : 'Copy link'}
               </Button>
-              {latestLink ? (
-                <Button variant="quiet" disabled={sharing} onClick={() => { void deleteLink(); }}>
+            ) : (
+              <Button variant="primary" className="ofk-v2-share-copy"
+                onClick={() => { void buildV2Export({ document: whole, format: 'json', scope: 'document', pageId }).then(downloadV2Export); }}>
+                <Icon icon={IconDownload} /> Download file
+              </Button>
+            )}
+            <div className="ofk-v2-share-foot">
+              <a href="https://docs.openflowkit.com/share-links/" target="_blank" rel="noreferrer">How sharing works</a>
+              {kind === 'snapshot' && latestLink ? (
+                <Button variant="quiet" disabled={sharing !== null} onClick={() => { void deleteLink(); }}>
                   <Icon icon={IconLinkOff} /> Delete link
                 </Button>
               ) : null}
             </div>
-            <p className="ofk-caption">Share link: the whole document, encrypted in your browser. Read-only for viewers.{latestLink ? ' “Delete link” removes the newest one made here.' : ''}{' '}
-              <a href="https://docs.openflowkit.com/share-links/" target="_blank" rel="noreferrer">How share links work</a></p>
-          </>
+          </div>
         ) : null}
       </div>
     </Popover>
   );
 }
+
+function frameName(frame: SceneDocumentV1['pages'][number]['nodes'][number]): string {
+  return (typeof frame.content.label === 'string' && frame.content.label) || dslFrameMeta(frame).title || `${dslFrameMeta(frame).family} diagram`;
+}
+

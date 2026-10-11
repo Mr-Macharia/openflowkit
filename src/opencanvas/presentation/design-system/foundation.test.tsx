@@ -62,6 +62,9 @@ describe('design foundation', () => {
       expect(contrast(theme.onPrimary, theme.primary), 'onPrimary/primary').toBeGreaterThanOrEqual(4.5);
       expect(contrast(theme.onPrimary, theme.primaryHover), 'onPrimary/primaryHover').toBeGreaterThanOrEqual(4.5);
       expect(contrast(theme.onInverse, theme.inverse)).toBeGreaterThanOrEqual(4.5);
+      // A selected segment's label reads on its thumb, and the thumb is lighter than its track (U4-11).
+      expect(contrast(theme.text, theme.thumb), 'text/thumb').toBeGreaterThanOrEqual(4.5);
+      expect(luminance(theme.thumb), 'thumb above raised').toBeGreaterThan(luminance(theme.raised));
       for (const role of ['focus', 'controlBorder'] as const)
         expect(contrast(theme[role], theme.surface)).toBeGreaterThanOrEqual(3);
     }

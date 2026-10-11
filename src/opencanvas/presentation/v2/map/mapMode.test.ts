@@ -6,7 +6,7 @@ import type { ScenePage } from '../../../domain/document/types';
 import type { MapModel, MapNode } from '../../../../dsl/map/types';
 import { READABLE } from '../../../application/map/geometry';
 import { MAP_BOX_BUDGET as BOX_BUDGET } from '../../../application/map/mapNavigation';
-import { clearOfPanel, fitAll, refitKind, showsAll, nudgeInto, panToUncover, fitsBudget, freeArea, inView, nearestDrawn, isDoubleClick, isEditKey, landOn, mapCamera, mapKeyAllowed, parentToClose, prune, sceneExtent, sceneFor, startOpen, toggleBox } from './mapMode';
+import { clearOfPanel, fitAll, refitKind, showsAll, nudgeInto, panToUncover, fitsBudget, freeArea, inView, nearestDrawn, isDoubleClick, isEditKey, landOn, mapCamera, mapKeyAllowed, presetCamera, parentToClose, prune, sceneExtent, sceneFor, startOpen, toggleBox } from './mapMode';
 
 const TEXT = `architecture
 model {
@@ -313,6 +313,24 @@ describe('fitAll and showsAll', () => {
     const extent = { x: 0, y: 0, width: 6000, height: 4000 };
     expect(showsAll(extent, mapCamera(extent, free), free)).toBe(false);
     expect(showsAll({ x: 0, y: 0, width: 400, height: 200 }, mapCamera({ x: 0, y: 0, width: 400, height: 200 }, free), free)).toBe(true);
+  });
+});
+
+describe('presetCamera', () => {
+  const free = { left: 100, top: 60, width: 800, height: 500 };
+  it('a level that fits readable lands readable', () => {
+    const extent = { x: 0, y: 0, width: 400, height: 200 };
+    expect(presetCamera(extent, free)).toEqual(mapCamera(extent, free));
+  });
+  it('a level that grows past the view ends on all of it, not a crop', () => {
+    const extent = { x: -300, y: 0, width: 1400, height: 800 };
+    const cam = presetCamera(extent, free, { x: 200, y: 0, width: 200, height: 100 });
+    expect(cam.zoom).toBeLessThan(READABLE);
+    expect(showsAll(extent, cam, free)).toBe(true);
+  });
+  it('a map too big to show with its labels keeps the readable start', () => {
+    const extent = { x: 0, y: 0, width: 6000, height: 4000 };
+    expect(presetCamera(extent, free)).toEqual(mapCamera(extent, free));
   });
 });
 

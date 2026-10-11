@@ -1,7 +1,7 @@
 // SVG path strings for map arrows; the geometry math they sit on is in application/map/geometry.
 import type { Rect } from '../../opencanvas/application/map/geometry';
 
-export interface Pt { x: number; y: number }
+interface Pt { x: number; y: number }
 
 /** Orthogonal route with rounded corners (quadratic at each bend). */
 export function roundedPath(pts: readonly Pt[], radius = 8): string {

@@ -1,12 +1,13 @@
 import {
+  IconArrowUpRight,
   IconCode,
   IconKeyboard,
   IconPlugConnected,
   IconSitemap,
   IconSparkles,
 } from '@tabler/icons-react';
-import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Button,
   FloatingRegion,
@@ -18,6 +19,7 @@ import {
   Tooltip,
 } from '../design-system';
 import { shortcutGroups } from './v2Shortcuts';
+import { DOCS_URL } from './homeStars';
 import { mapRepoPath, MapRepoForm } from './map/V2MapStart';
 
 export type V2WorkspaceMode = 'assistant' | 'code' | 'model' | 'agent' | 'inspect';
@@ -77,6 +79,7 @@ export function V2WorkspaceRail({
                 icon={<Icon icon={icon} />}
                 selected={mode === id}
                 aria-expanded={mode === id}
+                data-mode={id}
                 data-live={(id === 'agent' && agentConnected) || undefined}
                 data-bridge-status={id === 'agent' ? agentConnected ? 'connected' : 'disconnected' : undefined}
                 onClick={() => onChange(id)}
@@ -109,8 +112,28 @@ export function V2Welcome({ testId, title, body, actions, below }: {
   actions: ReactNode;
   below?: ReactNode;
 }) {
+  const root = useRef<HTMLDivElement>(null);
+  // An arrow whose label would run into the centre (a short window, an open side panel) steps aside.
+  useLayoutEffect(() => {
+    const welcome = root.current;
+    const centre = welcome?.querySelector('.ofk-v2-welcome-center');
+    if (!welcome || !centre) return;
+    const place = () => {
+      const middle = centre.getBoundingClientRect();
+      for (const guide of welcome.querySelectorAll<HTMLElement>('.ofk-v2-guide')) {
+        const box = guide.getBoundingClientRect();
+        const clash = box.width > 0 && box.left < middle.right + 12 && box.right > middle.left - 12
+          && box.top < middle.bottom + 12 && box.bottom > middle.top - 12;
+        guide.toggleAttribute('data-clash', clash);
+      }
+    };
+    const observer = new ResizeObserver(place);
+    observer.observe(welcome);
+    observer.observe(centre);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <div className="ofk-v2-welcome" data-testid={testId}>
+    <div className="ofk-v2-welcome" data-testid={testId} ref={root}>
       <div className="ofk-v2-guide ofk-v2-guide-tools" aria-hidden="true">
         <svg viewBox="0 0 110 70"><path d="M103 9 C76 11 47 29 9 59 M11 44 Q7 54 9 60 Q20 60 29 55" /></svg><span>Start with a shape</span>
       </div>
@@ -121,8 +144,11 @@ export function V2Welcome({ testId, title, body, actions, below }: {
         <img src="/Logo_openflowkit.svg" alt="OpenFlowKit" width="48" height="48" />
         <h1>{title}</h1>
         <p>{body}</p>
-        <div className="ofk-v2-welcome-actions">{actions}</div>
-        {below}
+        {/* One column: the button row sets its width, everything below matches it edge to edge. */}
+        <div className="ofk-v2-welcome-stack">
+          <div className="ofk-v2-welcome-actions">{actions}</div>
+          {below}
+        </div>
       </div>
       <div className="ofk-v2-guide ofk-v2-guide-view" aria-hidden="true">
         <svg viewBox="0 0 110 100"><path d="M102 9 C58 12 25 43 17 89 M8 74 Q12 86 17 91 Q25 85 31 76" /></svg>
@@ -133,21 +159,33 @@ export function V2Welcome({ testId, title, body, actions, below }: {
   );
 }
 
+/** A phone or tablet: no hover, a finger for a pointer. Read once; nobody swaps input mid-welcome. */
+const coarsePointer = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+// Diagram as code goes first: it needs no key and no setup, opens on a starter diagram, and Generate draws it.
+// The assistant needs a provider key and the agent an MCP client, so both are a second step for a first visit.
+const WELCOME_ACTIONS = [MODES[2], MODES[0], MODES[3]];
+
 export function V2CanvasWelcome({ onOpen }: { onOpen: (mode: V2WorkspaceMode) => void }) {
   const navigate = useNavigate();
   return (
     <V2Welcome
       testId="v2-welcome"
-      title="Make room for your next idea."
-      body="Double-click anywhere to add text, or start with a shape."
-      actions={MODES.filter(({ id }) => id !== 'model').map(({ id, label, icon }) => (
-        <Button key={id} variant="secondary" onClick={() => onOpen(id)}>
+      title="Draw it, write it, or hand it to your agent."
+      body={coarsePointer() ? 'Pick a shape from the tools to start, or one of these.' : 'Double-click anywhere to add text, or start with a shape.'}
+      actions={WELCOME_ACTIONS.map(({ id, label, icon }) => (
+        <Button key={id} variant="secondary" data-mode={id} onClick={() => onOpen(id)}>
           <Icon icon={icon} />
           {label}
         </Button>
       ))}
       // A repo is one more way to start: its map opens as its own document (the same field Map's start screen has).
-      below={<><p className="ofk-v2-welcome-or" aria-hidden="true">or</p><MapRepoForm onMapRepo={(repo) => navigate(mapRepoPath(repo))} /></>}
+      below={<>
+        <Link className="ofk-v2-welcome-templates" to={{ pathname: '/home', search: '?view=templates' }}>or start from a template →</Link>
+        <p className="ofk-v2-welcome-or" aria-hidden="true">or</p>
+        <MapRepoForm onMapRepo={(repo) => navigate(mapRepoPath(repo))} />
+      </>}
     />
   );
 }
@@ -170,6 +208,9 @@ export function V2Shortcuts({ onClose }: { onClose: () => void }) {
           ))}
         </section>
       ))}
+      <p className="ofk-v2-shortcut-footer">
+        <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs <Icon icon={IconArrowUpRight} /></a>
+      </p>
     </Panel>
   );
 }

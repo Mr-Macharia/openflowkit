@@ -5,11 +5,10 @@ import { detectForeign } from '../../../agent/lint';
 import type { DslDiagnostic } from '../../../dsl/ast';
 import { compileWorkspace } from '../../../dsl/compile';
 import { architectureWorkspaceText } from '../../../dsl/families/architecture/text';
-import { frameEdited, frameScene } from '../../../dsl/frameScene';
+import { frameEdited, frameScene, frameSource } from '../../../dsl/frameScene';
 import { archModelOfPage } from '../../../dsl/model/model';
 import { parse } from '../../../dsl/parse';
 import { dslFrameRaw } from '../../../dsl/sceneMeta';
-import { serialize } from '../../../dsl/serialize';
 import { elkDslLayoutPort } from '../../../services/elk-layout/runtime';
 import { resolveDslIcon } from '../../../services/dsl/iconResolver';
 import { applySnapsToWorkspace, type WorkspaceSnap } from '../../../services/workspace/workspaceFolder';
@@ -25,7 +24,7 @@ import type { ToastItem } from '../design-system';
 import { mintV2Id } from './v2Document';
 import { INITIAL_CODE } from './V2Workspace';
 
-export interface V2CodeWorkspaceOptions {
+interface V2CodeWorkspaceOptions {
   readonly document: SceneDocumentV1 | null;
   readonly page: ScenePage | null;
   readonly pageRef: RefObject<ScenePage | null>;
@@ -64,9 +63,13 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const [generating, setGenerating] = useState(false);
   // False while the panel was opened by a template beside its diagram (not asked for): it leaves focus on the canvas.
   const [panelFocus, setPanelFocus] = useState(true);
+  // Only a new diagram's source opens selected (paste replaces the sample); a diagram's own source never does.
+  const [panelSelect, setPanelSelect] = useState(true);
   const [compileDiagnostics, setCompileDiagnostics] = useState<readonly DslDiagnostic[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const iconToastFramesRef = useRef(new Set<string>());
+  // The icons toast speaks for one Generate: the next one dismisses it, so it never sits over a diagram it says nothing about.
+  const iconToastRef = useRef<string | null>(null);
   // The text last generated as a workspace. While the draft still equals it, the draft
   // follows the model (views, flows, relationships made outside the panel), so Generate
   // from an untouched draft never undoes them. Text the user typed is never replaced.
@@ -80,18 +83,19 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     setDraft(text);
   }, [page, draft]);
 
+  // Mermaid, Structurizr or D2 in the panel converts in place.
+  const foreign = useMemo(() => detectForeign(draft), [draft]);
   const diagnostics = useMemo(() => {
-    // compile() re-parses, so dedupe the live parse pass against the last generate.
+    // compile() re-parses, so dedupe the live parse pass against the last generate. Foreign text skips
+    // the OpenFlowKit parse (it describes a language nobody wrote) but keeps what a conversion reported.
     const seen = new Set<string>();
-    return [...parse(draft).diagnostics, ...compileDiagnostics].filter((item) => {
+    return [...(foreign ? [] : parse(draft).diagnostics), ...compileDiagnostics].filter((item) => {
       const key = `${item.code}:${item.line}:${item.col}:${item.message}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [draft, compileDiagnostics]);
-  // Mermaid, Structurizr or D2 in the panel converts in place.
-  const foreign = useMemo(() => detectForeign(draft), [draft]);
+  }, [draft, foreign, compileDiagnostics]);
   const convertForeign = useCallback(() => {
     if (!foreign) return;
     const conversion = foreign.convert(draft);
@@ -121,21 +125,21 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const openNew = useCallback(() => {
     setFrameId(null);
     setPanelFocus(true);
+    setPanelSelect(true);
     openPanel();
   }, [openPanel]);
   const openFrame = useCallback((id: string) => {
     const scene = pageRef.current ? frameScene(pageRef.current, id) : null;
     if (!scene) return;
     const metadata = dslFrameRaw(scene.frame);
-    const source = !frameEdited(scene) && typeof metadata.source === 'string'
-      ? metadata.source
-      : serialize({ frame: scene.frame, nodes: scene.nodes, groups: scene.groups ?? [], connectors: scene.connectors });
+    const source = frameSource(scene);
     // The picker follows the frame's authored palette so re-theming is explicit.
     const authored = (metadata.appearance as { palette?: unknown } | undefined)?.palette;
     if (isDiagramPalette(authored) && authored !== palette) onPaletteChange(authored);
     setDraft(source);
     setFrameId(id);
     setPanelFocus(true);
+    setPanelSelect(false);
     openPanel();
   }, [pageRef, palette, onPaletteChange, openPanel]);
 
@@ -152,9 +156,10 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     if (!inferred || iconToastFramesRef.current.has(targetId)) return;
     iconToastFramesRef.current.add(targetId);
     const toastId = `auto-icons-${targetId}`;
+    iconToastRef.current = toastId;
     pushToast({
       id: toastId, tone: 'info',
-      title: `${inferred} ${inferred === 1 ? 'icon' : 'icons'} added from labels.`,
+      title: `${inferred} ${inferred === 1 ? 'icon' : 'icons'} added from labels`,
       description: 'Right-click a node to remove one, or turn this off in Settings.',
       action: { label: 'Remove all', onClick: () => {
         dismissToast(toastId);
@@ -171,6 +176,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    if (iconToastRef.current) { dismissToast(iconToastRef.current); iconToastRef.current = null; }
     setGenerating(true);
     try {
       // Mermaid, Structurizr or D2 converts first: compiled as DSL it parses into one node per line.
@@ -229,13 +235,13 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
       return Boolean(command);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        pushToast({ id: `dsl-${Date.now()}`, tone: 'danger', title: error instanceof Error ? error.message : 'Diagram generation failed.' });
+        pushToast({ id: `dsl-${Date.now()}`, tone: 'danger', title: error instanceof Error ? error.message : 'Couldn’t generate the diagram' });
       }
       return false;
     } finally {
       if (abortRef.current === controller) { abortRef.current = null; setGenerating(false); }
     }
-  }, [pageRef, document, readOnly, generating, frameId, draft, palette, autoIcons, commit, onViews, announce, offerIconRemoval, applySelection, pushToast]);
+  }, [pageRef, document, readOnly, generating, frameId, draft, palette, autoIcons, commit, onViews, announce, offerIconRemoval, applySelection, pushToast, dismissToast]);
 
   /** One template path for the canvas welcome, home's cards and the starter gallery. The Model panel's own button keeps itself open (`openPanel: false`). */
   const startFrom = useCallback((dsl: string, { openPanel: showPanel = true, baseline = false }: { openPanel?: boolean; baseline?: boolean } = {}) => {
@@ -246,8 +252,13 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
       if (window.innerWidth >= PHONE_PX) { setPanelFocus(false); openPanel(); }
     }
     // A skipped generate committed nothing: the undo it would have replaced stays.
-    void generate(dsl, undefined, null).then((committed) => { if (baseline && committed) forgetHistory?.(); });
-  }, [openPanel, generate, focusCanvas, forgetHistory]);
+    // A template opens on the diagram, not on a selected frame with its style bar over it (J11).
+    void generate(dsl, undefined, null).then((committed) => {
+      if (!baseline || !committed) return;
+      forgetHistory?.();
+      applySelection(replaceSelection([]));
+    });
+  }, [openPanel, generate, focusCanvas, forgetHistory, applySelection]);
   /** Writes the draft for a new diagram without opening the panel (the motion chips). */
   const writeNew = useCallback((update: (current: string) => string) => {
     setDraft(update);
@@ -256,7 +267,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
   return {
-    draft, setDraft, edit, writeNew, generating, diagnostics, canvasEdited, panelFocus,
+    draft, setDraft, edit, writeNew, generating, diagnostics, canvasEdited, panelFocus, panelSelect,
     foreign: foreign ? { label: foreign.label, convert: convertForeign } : null,
     openNew, openFrame, generate, startFrom, cancel,
   };

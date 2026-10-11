@@ -4,7 +4,9 @@ import {
   IconCloudCheck,
   IconFolderOff,
   IconFolderOpen,
-  IconArrowLeft,
+  IconBook2,
+  IconHome,
+  IconPlus,
   IconMenu2,
   IconPencil,
   IconSettings,
@@ -25,6 +27,7 @@ import { downloadTextFile } from './v2Export';
 import type { HomeNotice } from './V2LegacyRoutes';
 import { mintV2Id } from './v2Document';
 import { copyName } from './homeLibrary';
+import { DOCS_URL } from './homeStars';
 import {
   Button,
   FloatingRegion,
@@ -155,7 +158,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
     if (copying || !props.onEditShared) return;
     setCopying(true);
     props.onEditShared()
-      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Could not save a copy.', 'danger'))
+      .catch((error: unknown) => toast(error instanceof Error ? error.message : 'Couldn’t save a copy', 'danger'))
       .finally(() => setCopying(false));
   };
 
@@ -177,12 +180,12 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
     }
     const opened = documentFromFileText(text, mintV2Id('doc'));
     if ('error' in opened) {
-      props.onToast({ id: `toast-${Date.now()}`, tone: 'danger', title: 'That file couldn’t be opened.', description: opened.error });
+      props.onToast({ id: `toast-${Date.now()}`, tone: 'danger', title: 'Couldn’t open that file', description: opened.error });
       return;
     }
     const saved = await createV2Repository(window.indexedDB).saveDocument(opened.document.id, opened.document, 0);
     if (saved.status !== 'saved') {
-      toast('Could not save the opened file.', 'danger');
+      toast('Couldn’t save the opened file', 'danger');
       return;
     }
     navigate(`/d/${opened.document.id}`, opened.notice ? { state: { openedNotice: opened.notice } } : undefined);
@@ -192,7 +195,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
   const openedNotice = (location.state as { openedNotice?: unknown } | null)?.openedNotice;
   useEffect(() => {
     if (typeof openedNotice !== 'string') return;
-    props.onToast({ id: `toast-${Date.now()}`, tone: 'warning', title: 'Opened, with a repair.', description: openedNotice });
+    props.onToast({ id: `toast-${Date.now()}`, tone: 'warning', title: 'Opened, with a repair', description: openedNotice });
     navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opened file
   }, [openedNotice]);
@@ -301,7 +304,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
                 Reload
               </Button>
               <Button variant="quiet" onClick={() => void saveCopy().catch((error: unknown) =>
-                toast(error instanceof Error ? error.message : 'Could not save a copy.', 'danger'))}>
+                toast(error instanceof Error ? error.message : 'Couldn’t save a copy', 'danger'))}>
                 Save as copy
               </Button>
             </>
@@ -310,7 +313,8 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
       </FloatingRegion>
 
       <Menu open={panel === 'menu'} anchorRef={settingsRef} onClose={() => closePanel('menu')} label="Canvas menu" placement="bottom-start">
-        <MenuItem icon={<Icon icon={IconArrowLeft} />} onSelect={() => navigate('/home')}>Back to home</MenuItem>
+        <MenuItem icon={<Icon icon={IconHome} />} onSelect={() => navigate('/home')}>Home</MenuItem>
+        <MenuItem icon={<Icon icon={IconPlus} />} onSelect={() => navigate(`/d/${mintV2Id('doc')}`)}>New diagram</MenuItem>
         <MenuSeparator />
         <MenuItem icon={<Icon icon={IconPencil} />} disabled={props.readOnly} onSelect={startRename}>Rename diagram</MenuItem>
         <MenuItem icon={<Icon icon={IconSettings} />} onSelect={() => openPanel('settings')}>Settings</MenuItem>
@@ -322,7 +326,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
         {/* Only where v1 diagrams were found; the permanent stand-in for Classic (12.7). */}
         {hasV1Diagrams ? (
           <MenuItem icon={<Icon icon={IconArchive} />} onSelect={() => void downloadV1Backup().catch((error: unknown) =>
-            toast(error instanceof Error ? error.message : 'Could not read the previous editor’s diagrams.', 'danger'))}>
+            toast(error instanceof Error ? error.message : 'Couldn’t read the previous editor’s diagrams', 'danger'))}>
             Download v1 backup
           </MenuItem>
         ) : null}
@@ -340,12 +344,14 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
             ) : null}
           </>
         ) : null}
+        <MenuSeparator />
+        <MenuItem icon={<Icon icon={IconBook2} />} onSelect={() => { window.open(DOCS_URL, '_blank', 'noopener'); }}>Docs</MenuItem>
       </Menu>
       <input ref={fileRef} type="file" accept=".json,application/json" hidden aria-hidden="true" tabIndex={-1}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = '';
-          if (file) void openFile(file).catch((error: unknown) => toast(error instanceof Error ? error.message : 'Could not open the file.', 'danger'));
+          if (file) void openFile(file).catch((error: unknown) => toast(error instanceof Error ? error.message : 'Couldn’t open the file', 'danger'));
         }} />
       <V2Settings open={panel === 'settings'} anchorRef={settingsRef} onClose={() => closePanel('settings')}
         preferences={props.preferences} canvasDefaultColor={props.canvasDefaultColor}

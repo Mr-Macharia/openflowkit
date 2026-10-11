@@ -18,7 +18,8 @@ test('a large AI diagram lands at a readable zoom with the Fit hint @gate', asyn
   await composer.fill('draw a big flow');
   await composer.press('Enter');
   await panel.getByRole('button', { name: /^Apply/ }).click();
-  await expect(page.getByText(/Zoomed in to read\. Press .+ to see it all\./)).toBeVisible();
+  await expect(page.getByText('Zoomed in to read', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Press .+ to see it all\./)).toBeVisible();
   await expect.poll(async () => {
     const label = await page.getByRole('button', { name: /^Zoom \d+%$/ }).getAttribute('aria-label');
     return Number(/\d+/.exec(label ?? '')?.[0]);

@@ -54,10 +54,10 @@ async function openFile(page: Page, nodes: number, bulk = 0): Promise<void> {
   await expect.poll(() => page.url()).toContain('#/d/');
 }
 
-async function exportPanel(page: Page) {
+async function sharePanel(page: Page) {
   await page.getByRole('button', { name: 'Canvas menu' }).click();
-  await page.getByRole('menuitem', { name: 'Export…' }).click();
-  return page.getByRole('dialog', { name: 'Export' });
+  await page.getByRole('menuitem', { name: 'Share…' }).click();
+  return page.getByRole('dialog', { name: 'Share' });
 }
 
 const labels = (page: Page) => page.evaluate(() => {
@@ -66,9 +66,9 @@ const labels = (page: Page) => page.evaluate(() => {
 });
 
 async function shareLink(page: Page): Promise<string> {
-  const panel = await exportPanel(page);
-  await panel.getByRole('button', { name: 'Copy share link' }).click();
-  await expect(page.getByText('Share link copied.')).toBeVisible();
+  const panel = await sharePanel(page);
+  await panel.getByRole('button', { name: 'Copy view-only link' }).click();
+  await expect(page.getByText('View-only link copied')).toBeVisible();
   return page.evaluate(() => navigator.clipboard.readText());
 }
 
@@ -96,7 +96,7 @@ test('share → open in another tab → delete → deleted message @gate', async
 
   const viewer = await context.newPage();
   await viewer.goto(link);
-  await expect(viewer.getByText('Shared diagram, read-only.')).toBeVisible();
+  await expect(viewer.getByText('Shared diagram, read-only')).toBeVisible();
   await expect.poll(() => labels(viewer)).toContain(LABEL);
 
   // The viewer's camera is the visitor's: a pan stays put (a refit on every render would undo it).
@@ -121,10 +121,10 @@ test('share → open in another tab → delete → deleted message @gate', async
   let turnstileRequests = 0;
   viewer.on('request', (request) => { if (request.url().startsWith('https://challenges.cloudflare.com')) turnstileRequests++; });
   await viewer.getByRole('button', { name: 'Canvas menu' }).click();
-  await viewer.getByRole('menuitem', { name: 'Export…' }).click();
-  await expect(viewer.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(viewer.getByRole('button', { name: 'Copy share link' })).toHaveCount(0);
+  await expect(viewer.getByRole('menuitem', { name: 'Export…' })).toBeVisible();
+  await expect(viewer.getByRole('menuitem', { name: 'Share…' })).toHaveCount(0);
   await viewer.keyboard.press('Escape');
+  await expect(viewer.getByRole('toolbar', { name: 'Share and export', exact: true }).getByRole('button', { name: 'Share', exact: true })).toHaveCount(0);
   expect(turnstileRequests).toBe(0);
 
   // Edit in OpenFlowKit is document-bar chrome, keyboard reachable. A copy that can't be saved says so and stays put.
@@ -139,8 +139,8 @@ test('share → open in another tab → delete → deleted message @gate', async
   await expect.poll(() => labels(viewer)).toContain(LABEL);
   await viewer.close();
 
-  await (await exportPanel(page)).getByRole('button', { name: 'Delete link' }).click();
-  await expect(page.getByText('Link deleted. It no longer opens.')).toBeVisible();
+  await (await sharePanel(page)).getByRole('button', { name: 'Delete link' }).click();
+  await expect(page.getByText('Link deleted', { exact: true })).toBeVisible();
   expect(backend.bucket.objects.size).toBe(0);
 
   const gone = await context.newPage();
@@ -182,7 +182,7 @@ test('sharing while the service is down blames the service and offers the file @
   const backend = await serve(context);
   await openFile(page, 2);
   backend.online = false;
-  await (await exportPanel(page)).getByRole('button', { name: 'Copy share link' }).click();
+  await (await sharePanel(page)).getByRole('button', { name: 'Copy view-only link' }).click();
   await expect(page.getByText('The share service isn’t reachable right now.')).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download file' }).click();
@@ -192,8 +192,8 @@ test('sharing while the service is down blames the service and offers the file @
 test('a diagram over 1 MB offers the file instead @gate', async ({ page, context }) => {
   const backend = await serve(context);
   await openFile(page, 1, 1_100_000);
-  await (await exportPanel(page)).getByRole('button', { name: 'Copy share link' }).click();
-  await expect(page.getByText('Too big to share as a link.')).toBeVisible();
+  await (await sharePanel(page)).getByRole('button', { name: 'Copy view-only link' }).click();
+  await expect(page.getByText('Too big to share as a link')).toBeVisible();
   expect(backend.bucket.objects.size).toBe(0);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download file' }).click();

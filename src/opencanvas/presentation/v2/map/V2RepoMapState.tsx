@@ -9,7 +9,7 @@ import type { RepoMapState } from './useRepoMap';
 import './map.css';
 
 /** A crowded level: the strongest arrows are drawn; the rest wait for "Show all". */
-export interface RepoLinks { readonly shown: number; readonly total: number; readonly all: boolean; readonly onToggle: () => void }
+interface RepoLinks { readonly shown: number; readonly total: number; readonly all: boolean; readonly onToggle: () => void }
 const fmt = (n: number) => n.toLocaleString('en-US');
 
 export function BadRepoAddress(): React.JSX.Element {
@@ -81,7 +81,7 @@ export function V2RepoMapChips({ map, links }: { readonly map: RepoMapState; rea
       {links ? (
         <div className="map-chip" role="group" aria-label="Arrows shown">
           <span>{links.all ? `Showing all ${fmt(links.total)} links` : `Showing ${fmt(links.shown)} of ${fmt(links.total)} links`}</span>
-          <Button variant="quiet" selected={links.all} onClick={links.onToggle}>{links.all ? 'Show fewer' : 'Show all'}</Button>
+          <Button variant="quiet" onClick={links.onToggle}>{links.all ? 'Show fewer' : 'Show all'}</Button>
         </div>
       ) : null}
       {counting ? <div className="map-chip" role="status"><Progress label={`Reading ${fmt(read)} of ${fmt(total)} files…`} value={read} max={total} /></div> : null}

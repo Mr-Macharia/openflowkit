@@ -23,7 +23,7 @@ describe('MapOverview', () => {
   it('insight rows select the box they name', () => {
     const onSelect = vi.fn();
     render(<MapOverview model={model} arch={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText('a.ts is among the largest'));
+    fireEvent.click(screen.getByText('a.ts — one of the largest files'));
     expect(onSelect).toHaveBeenCalledWith('a.ts');
   });
 
@@ -45,6 +45,15 @@ describe('MapOverview', () => {
   it('puts a space between an insight and its note', () => {
     const { container } = render(<MapOverview model={model} arch={null} onSelect={vi.fn()} />);
     const row = [...container.querySelectorAll('li')].find((li) => li.textContent?.includes('lines'));
-    expect(row?.textContent).toMatch(/largest lines|largest \d[\d,]* lines/);
+    expect(row?.textContent).toBe('a.ts — one of the largest files (1,200 lines)');
+  });
+
+  it('names a file once among the largest, even when two folders hold one by that name', () => {
+    const twin = {
+      ...model,
+      nodes: { ...model.nodes, 'x/demo.pb.go': node('x/demo.pb.go', 'demo.pb.go', 'file', 'root', 2610), 'y/demo.pb.go': node('y/demo.pb.go', 'demo.pb.go', 'file', 'root', 2610) },
+    } as MapModel;
+    render(<MapOverview model={twin} arch={null} onSelect={vi.fn()} />);
+    expect(screen.getAllByText(/one of the largest/).map((b) => b.textContent)).toEqual(['demo.pb.go — one of the largest files', 'a.ts — one of the largest files']);
   });
 });

@@ -72,6 +72,6 @@ describe('useV2WorkspaceFolder write-back', () => {
     await act(() => t.hook.result.current.save('the open document\'s model', withSnap(0)));
     await act(() => t.hook.result.current.save('edited', withSnap(5)));
     expect(workspace.writeWorkspace).not.toHaveBeenCalled();
-    expect(t.onToast).toHaveBeenCalledWith(expect.stringContaining('architecture.ofk'), 'danger');
+    expect(t.onToast).toHaveBeenCalledWith(expect.stringContaining('architecture.ofk'), 'danger', expect.stringContaining('code panel'));
   });
 });

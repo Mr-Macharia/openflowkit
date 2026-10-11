@@ -22,16 +22,43 @@ test('the bar sits on the document bar line and the rail hangs below it with the
   expect(Math.abs((page.viewportSize()!.width - (right.x + right.width)) - doc.x), 'same edge inset').toBeLessThanOrEqual(1);
 });
 
-test('Export opens the Export panel and Share opens the link panel @gate', async ({ page }) => {
+test('Export opens the files and Share opens the two kinds of link @gate', async ({ page }) => {
   const exportButton = bar(page).getByRole('button', { name: 'Export', exact: true });
   await exportButton.click();
-  await expect(page.getByRole('dialog', { name: 'Export' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Copy share link' })).toBeVisible();
+  const exportPanel = page.getByRole('dialog', { name: 'Export' });
+  await expect(exportPanel.getByRole('button', { name: 'Download' })).toBeVisible();
+  await expect(exportPanel.getByRole('button', { name: /link/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await bar(page).getByRole('button', { name: 'Share', exact: true }).click();
   const share = page.getByRole('dialog', { name: 'Share' });
-  await expect(share.getByRole('button', { name: 'Copy share link' })).toBeVisible();
+  await expect(share.getByRole('radio', { name: /View-only link/ })).toBeChecked();
+  // A blank page has no code, so the editable copy says why it is off.
+  await expect(share.getByRole('radio', { name: /Editable copy/ })).toBeDisabled();
+  await expect(share.getByRole('button', { name: 'Copy view-only link' })).toBeVisible();
   await expect(share.getByRole('button', { name: 'Download' })).toHaveCount(0);
+});
+
+test('an editable link carries the diagram’s code and opens as a new copy @gate', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Diagram as code' }).click();
+  const source = page.getByRole('textbox', { name: 'Diagram source' });
+  await source.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('flowchart right\nCart -> Payment -> Receipt');
+  await page.getByRole('button', { name: /^Generate diagram/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __V2__: { getDocument(): { pages: { nodes: unknown[] }[] } } })
+    .__V2__.getDocument().pages[0]!.nodes.length)).toBeGreaterThan(2);
+  await bar(page).getByRole('button', { name: 'Share', exact: true }).click();
+  const share = page.getByRole('dialog', { name: 'Share' });
+  await share.getByRole('radio', { name: /Editable copy/ }).check();
+  await share.getByRole('button', { name: 'Copy editable link' }).click();
+  await expect(page.getByText('Editable link copied')).toBeVisible();
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  expect(link).toContain('#/from/dsl?d=');
+  const copy = await context.newPage();
+  await copy.goto(link);
+  await expect.poll(() => copy.url(), { timeout: 20_000 }).toContain('#/d/');
+  await expect(copy.getByRole('textbox', { name: 'Diagram source' })).toHaveValue(/Cart -> Payment -> Receipt/);
 });
 
 test('a right panel keeps the bar and the rail to its left @gate', async ({ page }) => {

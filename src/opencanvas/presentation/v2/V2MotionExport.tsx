@@ -34,7 +34,7 @@ const PRESETS: readonly { value: AnimationPreset; label: string; title: string }
   { value: 'pulse', label: 'Pulse', title: 'Everything shown; connectors carry a moving light' },
 ];
 
-export interface V2MotionExportProps {
+interface V2MotionExportProps {
   readonly document: SceneDocumentV1;
   readonly pageId: string;
   readonly onToast: (title: string, tone: 'info' | 'success' | 'danger') => void;
@@ -140,7 +140,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
     if (empty) return;
     const file = await buildMotionSvgFile(request);
     downloadV2Export([file]);
-    onToast(`${file.filename} downloaded.`, 'success');
+    onToast(`${file.filename} downloaded`, 'success');
   }
   async function encode(): Promise<void> {
     if (empty || !timeline || !page || output === 'svg') return;
@@ -156,10 +156,10 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
         onProgress: (done, total) => setProgress({ done, total }),
       });
       downloadV2Export([file]);
-      onToast(`${file.filename} downloaded.`, 'success');
+      onToast(`${file.filename} downloaded`, 'success');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        onToast('Export cancelled.', 'info');
+        onToast('Export cancelled', 'info');
       } else {
         // One sentence, and the dialog stays usable.
         const message = error instanceof Error ? error.message : 'The export failed.';
@@ -182,7 +182,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
         format: output, size, fps, theme, iconArt,
       });
       const copied = await copyImageToClipboard(file.bytes, file.mime);
-      if (copied) onToast(`${output.toUpperCase()} copied to the clipboard.`, 'success');
+      if (copied) onToast(`${output.toUpperCase()} copied`, 'success');
       else setFailure('This browser cannot copy that format to the clipboard — download it instead.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The export failed.';

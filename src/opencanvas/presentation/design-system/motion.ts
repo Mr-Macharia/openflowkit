@@ -1,5 +1,5 @@
 import { foundation } from './tokens';
-export type MotionIntent =
+type MotionIntent =
   | 'manipulate'
   | 'navigate'
   | 'reveal'

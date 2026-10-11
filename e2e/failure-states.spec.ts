@@ -101,7 +101,7 @@ test('opening a broken file says what opens instead @gate', async ({ page }) => 
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('menuitem', { name: 'Open file…' }).click();
   await (await chooser).setFiles({ name: 'junk.json', mimeType: 'application/json', buffer: Buffer.from('{not json') });
-  await expect(page.getByText('That file couldn’t be opened.')).toBeVisible();
+  await expect(page.getByText('Couldn’t open that file')).toBeVisible();
   await expect(page.getByText(/opens the \.json files it exports/)).toBeVisible();
 });
 

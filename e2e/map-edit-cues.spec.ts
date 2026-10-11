@@ -14,7 +14,7 @@ const switchOf = (page: Page) => page.getByRole('group', { name: 'View mode' });
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Architecture model' });
 const railModel = (page: Page) => page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Architecture model', exact: true });
 const toasts = (page: Page) => page.getByRole('region', { name: 'Notifications' }).locator('.ofk-toast');
-const explained = (page: Page) => toasts(page).filter({ hasText: 'Map lays itself out.' });
+const explained = (page: Page) => toasts(page).filter({ hasText: 'Map lays itself out' });
 const nameField = (page: Page) => panel(page).getByLabel('Name', { exact: true });
 
 /** A C4 workspace open in Map with the model panel closed. */

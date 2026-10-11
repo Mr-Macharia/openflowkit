@@ -61,10 +61,12 @@ export const foundation = {
 
 // Shared sRGB values keep DOM/Pixi feedback identical; neutrals have a warm tint.
 // The brand seed (foundation.brand, --ofk-brand) is not a normal-text foreground or a white-text button background.
-export const lightColors = {
+const lightColors = {
   canvas: '#f7f7f5',
   surface: '#fdfdfb',
   raised: '#efefec',
+  /** The selected segment of a segmented control: one step above its `raised` track in both themes. */
+  thumb: '#fdfdfb',
   text: '#252724',
   secondary: '#535750',
   muted: '#62665f',
@@ -101,6 +103,7 @@ export const darkColors: ThemeColors = {
   canvas: '#191b19',
   surface: '#232622',
   raised: '#2e322c',
+  thumb: '#41463d',
   text: '#f1f2ec',
   secondary: '#c1c6ba',
   muted: '#a3ab9c',
@@ -146,6 +149,8 @@ export const materials: Readonly<
       glassBorder: string;
       scrim: string;
       shadowRaised: string;
+      /** The selected segment: lifted off its track (a top highlight in dark, where a shadow does not read). */
+      shadowThumb: string;
       /** Persistent canvas chrome (toolbars, rails, context bar): tight, low spread. */
       shadowChrome: string;
       /** Transient layers (menus, popovers): lifted. */
@@ -159,6 +164,7 @@ export const materials: Readonly<
     glassBorder: 'rgb(37 39 36 / 0.08)',
     scrim: 'rgb(37 39 36 / 0.32)',
     shadowRaised: '0 1px 2px rgb(37 39 36 / 0.06), 0 1px 1px rgb(37 39 36 / 0.04)',
+    shadowThumb: '0 1px 2px rgb(37 39 36 / 0.08), 0 0 0 0.5px rgb(37 39 36 / 0.06)',
     shadowChrome: '0 1px 2px rgb(37 39 36 / 0.05), 0 2px 8px rgb(37 39 36 / 0.05)',
     shadowFloating: '0 1px 2px rgb(37 39 36 / 0.05), 0 6px 16px rgb(37 39 36 / 0.07)',
     shadowOverlay: '0 2px 4px rgb(37 39 36 / 0.06), 0 16px 40px rgb(37 39 36 / 0.12)',
@@ -168,6 +174,7 @@ export const materials: Readonly<
     glassBorder: 'rgb(241 242 236 / 0.1)',
     scrim: 'rgb(0 0 0 / 0.5)',
     shadowRaised: '0 1px 2px rgb(0 0 0 / 0.3)',
+    shadowThumb: 'inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.3)',
     shadowChrome: '0 1px 2px rgb(0 0 0 / 0.25), 0 2px 8px rgb(0 0 0 / 0.2)',
     shadowFloating: '0 1px 2px rgb(0 0 0 / 0.25), 0 6px 16px rgb(0 0 0 / 0.3)',
     shadowOverlay: '0 2px 4px rgb(0 0 0 / 0.3), 0 16px 40px rgb(0 0 0 / 0.4)',

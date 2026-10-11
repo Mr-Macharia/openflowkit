@@ -1,5 +1,25 @@
 /** `#/from/dsl?d=<payload>`: payload = base64url (no padding) of deflate-raw(utf8 DSL). */
 export const MAX_DSL_BYTES = 1024 * 1024;
+/** Chat apps and browsers cut long URLs; the MCP server's open link keeps the same cap. */
+export const MAX_LINK_PAYLOAD = 32 * 1024;
+
+/** The editable-copy link for this code, or null when it is too long to survive being pasted. */
+export async function dslLink(dsl: string, appHref: string): Promise<string | null> {
+  const payload = await encodeDslPayload(dsl);
+  return payload.length > MAX_LINK_PAYLOAD ? null : `${appHref.split('#')[0]}#/from/dsl?d=${payload}`;
+}
+
+export async function encodeDslPayload(dsl: string): Promise<string> {
+  const source = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode(dsl)); controller.close(); } });
+  const reader = source.pipeThrough(new CompressionStream('deflate-raw')).getReader();
+  let binary = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const byte of value) binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 export async function decodeDslPayload(payload: string | null): Promise<string> {
   if (!payload) throw new Error('The link has no diagram in it (missing payload).');

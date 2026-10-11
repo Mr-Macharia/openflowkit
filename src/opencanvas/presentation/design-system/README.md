@@ -1,7 +1,6 @@
 # OpenFlowKit UI foundation
 
-Internal React + TypeScript foundation for the editor. Product plan:
-[docs/plan/README.md](../../../../docs/plan/README.md). No document storage or authoring ownership lives here.
+Internal React + TypeScript foundation for the editor. No document storage or authoring ownership lives here.
 
 ## Layers and integration
 
@@ -85,6 +84,10 @@ surfaces. Collisions are prevented by contract, not by docking:
   provides modal focus trap, inert background and Escape.
 - Panel focuses its close control on mount, closes on Escape with focus back
   on the invoker, and slides in from its edge (bottom sheet under 720px).
+- ToastRegion: hosts push through `withToast` (at most 3, newest nearest the edge; a twin by id, or by title when
+  neither has an action, replaces the old one and restarts its timer; an action is never dropped). Titles are short sentence case with no closing period; detail
+  goes in `description`. Tone is a 16px icon (none for neutral); hover or focus pauses auto-dismiss; danger,
+  warning and `persistent` stay until dismissed. Popover exposes `data-side` and `--ofk-arrow` for a caret.
 - Status pairs a symbol with text. Use `live` for meaningful state changes, not
   pointer movement or streaming tokens. Avoid repeated announcements per frame.
 - ProposalBar guards stale/pending acceptance for UX. `onAccept(id, revision)` must
@@ -132,12 +135,3 @@ npm run test -- --run src/opencanvas/presentation/design-system/foundation.test.
 npm run lint
 npm run build:ci
 ```
-
-Visual review: `VITE_V2_LAB=1 npm run dev`, open `/#/_labs/v2`. Shell tab is a mock
-of the target product shell (fake data, real primitives); Primitives tab lists every
-state. Light/dark and density toggles are in the lab bar. Not a product route.
-
-Browser integration check (fresh profile, synthetic local document only): start
-`VITE_OPEN_CANVAS_DOCUMENT_V1=1 VITE_OPEN_CANVAS_RENDERER_V1=1 npm run dev -- --host 127.0.0.1 --port 4188`,
-then run `node scripts/check-v2-design-foundation.mjs`. Evidence goes to
-`docs/evidence/v2-foundation/`; the script does not use your browser profile.

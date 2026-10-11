@@ -7,6 +7,7 @@ import { frameBox, keepInView, landing, type Cam, type Rect, type Viewport } fro
 import type { CanvasCamera } from '../../../domain/camera/types';
 import type { ScenePage } from '../../../domain/document/types';
 import type { Bounds2d } from '../../../domain/geometry/types';
+import { semanticDetailLevel } from '../../../infrastructure/pixi/viewportProjection';
 import { visibleCanvasEdges } from '../V2ContextBar';
 
 // The rules of Map mode in the editor: what a click opens, what Escape closes, which keys still act, where the
@@ -30,7 +31,7 @@ export const fitsBudget = (model: MapModel, open: ReadonlySet<string>): boolean 
 
 // A second click on a box inside this window is the second half of a double-click: it must not undo the first flip.
 // ponytail: fixed 400 ms — a slower double-click flips again; read the OS double-click interval if it matters.
-export const DOUBLE_CLICK_MS = 400;
+const DOUBLE_CLICK_MS = 400;
 export const isDoubleClick = (lastFlipAt: number, now: number): boolean => now - lastFlipAt < DOUBLE_CLICK_MS;
 
 /**
@@ -184,7 +185,7 @@ export function clearOfPanel({ selection, content, cam, before, seen, after }: {
   return content && seenStart ? nudgeInto(content, cam, after) : null;
 }
 
-/** A fit the camera was given and still holds: all of the map (Zoom to fit), or its readable start (a landing). */
+/** A fit the camera was given and still holds: all of the map (Zoom to fit), or a landing (entering, a depth preset). */
 export interface HeldFit { readonly cam: CanvasCamera; readonly all: boolean }
 
 /**
@@ -218,6 +219,18 @@ export function showsAll(extent: Bounds2d, cam: CanvasCamera, free: FreeArea): b
  */
 export function mapCamera(extent: Bounds2d, free: FreeArea, start?: Rect): CanvasCamera {
   return landOn(extent, undefined, free, undefined, start);
+}
+
+/**
+ * Where a map lands, on entering it or on a depth preset: readable when all of it fits that way; else all of it, as small
+ * as it takes while the boxes still draw their labels; a map too big even for that keeps the readable start (and the
+ * reader hears ⇧1).
+ */
+export function presetCamera(extent: Bounds2d, free: FreeArea, start?: Rect): CanvasCamera {
+  const landed = mapCamera(extent, free, start);
+  if (showsAll(extent, landed, free)) return landed;
+  const whole = fitAll(extent, free);
+  return semanticDetailLevel(whole.zoom) === 'full' ? whole : landed;
 }
 
 /**

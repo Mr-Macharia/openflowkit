@@ -4,9 +4,10 @@ import { Button, Field, Icon } from '../../design-system';
 import { parseRepoPath, type RepoRef } from '../../../../services/discovery/githubRepo';
 import { isRepoMapAddress } from '../../../application/map/repoMapSource';
 import { V2Welcome } from '../V2Workspace';
+import './map.css';
 
 /** The repo a pasted `owner/repo` or GitHub URL names, or null: the same parser and gate the map route applies. */
-export function repoToMap(input: string): RepoRef | null {
+function repoToMap(input: string): RepoRef | null {
   const ref = parseRepoPath(input);
   return ref && isRepoMapAddress({ owner: ref.owner, repo: ref.repo, ref: ref.ref }) ? ref : null;
 }
@@ -19,7 +20,6 @@ interface Props {
   readonly onAgent: () => void;
 }
 
-/** Map on a document with no model yet: the Canvas welcome's layout, two ways to get a model, or a repo to map. The drawing behind is not touched. */
 /** Where a repo's map opens: `#/map/github/<owner>/<repo>[/tree/<ref>]`. */
 export const mapRepoPath = ({ owner, repo, ref }: RepoRef): string => `/map/github/${owner}/${repo}${ref !== 'HEAD' ? `/tree/${encodeURIComponent(ref)}` : ''}`;
 
@@ -41,16 +41,17 @@ export function MapRepoForm({ onMapRepo, initial = '' }: { readonly onMapRepo: (
   );
 }
 
+/** Map on a document with no model yet: the Canvas welcome's layout (not its arrows), two ways to get a model, or a repo to map. The drawing behind is not touched. */
 export function V2MapStart({ busy, onStartModel, onMapRepo, onAgent }: Props): React.JSX.Element {
   return (
     <V2Welcome
       testId="v2-map-start"
       title="See how your system fits together."
-      body="Map is built from an architecture model. Your canvas drawing stays as it is."
+      body="This page is a drawing. Map reads architecture models."
       actions={(
         <>
           <Button variant="secondary" autoFocus disabled={busy} onClick={onStartModel}><Icon icon={IconSitemap} />Start an architecture model</Button>
-          <Button variant="secondary" onClick={onAgent}><Icon icon={IconPlugConnected} />Connect agent</Button>
+          <Button variant="secondary" data-mode="agent" onClick={onAgent}><Icon icon={IconPlugConnected} />Connect agent</Button>
         </>
       )}
       below={(

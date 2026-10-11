@@ -6,7 +6,7 @@ export function MapLinksChip({ shown, total, minor, all, onToggle }: { shown: nu
   return (
     <div className="map-links-chip" role="group" aria-label="Arrows shown">
       <span>{all ? `Showing all ${total} links` : `Showing ${shown} of ${total} links`}</span>
-      <Button variant="quiet" selected={all} onClick={onToggle}>{all ? 'Show fewer' : 'Show all'}</Button>
+      <Button variant="quiet" onClick={onToggle}>{all ? 'Show fewer' : 'Show all'}</Button>
     </div>
   );
 }

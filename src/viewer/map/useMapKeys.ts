@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dir } from '../../opencanvas/application/map/navigate';
 
-export interface MapKeyActions {
+interface MapKeyActions {
   search: () => void;
   fit: () => void;
   zoom: (factor: number) => void;

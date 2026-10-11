@@ -5,7 +5,7 @@ import {
 } from '../../../services/workspace/workspaceFolder';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 
-export interface V2WorkspaceFolderState {
+interface V2WorkspaceFolderState {
   readonly folder: WorkspaceFolder | null;
   readonly adrs: WorkspaceContents['adrs'];
   readonly status: 'none' | 'opening' | 'open' | 'error';
@@ -16,10 +16,10 @@ export interface V2WorkspaceFolderState {
   readonly save: (dsl: string, document: SceneDocumentV1) => Promise<void>;
 }
 
-export interface V2WorkspaceFolderOptions {
+interface V2WorkspaceFolderOptions {
   /** Applies a loaded workspace to the canvas (text + layout overrides); true once it is committed. */
   readonly onLoad: (dsl: string, snaps: Readonly<Record<string, WorkspaceSnap>>) => Promise<boolean>;
-  readonly onToast: (title: string, tone: 'success' | 'danger' | 'warning') => void;
+  readonly onToast: (title: string, tone: 'success' | 'danger' | 'warning', description?: string) => void;
 }
 
 /**
@@ -54,19 +54,19 @@ export function useV2WorkspaceFolder(options: V2WorkspaceFolderOptions): V2Works
       if (!contents.dsl) {
         // An empty folder takes the next generated workspace as its architecture.ofk.
         syncedRef.current = { folder: picked, text: null, snaps: null, pending: false };
-        optionsRef.current.onToast('Folder opened. Add architecture.ofk or paste a workspace and generate.', 'warning');
+        optionsRef.current.onToast('Folder opened, nothing to draw yet', 'warning', 'Add architecture.ofk, or paste a workspace and generate.');
         return;
       }
       if (!await optionsRef.current.onLoad(contents.dsl, contents.snaps)) {
         // Nothing drawn: the canvas does not hold this folder's workspace, so nothing may be written back over it.
-        optionsRef.current.onToast(`architecture.ofk in ${picked.name} could not be drawn. Fix it in the code panel; nothing is written to the folder until it draws.`, 'danger');
+        optionsRef.current.onToast(`Couldn’t draw architecture.ofk in ${picked.name}`, 'danger', 'Fix it in the code panel. Nothing is written to the folder until it draws.');
         return;
       }
       syncedRef.current = { folder: picked, text: null, snaps: null, pending: true };
-      optionsRef.current.onToast(`Workspace ${picked.name} loaded.`, 'success');
+      optionsRef.current.onToast(`Workspace ${picked.name} loaded`, 'success');
     } catch (error) {
       setStatus('error');
-      optionsRef.current.onToast(error instanceof Error ? error.message : 'Could not open the folder.', 'danger');
+      optionsRef.current.onToast(error instanceof Error ? error.message : 'Couldn’t open the folder', 'danger');
     }
   }, []);
 
@@ -90,7 +90,7 @@ export function useV2WorkspaceFolder(options: V2WorkspaceFolderOptions): V2Works
     try {
       await writeWorkspace(folder, { dsl: text, document });
     } catch (error) {
-      optionsRef.current.onToast(error instanceof Error ? error.message : 'Workspace save failed.', 'warning');
+      optionsRef.current.onToast(error instanceof Error ? error.message : 'Couldn’t save the workspace', 'warning');
     }
   }, [folder]);
 

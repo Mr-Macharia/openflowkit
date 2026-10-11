@@ -31,7 +31,7 @@ import { useMapMotion } from './useMapMotion';
 import { useMapLayers } from './useMapLayers';
 import { lookOf, repoLookOf } from './mapLook';
 
-export type V2MapModeName = 'canvas' | 'map';
+type V2MapModeName = 'canvas' | 'map';
 
 interface Options {
   readonly page: ScenePage | null;
@@ -264,7 +264,7 @@ export function useV2MapMode(options: Options) {
   const onPartial = useCallback(() => {
     if (partialSaid) return;
     partialSaid = true;
-    notify(`Showing part of the map. ${platformKeys('⌘0')} shows all of it.`);
+    notify(`Showing part of the map. ${platformKeys('⇧1')} shows all of it.`);
   }, [notify]);
   const { shown, player, fit } = useMapMotion({ mapPage, emptyPage: EMPTY_MAP, scene, model, hostRef, cameraRef, updateCamera, markShown, focusRef, onPartial });
   useClearance({ active, selectedId: selectedNodeId, panelsKey, selectedIds, shown, hostRef, cameraRef, glide, busy: () => player.stats().running || seqs.current.shown < seqs.current.asked });

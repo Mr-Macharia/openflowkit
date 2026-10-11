@@ -13,7 +13,7 @@ function meta(n: MapNode): string {
   return [`${n.files} file${n.files === 1 ? '' : 's'}`, lines(n)].filter(Boolean).join(' · ');
 }
 
-export interface MapBoxProps {
+interface MapBoxProps {
   node: MapNode;
   rect: LaidRect;
   /** Container the user can open (children) and whether it is open. */

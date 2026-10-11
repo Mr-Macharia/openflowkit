@@ -27,16 +27,25 @@ test('a template card opens a new diagram already drawn, with its text beside it
   await page.goto('/#/home');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Let’s draw your first diagram.');
   await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(7);
-  await expect(page.getByRole('button', { name: 'System map', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Shop architecture', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Event pipeline' }).click();
   await expect(page).toHaveURL(/#\/d\/doc-/);
   await expect(page.getByRole('textbox', { name: 'Diagram source' })).toContainText('Event pipeline');
   await expect.poll(async () => (await state(page)).nodes.length, { timeout: 15_000 }).toBeGreaterThan(3);
+  // J11: the first look is the diagram, not a selection's style bar over it.
+  expect((await state(page)).selectedNodes).toEqual([]);
   // The intent ran once: once saved, a reload is just the diagram.
   await expect.poll(async () => (await state(page)).save).toBe('saved');
   await page.reload();
   await expect(page.getByTestId('v2-canvas')).toBeVisible();
   await expect.poll(async () => (await state(page)).nodes.length).toBeGreaterThan(3);
+});
+
+test('the empty canvas links to the templates on Home @gate', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: 'or start from a template →' }).click();
+  await expect(page).toHaveURL(/#\/home\?view=templates$/);
+  await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(7);
 });
 
 test('each way in opens the panel it names @gate', async ({ page }) => {
@@ -60,7 +69,7 @@ test('a drawn diagram shows its real thumbnail on home, and the menu leads back 
   // The preview is drawn after the save settles, when the browser is idle.
   await page.waitForTimeout(2_500);
   await page.getByRole('button', { name: 'Canvas menu' }).click();
-  await page.getByRole('menuitem', { name: 'Back to home' }).click();
+  await page.getByRole('menuitem', { name: 'Home', exact: true }).click();
   await expect(page).toHaveURL(/#\/home$/);
   const preview = page.getByRole('list', { name: 'Diagrams' }).locator('img.ofk-home-preview-image');
   await expect(preview).toHaveCount(1);
@@ -187,7 +196,7 @@ test('import: a Mermaid file draws as a new diagram; dropped .json exports join 
     return transfer;
   }, exported);
   await page.dispatchEvent('[data-testid="v2-home"]', 'drop', { dataTransfer: drop });
-  await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('Imported 2 diagrams.');
+  await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('Imported 2 diagrams');
   await expect.poll(async () => (await cards(page).allInnerTexts()).sort()).toEqual(['Imported one', 'Imported two']);
 
   await page.locator('input[type="file"]').setInputFiles({ name: 'flow.mmd', mimeType: 'text/plain', buffer: Buffer.from('flowchart LR\n  A --> B\n  B --> C\n') });

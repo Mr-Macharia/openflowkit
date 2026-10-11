@@ -1,4 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { IconX } from '@tabler/icons-react';
+import { IconButton } from './Button';
+import { Icon } from './Icon';
 import { Toolbar } from './Toolbar';
 /** Floating bar near the selection: groups separated by hairlines; each control opens its own popover. */
 export function ContextBar({
@@ -20,12 +23,12 @@ export function ContextGroup({ children, label }: { children: ReactNode; label?:
     </div>
   );
 }
-/** Title + close row used by popovers opened from the context bar. */
-export function PopoverHeader({ title, close }: { title: string; close: ReactNode }) {
+/** The one panel/popover header: a 14px title and a 32px close button (Panel draws the same row). */
+export function PopoverHeader({ title, onClose, closeLabel = 'Close panel' }: { title: string; onClose: () => void; closeLabel?: string }) {
   return (
     <header className="ofk-popover-header">
       <span className="ofk-popover-title">{title}</span>
-      {close}
+      <IconButton variant="quiet" label={closeLabel} icon={<Icon icon={IconX} />} onClick={onClose} />
     </header>
   );
 }

@@ -23,7 +23,9 @@ export function MapOverview({ model, arch, onSelect }: MapOverviewData): React.J
     const real = (row: { id: string }) => !synthetic(model.nodes[row.id]);
     return [
       ...twoWay.slice(0, 2).map((p) => ({ id: p.a, text: `${name(p.a)} and ${name(p.b)} import each other` })),
-      ...largest.slice(0, 2).map((id) => ({ id, text: `${name(id)} is among the largest`, note: `${model.nodes[id].loc.toLocaleString('en-US')} lines` })),
+      // One row per name: two folders' generated `demo.pb.go` read as the same file listed twice.
+      ...largest.filter((id, i) => largest.findIndex((other) => name(other) === name(id)) === i).slice(0, 2)
+        .map((id) => ({ id, text: `${name(id)} — one of the largest files`, note: `(${model.nodes[id].loc.toLocaleString('en-US')} lines)` })),
       ...unreferenced.slice(0, 1).map((id) => ({ id, text: `${name(id)} is not imported by anything here` })),
     ].filter(real);
   }, [model]);

@@ -129,7 +129,7 @@ describe('V2HomePage', () => {
       new File(['{not json'], 'bad.json', { type: 'application/json' }),
       new File([JSON.stringify(v1)], 'old.json', { type: 'application/json' }),
     ] } });
-    const toast = await screen.findByText('Imported 1 diagram.');
+    const toast = await screen.findByText('Imported 1 diagram');
     const text = toast.closest('[role="status"], [role="alert"], li, div')!.parentElement!.textContent;
     expect(text).toContain('bad.json: It isn’t valid JSON');
     expect(text).toContain('was left out');

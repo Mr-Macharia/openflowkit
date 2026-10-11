@@ -21,7 +21,7 @@ test('Copy as Mermaid puts flowchart text on the clipboard @gate', async ({ page
   await expect(copy).toBeEnabled();
   await copy.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('flowchart diagram” as Mermaid.')).toBeVisible();
+  await expect(page.getByText('flowchart diagram” as Mermaid')).toBeVisible();
   await expect(page.getByText(/Not kept: positions/)).toBeVisible();
 
   const text = await page.evaluate(() => navigator.clipboard.readText());
