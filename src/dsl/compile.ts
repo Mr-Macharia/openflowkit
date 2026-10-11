@@ -3,12 +3,13 @@ import type { SceneConnector, SceneNode } from '../opencanvas/domain/document/ty
 import type { Point2d, Size2d } from '../opencanvas/domain/geometry/types';
 import type { JsonObject } from '../opencanvas/domain/document/json';
 import type { DslDiagnostic, DslDirection } from './ast';
-import { animateToJson, extractAnimateBlock } from './animate';
+import { animateRefDiagnostics, animateToJson, extractAnimateBlock } from './animate';
 import { createCommentTracker, parseDocument, type CommentTracker, type DslIconsMode } from './document';
 import { inferIcon } from './autoIcon';
 import { familyFor } from './families';
 import type { FamilyContext, FamilyScene } from './families/types';
 import { deterministicLayout, layoutRunner, type LayoutPort } from './layout';
+import { measureGroupSize } from './sizing';
 import { diagramPalette, paletteResolver, type DiagramPaletteName } from '../opencanvas/domain/nodes/nodePalette';
 import { dslFamilyDirection } from './vocabulary';
 import { slugifyDslId } from './text';
@@ -25,7 +26,7 @@ export interface CompileOptions {
   autoIcons?: boolean;
 }
 
-export interface CompileMeta {
+interface CompileMeta {
   family: string;
   direction?: string;
   version: number;
@@ -36,6 +37,11 @@ export interface CompileMeta {
   appearance?: { palette: DiagramPaletteName };
   /** Authored `icons:` directive, kept so the serializer writes it back. */
   icons?: DslIconsMode;
+  /**
+   * The host's "icons from labels" setting this frame was drawn with, when it decided (no `icons:` line, a
+   * host that resolves icons), so a later recompile of the same text draws the same icons. Never serialized.
+   */
+  autoIcons?: boolean;
 }
 
 export interface CompileResult {
@@ -50,7 +56,7 @@ export interface CompileResult {
 }
 
 /** One view of a compiled workspace: a C4 model view page, or the family's only frame. */
-export interface CompileViewResult {
+interface CompileViewResult {
   /** Stable view id; empty for single-frame families. */
   viewId: string;
   /** Page name for workspace views. */
@@ -85,6 +91,7 @@ interface AssembleOptions {
   title?: string;
   animate?: JsonObject;
   icons?: DslIconsMode;
+  autoIcons?: boolean;
   comments: CommentTracker;
   diagnostics: DslDiagnostic[];
 }
@@ -135,6 +142,8 @@ export async function compileWorkspace(text: string, options: CompileOptions = {
   const familyViews = family.compileViews
     ? await family.compileViews(segments, context)
     : [{ id: '', name: document.title ?? '', scene: await family.compile(segments, context) }];
+  // A step that names no node would animate nothing: say so where validate and the code panel look.
+  if (animate) diagnostics.push(...animateRefDiagnostics(animate, familyViews.flatMap((view) => view.scene.nodes)));
 
   return {
     family: document.family,
@@ -149,6 +158,7 @@ export async function compileWorkspace(text: string, options: CompileOptions = {
           ...(document.title ? { title: document.title } : {}),
           ...(animate ? { animate: animateToJson(animate) } : {}),
           ...(document.icons ? { icons: document.icons } : {}),
+          ...(!document.icons && resolveIcon ? { autoIcons: Boolean(options.autoIcons) } : {}),
           comments,
           diagnostics,
         }),
@@ -164,7 +174,7 @@ export async function compile(text: string, options: CompileOptions = {}): Promi
 }
 
 function assembleResult(options: AssembleOptions): CompileResult {
-  const { scene, family, origin, palette, frameId, text, direction, title, animate, icons, comments, diagnostics } = options;
+  const { scene, family, origin, palette, frameId, text, direction, title, animate, icons, autoIcons, comments, diagnostics } = options;
   // The palette rides on every record, not just the frame: renderers and the
   // serializer read a node without its page, so key-based families stay themed.
   const themed = <T extends SceneNode | SceneConnector>(record: T): T => palette === 'pastel' ? record : {
@@ -187,13 +197,17 @@ function assembleResult(options: AssembleOptions): CompileResult {
     ...(title ? { title } : {}),
     ...(palette === 'pastel' ? {} : { appearance: { palette } }),
     ...(icons ? { icons } : {}),
+    ...(autoIcons === undefined ? {} : { autoIcons }),
   };
   const trailing = comments.remaining();
+  const label = typeof scene.meta?.viewTitle === 'string' ? scene.meta.viewTitle : title ?? '';
+  // A chart prints its title inside the plot and hides the frame header; every other title must fit its band.
+  const headerShows = Boolean(label) && !(family === 'chart' && title);
   const frame: SceneNode = {
     id: frameId, kind: 'frame', parentId: null, layerId: 'default', zIndex: 0,
     transform: { translation: { ...origin }, rotationRadians: 0, scale: { x: 1, y: 1 } },
-    size: scene.size,
-    content: { label: typeof scene.meta?.viewTitle === 'string' ? scene.meta.viewTitle : title ?? '',
+    size: headerShows ? { ...scene.size, width: Math.max(scene.size.width, measureGroupSize(label, true).width) } : scene.size,
+    content: { label,
       ...(typeof scene.meta?.viewKey === 'string' ? {subLabel: scene.meta.viewKey} : {}),
       // A chart prints its title inside the plot; the frame header would print it twice, over the axis.
       ...(family === 'chart' && title ? { showHeader: false } : {}),

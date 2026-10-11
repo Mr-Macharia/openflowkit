@@ -6,12 +6,14 @@ import type { SceneNode } from '../../domain/document/types';
 import type { Matrix2d } from '../../domain/geometry/types';
 import { resolveNodeStyle, type NodeStyle } from '../../domain/nodes/nodeStyle';
 import { nodeLabelBounds } from '../../domain/nodes/nodeLabelBounds';
+import { SUBLABEL_FONT } from '../../domain/text/measurement';
 import {
   projectArchitectureNodeVisual,
   type PixiArchitectureNodeVisual,
 } from './architectureNodeVisual';
-import { PixiMediaLayer } from './PixiMediaLayer';
-import { architectureIconBounds } from '../../domain/nodes/architectureNodePresentation';
+import { isSvgUrl, PixiMediaLayer } from './PixiMediaLayer';
+import { inkMonochromeSvg, monochromeIconInk, svgDataUrl, svgFromDataUrl } from '../../domain/nodes/iconInk';
+import { architectureIconBounds, iconCardChrome, iconCardLayout } from '../../domain/nodes/iconCardLayout';
 import type { PixiNodeDebugRecord, PixiMediaState } from './pixiNodeDebug';
 import { drawPixiLocalRect, drawPixiNodeOutline } from './pixiNodeOutline';
 import { pixiPaintColor } from './pixiColor';
@@ -19,7 +21,7 @@ import { applyPixiNodeMatrix } from './pixiNodeTransform';
 import { decoratePixiText } from './pixiText';
 import type { PixiTextPool } from './pixiTextPool';
 
-export interface PixiArchitectureNodeDrawResult {
+interface PixiArchitectureNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }
@@ -33,6 +35,14 @@ function mediaState(visual: PixiArchitectureNodeVisual): PixiMediaState {
     return 'loading';
   }
   return visual.presentation.icon.kind === 'asset' ? 'missing' : 'none';
+}
+
+/** A one-colour dark SVG icon redrawn in `ink` (as the export does); anything else, or a failed read, as authored. */
+async function inkedIconUrl(url: string, ink: string): Promise<string> {
+  if (!isSvgUrl(url)) return url;
+  const svg = svgFromDataUrl(url) ?? await fetch(url).then((response) => (response.ok ? response.text() : null), () => null);
+  const inked = svg ? inkMonochromeSvg(svg, ink) : null;
+  return inked ? svgDataUrl(inked) : url;
 }
 
 function iconBounds(visual: PixiArchitectureNodeVisual, node: SceneNode) {
@@ -69,7 +79,7 @@ export class PixiArchitectureNodeRenderer {
     this.drawChrome(node, matrix, graphics, visual, bounds, style);
     const label = this.createLabel(node, visual, style, finalWidth);
     applyPixiNodeMatrix(label, matrix);
-    this.loadIcon(node.id, generation, matrix, bounds, visual);
+    this.loadIcon(node.id, generation, matrix, bounds, visual, monochromeIconInk(visual.presentation.display, style, canvasColor));
     return {
       label,
       debug: {
@@ -110,8 +120,15 @@ export class PixiArchitectureNodeRenderer {
       graphics.fill({ color: visual.iconFill });
       return;
     }
-    // Icon nodes: the style paints the 72px plate; the label sits on the canvas below.
-    drawPixiLocalRect(graphics, createBounds2d((node.size.width - 72) / 2, 4, 72, 72), matrix, style.cornerRadius);
+    // A row card (icon left of its text) is one rounded card with the art bare on it.
+    if (visual.presentation.iconPlacement === 'left') {
+      drawPixiNodeOutline(graphics, 'rounded', node.size, matrix, undefined, style.cornerRadius);
+      graphics.fill(fill);
+      if (style.strokeWidth > 0) graphics.stroke({ ...stroke, width: style.strokeWidth });
+      return;
+    }
+    // Icon tiles: the style paints the 72px plate; the label sits on the canvas below.
+    drawPixiLocalRect(graphics, iconCardChrome(node), matrix, style.cornerRadius);
     graphics.fill(fill);
     if (style.strokeWidth > 0) graphics.stroke({ ...stroke, width: style.strokeWidth });
     drawPixiLocalRect(graphics, bounds, matrix, 8);
@@ -122,11 +139,10 @@ export class PixiArchitectureNodeRenderer {
     const content = new Container();
     const { presentation } = visual;
     const ink = pixiPaintColor(style.textColor, visual.text).color;
-    const labelBounds = nodeLabelBounds(node);
     // `finalWidth`: the width a moving box ends with (Map mode); text wraps to it all the way, so labels keep their pooled Texts.
     const grown = finalWidth === undefined ? 0 : finalWidth - node.size.width;
-    const wrap = Math.max(1, labelBounds.width + grown - style.textPadding * 2);
     if (presentation.display === 'architecture-card') {
+      const wrap = Math.max(1, nodeLabelBounds(node).width + grown - style.textPadding * 2);
       const layout = architectureCardLayout(grown === 0 ? node : { ...node, size: { ...node.size, width: finalWidth! } }, style);
       const subInk = style.subTextColor ? pixiPaintColor(style.subTextColor, visual.subText).color : visual.subText;
       const provider = this.texts.plain(layout.provider.displayText, { size: 10, weight: '700', fill: subInk });
@@ -148,13 +164,28 @@ export class PixiArchitectureNodeRenderer {
       }
       return content;
     }
-    if (presentation.label) {
-      const title = this.texts.styled(presentation.label, style, ink, wrap);
-      title.anchor.set(0.5, 0);
-      title.position.set(labelBounds.x + labelBounds.width / 2, labelBounds.y + style.textPadding);
+    // The caption is the layout's lines, one Text each, so the canvas and the export break and align alike.
+    const text = iconCardLayout(grown === 0 ? node : { ...node, size: { ...node.size, width: finalWidth! } }, style).text;
+    if (!text) return content;
+    const anchor = text.anchor === 'start' ? 0 : text.anchor === 'end' ? 1 : 0.5;
+    text.lines.forEach((line, index) => {
+      if (!line) return;
+      const title = this.texts.styled(line, style, ink, null);
+      title.anchor.set(anchor, 0);
+      title.position.set(text.x, text.top + index * text.lineHeight);
       content.addChild(title);
       decoratePixiText(content, title, style, ink);
-    }
+    });
+    // The sub-label wears the node's family at its own size and 1.2 leading, as the layout measured it.
+    const subStyle: NodeStyle = { ...style, ...SUBLABEL_FONT, lineHeight: text.subLineHeight / SUBLABEL_FONT.fontSize, textDecoration: 'none' };
+    const subInk = style.subTextColor ? pixiPaintColor(style.subTextColor, visual.subText).color : visual.subText;
+    text.subLines.forEach((line, index) => {
+      if (!line) return;
+      const sub = this.texts.styled(line, subStyle, subInk, null);
+      sub.anchor.set(anchor, 0);
+      sub.position.set(text.x, text.subTop + index * text.subLineHeight);
+      content.addChild(sub);
+    });
     return content;
   }
 
@@ -163,20 +194,21 @@ export class PixiArchitectureNodeRenderer {
     generation: number,
     matrix: Matrix2d,
     bounds: ReturnType<typeof createBounds2d>,
-    visual: PixiArchitectureNodeVisual
+    visual: PixiArchitectureNodeVisual,
+    ink: string | null
   ): void {
     const { icon } = visual.presentation;
     if (icon.kind !== 'provider' && icon.kind !== 'url') return;
+    const key = icon.kind === 'url' ? icon.url : `${icon.packId}/${icon.shapeId}`;
     this.mediaLayer.load({
       nodeId,
       generation,
       matrix,
       bounds,
-      cacheKey: icon.kind === 'url' ? icon.url : `${icon.packId}/${icon.shapeId}`,
+      cacheKey: ink ? `${key}#${ink}` : key,
       resolveUrl: async () => {
-        if (icon.kind === 'url') return icon.url;
-        const preview = await loadProviderShapePreview(icon.packId, icon.shapeId);
-        return preview?.previewUrl ?? null;
+        const url = icon.kind === 'url' ? icon.url : (await loadProviderShapePreview(icon.packId, icon.shapeId))?.previewUrl ?? null;
+        return url && ink ? inkedIconUrl(url, ink) : url;
       },
     });
   }

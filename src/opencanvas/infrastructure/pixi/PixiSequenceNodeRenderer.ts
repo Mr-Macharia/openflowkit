@@ -1,9 +1,10 @@
 import { Container, Graphics } from 'pixi.js';
 import { isJsonObject } from '../../domain/document/json';
 import type { SceneNode } from '../../domain/document/types';
-import { SEQUENCE_ACTIVATION_WIDTH } from '../../domain/nodes/sequenceNodePresentation';
+import { SEQUENCE_ACTIVATION_WIDTH, sequenceHeadShape } from '../../domain/nodes/sequenceNodePresentation';
 import { applyMatrixToPoint } from '../../domain/geometry/matrix';
 import type { Matrix2d, Point2d } from '../../domain/geometry/types';
+import { measurePortableText } from '../../domain/text/measurement';
 import type { PixiNodeDebugRecord } from './pixiNodeDebug';
 import { drawPixiLocalRect, drawPixiNodeOutline } from './pixiNodeOutline';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
@@ -15,7 +16,7 @@ const ACTOR_HEIGHT = 40;
 const MESSAGE_OFFSET = 44;
 const MESSAGE_SPACING = 52;
 
-export interface PixiSequenceNodeDrawResult {
+interface PixiSequenceNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }
@@ -77,13 +78,24 @@ export class PixiSequenceNodeRenderer {
     const presentation = visual.presentation;
     if (presentation.kind !== 'sequence_participant') throw new TypeError('Expected participant.');
     const actorOffset = presentation.participantKind === 'actor' ? ACTOR_HEIGHT : 0;
-    drawPixiLocalRect(
-      graphics,
-      { x: 0, y: actorOffset, width: node.size.width, height: PARTICIPANT_HEADER_HEIGHT },
-      matrix,
-      5
-    );
-    graphics.fill({ color: visual.fill }).stroke({ color: visual.stroke, width: 1.5 });
+    if (presentation.head === 'box') {
+      drawPixiLocalRect(
+        graphics,
+        { x: 0, y: actorOffset, width: node.size.width, height: PARTICIPANT_HEADER_HEIGHT },
+        matrix,
+        5
+      );
+      graphics.fill({ color: visual.fill }).stroke({ color: visual.stroke, width: 1.5 });
+    } else {
+      const shape = sequenceHeadShape(presentation.head, node.size.width);
+      const at = (point: Point2d) => applyMatrixToPoint(matrix, { x: point.x, y: point.y + actorOffset });
+      graphics.poly(shape.outline.map(at).flatMap((point) => [point.x, point.y]));
+      graphics.fill({ color: visual.fill }).stroke({ color: visual.stroke, width: 1.5 });
+      const rim = shape.rim.map(at);
+      graphics.moveTo(rim[0]!.x, rim[0]!.y);
+      for (const point of rim.slice(1)) graphics.lineTo(point.x, point.y);
+      graphics.stroke({ color: visual.stroke, width: 1.5 });
+    }
     const centerX = node.size.width / 2;
     const lifelineStart = actorOffset + PARTICIPANT_HEADER_HEIGHT;
     drawDashedLifeline(graphics, centerX, lifelineStart, node.size.height, matrix, visual.stroke);
@@ -132,9 +144,10 @@ export class PixiSequenceNodeRenderer {
       fill: visual.text,
     });
     title.anchor.set(0.5, 0.5);
+    // A cylinder's rim takes the top of the head and a queue's its right end; the name sits in the body.
     title.position.set(
-      centerX,
-      actorOffset + PARTICIPANT_HEADER_HEIGHT / 2 - (presentation.alias ? 6 : 0)
+      centerX - (presentation.head === 'queue' ? 6 : 0),
+      actorOffset + PARTICIPANT_HEADER_HEIGHT / 2 - (presentation.alias ? 6 : 0) + (presentation.head === 'cylinder' ? 6 : 0)
     );
     label.addChild(title);
     if (presentation.alias) {
@@ -177,8 +190,6 @@ export class PixiSequenceNodeRenderer {
     if (presentation.kind !== 'sequence_note') throw new TypeError('Expected sequence note.');
     drawPixiNodeOutline(graphics, 'rounded', node.size, matrix);
     graphics.fill({ color: visual.fill }).stroke({ color: visual.stroke, width: 1.25 });
-    drawPixiLocalRect(graphics, { x: 10, y: 10, width: 8, height: 8 }, matrix, 2);
-    graphics.fill({ color: visual.accentFill }).stroke({ color: visual.stroke, width: 1 });
     const label = new Container();
     const note = createPixiText(presentation.label, {
       size: 11,
@@ -186,7 +197,9 @@ export class PixiSequenceNodeRenderer {
       fill: visual.text,
       wrapWidth: Math.max(40, node.size.width - 24),
     });
-    note.position.set(12, 27);
+    // Centred top to bottom, as the export draws it (canonicalSvg sequence_note).
+    const measured = measurePortableText(presentation.label, { fontSize: 11, fontWeight: 500, maxWidth: Math.max(40, node.size.width - 24), overflow: 'wrap' });
+    note.position.set(12, Math.max(8, (node.size.height - measured.height) / 2));
     label.addChild(note);
     applyPixiNodeMatrix(label, matrix);
     return {
@@ -213,29 +226,42 @@ export class PixiSequenceNodeRenderer {
   ): PixiSequenceNodeDrawResult {
     const presentation = visual.presentation;
     if (presentation.kind !== 'sequence_fragment') throw new TypeError('Expected fragment.');
+    // One frame per block: an `else`/`and` branch opens on a dashed divider, and a branch the
+    // next one continues leaves its bottom edge to that divider.
     drawPixiNodeOutline(graphics, 'rectangle', node.size, matrix);
-    graphics.fill({ color: visual.fill, alpha: 0.3 }).stroke({ color: visual.stroke, width: 1.25 });
-    drawPixiLocalRect(
-      graphics,
-      { x: 0, y: 0, width: Math.min(72, node.size.width), height: 24 },
-      matrix
-    );
-    graphics.fill({ color: visual.accentFill }).stroke({ color: visual.stroke, width: 1 });
+    graphics.fill({ color: visual.fill, alpha: 0.3 });
+    const { width, height } = node.size;
+    drawLocalLine(graphics, { x: 0, y: 0 }, { x: 0, y: height }, matrix, visual.stroke, 1.25);
+    drawLocalLine(graphics, { x: width, y: 0 }, { x: width, y: height }, matrix, visual.stroke, 1.25);
+    if (!presentation.continued) drawLocalLine(graphics, { x: 0, y: height }, { x: width, y: height }, matrix, visual.stroke, 1.25);
+    if (presentation.divider) {
+      for (let x = 0; x < width; x += 10) drawLocalLine(graphics, { x, y: 0 }, { x: Math.min(x + 5, width), y: 0 }, matrix, visual.stroke, 1.25);
+    } else {
+      drawLocalLine(graphics, { x: 0, y: 0 }, { x: width, y: 0 }, matrix, visual.stroke, 1.25);
+      drawPixiLocalRect(
+        graphics,
+        { x: 0, y: 0, width: Math.min(72, width), height: 24 },
+        matrix
+      );
+      graphics.fill({ color: visual.accentFill }).stroke({ color: visual.stroke, width: 1 });
+    }
     const label = new Container();
-    const type = createPixiText(truncateTextToWidth(presentation.label, 60, 6.2), {
-      size: 10,
-      weight: '700',
-      fill: visual.text,
-    });
-    type.position.set(8, 6);
-    label.addChild(type);
+    if (!presentation.divider) {
+      const type = createPixiText(truncateTextToWidth(presentation.label, 60, 6.2), {
+        size: 10,
+        weight: '700',
+        fill: visual.text,
+      });
+      type.position.set(8, 6);
+      label.addChild(type);
+    }
     if (presentation.condition) {
       // The layout says where the guard fits between lifelines; without it, it follows the tag.
       const guard = node.content.seqGuard;
       const box = isJsonObject(guard) && typeof guard.x === 'number' && typeof guard.width === 'number'
         ? { x: guard.x, width: guard.width } : { x: 82, width: node.size.width - 92 };
       const condition = createPixiText(
-        truncateTextToWidth(presentation.condition, box.width, 6.2),
+        truncateTextToWidth(presentation.divider ? `[${presentation.condition}]` : presentation.condition, box.width, 6.2),
         { size: 10, weight: '500', fill: visual.subText }
       );
       condition.position.set(box.x, 6);

@@ -21,7 +21,7 @@ export const DEFAULT_NODE_SIZING_POLICY: NodeSizingPolicyV1 = {
   maxLines: 4,
 };
 
-export interface NodeSizingValidationResult {
+interface NodeSizingValidationResult {
   readonly success: boolean;
   readonly value: NodeSizingPolicyV1;
   readonly issues: readonly string[];

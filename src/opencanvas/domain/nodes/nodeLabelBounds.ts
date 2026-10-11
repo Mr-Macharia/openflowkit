@@ -12,11 +12,10 @@ import type { SceneIndex } from '../scene/types';
 import { getIndexedSceneObject } from '../scene/queries';
 import { FRAME_NAME_HEIGHT, FRAME_NAME_OFFSET, framePresetOf } from './framePreset';
 import { widgetLabelBox } from './widgetNodePresentation';
+import { iconCardChrome, iconCardLayout } from './iconCardLayout';
 
 /** Height of a container's title band; the frame boundary below it is the body. */
 export const CONTAINER_TITLE_HEIGHT = 40;
-/** Icon nodes: a 72px plate at the top, the label underneath. */
-export const ICON_PLATE_HEIGHT = 84;
 
 // How much of the box a shape's ink gives up to its own silhouette, as a
 // fraction per side. Pointy shapes keep text inside the wide part.
@@ -95,14 +94,38 @@ export function nodeLabelBounds(node: SceneNode): Bounds2d {
   const widget = widgetLabelBox(node);
   if (widget) return createBounds2d(widget.x, widget.y, widget.width, widget.height);
   const architecture = resolveArchitectureNodePresentation(node);
-  if (architecture?.display === 'provider-icon') {
-    return createBounds2d(0, ICON_PLATE_HEIGHT, width, Math.max(1, height - ICON_PLATE_HEIGHT));
-  }
+  if (architecture?.display === 'provider-icon') return iconCardLayout(node).labelBox;
   if (architecture) {
     return createBounds2d(0, 31, width, Math.max(1, height - 31));
   }
   const basic = resolveBasicNodePresentation(node);
   return insetBounds(node, (basic && SHAPE_LABEL_INSETS[basic.shape]) || FULL);
+}
+
+/**
+ * Where a container's visible text sits, node-local: its header words in the title band, and the sub-label
+ * (a C4 boundary's kind tag) at its foot. The words only, not the band, so a connector may cross the empty
+ * band but not read through a name. Nothing for a container that shows no header or names itself above its edge.
+ */
+export function containerTextBounds(node: SceneNode): Bounds2d[] {
+  const container = resolveContainerNodePresentation(node);
+  if (!container?.header || container.preset) return [];
+  const style = resolveNodeStyle(node);
+  const band = nodeLabelBounds(node);
+  const room = Math.max(1, band.width - style.textPadding * 2);
+  const words = measurePortableText(container.label, {
+    fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.fontSize * style.lineHeight, maxWidth: room, overflow: 'wrap',
+  });
+  const width = Math.min(room, words.width);
+  const left = style.textAlign === 'end' ? band.x + band.width - style.textPadding - width
+    : style.textAlign === 'center' ? band.x + (band.width - width) / 2 : band.x + style.textPadding;
+  const boxes = [createBounds2d(left, band.y + (band.height - words.height) / 2, width, words.height)];
+  if (container.subLabel) {
+    // The tag the renderers draw: 10px, 12px in, wrapped to the box.
+    const tag = measurePortableText(container.subLabel, { fontSize: 10, fontWeight: 500, maxWidth: Math.max(1, node.size.width - 24), overflow: 'wrap' });
+    boxes.push(createBounds2d(12, node.size.height - 22, tag.width, tag.height));
+  }
+  return boxes;
 }
 
 /**
@@ -142,6 +165,20 @@ export function nodeOutline(node: SceneNode): readonly Point2d[] {
   }
   const { width, height } = node.size;
   return boundsCorners(resolveArchitectureNodePresentation(node)?.display === 'provider-icon'
-    ? createBounds2d((width - 72) / 2, 4, 72, 72)
+    ? iconCardChrome(node)
     : createBounds2d(0, 0, width, height));
+}
+
+/**
+ * The box a connector end meets, node-local: an icon tile's plate down to its caption bottom (a downward edge
+ * must not cut through the caption), a row card's whole box, otherwise the painted silhouette's bounds.
+ */
+export function nodeConnectBounds(node: SceneNode): Bounds2d {
+  if (resolveArchitectureNodePresentation(node)?.display === 'provider-icon') return iconCardLayout(node).connect;
+  const points = nodeOutline(node);
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return createBounds2d(left, top, Math.max(...xs) - left, Math.max(...ys) - top);
 }

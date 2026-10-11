@@ -17,7 +17,7 @@ import {
 } from './motionSchedule';
 import type { MotionWorkerOut } from './motion.worker';
 
-export interface MotionEncodeRequest {
+interface MotionEncodeRequest {
   readonly document: SceneDocumentV1;
   readonly timeline: Timeline;
   readonly pageId: string;
@@ -32,7 +32,7 @@ export interface MotionEncodeRequest {
   readonly onProgress?: (done: number, total: number) => void;
 }
 
-export interface MotionEncodeResult {
+interface MotionEncodeResult {
   readonly filename: string;
   readonly mime: string;
   readonly bytes: Uint8Array;

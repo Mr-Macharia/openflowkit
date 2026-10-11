@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTestConnector } from '../opencanvas/testing/builders/documentBuilder';
-import { deterministicLayout, layoutEdges, type LayoutGraph } from './layout';
+import { CONTAINER_TITLE_HEIGHT } from '../opencanvas/domain/nodes/nodeLabelBounds';
+import { deterministicLayout, frameInsets, GROUP_INSETS, layoutEdges, type LayoutGraph } from './layout';
 
 const graph: LayoutGraph = {
   rootId: 'root',
@@ -59,5 +60,16 @@ describe('layoutEdges', () => {
     expect(long!.label!.width).toBeLessThanOrEqual(140 + 10 + 16 + 1);
     expect(long!.label!.height).toBeGreaterThan(short!.label!.height);
     expect(none).toEqual({ id: 'none', sourceId: 'a', targetId: 'b' });
+  });
+});
+
+describe('header insets', () => {
+  it('a titled frame clears its 40px header band by a gap; an untitled one keeps the plain padding', () => {
+    expect(frameInsets(true)).toEqual({ top: CONTAINER_TITLE_HEIGHT + 32, right: 28, bottom: 28, left: 28 });
+    expect(frameInsets(false)).toEqual({ top: 28, right: 28, bottom: 28, left: 28 });
+  });
+
+  it('a group clears its header band by a smaller gap', () => {
+    expect(GROUP_INSETS).toEqual({ top: CONTAINER_TITLE_HEIGHT + 14, right: 22, bottom: 22, left: 22 });
   });
 });

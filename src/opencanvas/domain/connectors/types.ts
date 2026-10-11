@@ -22,7 +22,7 @@ export type ConnectorMarkerGlyph =
   | 'cross'
   | 'crow-foot';
 
-export interface ConnectorLabelGeometry {
+interface ConnectorLabelGeometry {
   readonly id: string;
   readonly text: string;
   readonly point: Point2d;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectorMarkerShapes } from './markers';
+import { connectorMarkerShapes, markerOutward } from './markers';
 
 const endpoint = { x: 100, y: 100 };
 const outward = { x: 0, y: -1 };
@@ -40,7 +40,30 @@ describe('connector marker geometry', () => {
     expect(shape.subpaths[0]).toHaveLength(2);
   });
 
-  it('draws nothing for a glyph the exporter has no geometry for', () => {
-    expect(connectorMarkerShapes('crow-foot', endpoint, outward, 0)).toEqual([]);
+  // Found 2026-10-11 (U2-10): `o{` exported as a lone circle, so "zero or many" read as "zero or one".
+  it("draws a crow's foot as three prongs from a root on the line out to the endpoint", () => {
+    const root = { x: 100, y: 109 };
+    expect(connectorMarkerShapes('crow-foot', endpoint, outward, 0)).toEqual([{
+      kind: 'polygon', closed: false, filled: false, round: false,
+      subpaths: [[root, { x: 105, y: 100 }], [root, endpoint], [root, { x: 95, y: 100 }]],
+    }]);
+  });
+});
+
+// Found 2026-10-11 (U4-08): a route ending in a 1-3px jog turned the head along the jog: one sideways wing.
+describe('markerOutward', () => {
+  it('points along the line, skipping micro-segments at the end', () => {
+    const jog = [{ x: 0, y: 0 }, { x: 0, y: 200 }, { x: 3, y: 200 }, { x: 3, y: 202 }];
+    const target = markerOutward(jog, 'target');
+    expect(target.y).toBeGreaterThan(0.99);
+    expect(markerOutward([...jog].reverse(), 'source').y).toBeGreaterThan(0.99);
+    expect(markerOutward([{ x: 0, y: 0 }, { x: 0, y: 0 }], 'target')).toEqual({ x: 1, y: 0 });
+  });
+  it('keeps a real short stub: a 6px final segment still sets the direction', () => {
+    expect(markerOutward([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 6 }], 'target')).toEqual({ x: 0, y: 1 });
+    expect(markerOutward([{ x: 0, y: 0 }, { x: 0, y: 50 }], 'source')).toEqual({ x: 0, y: -1 });
+  });
+  it('a route shorter than the cut-off uses its whole chord', () => {
+    expect(markerOutward([{ x: 0, y: 0 }, { x: 2, y: 0 }], 'target')).toEqual({ x: 1, y: 0 });
   });
 });

@@ -138,8 +138,9 @@ describe('frame draw list', () => {
     const ops = frameDrawList(pageOf({ nodes: [a, b], connectors: [edge] }),
       frameOf({}, { 'a->b': { opacity: 1, scale: 1, drawProgress: 1, pulsePhase: 0.5 } }), 'light', VIEW_BOX);
     const [path] = paths(ops);
-    expect(path!.dash[0]! / path!.dash[1]!).toBeCloseTo(3 / 7);
-    expect(path!.dashOffset).toBeCloseTo(-75);
+    // Pixels, not a fraction of the path: every connector's light is the same size and speed.
+    expect(path!.dash).toEqual([8, 6]);
+    expect(path!.dashOffset).toBeCloseTo(-21);
   });
 
   it('draws markers with the shared glyph geometry', () => {
@@ -151,6 +152,17 @@ describe('frame draw list', () => {
     expect(markers).toHaveLength(1);
     expect(markers[0]!.commands).toHaveLength(3);
     expect(markers[0]!.lineJoin).toBe('round');
+  });
+
+  // Found 2026-10-11: a video frame drew a hollow circle unfilled, so the line showed through it.
+  it('fills a hollow marker with the page, as the canvas and the SVG do', () => {
+    const a = createTestNode('a', { transform: { ...createTestNode('x').transform, translation: { x: 0, y: 0 } } });
+    const b = createTestNode('b', { transform: { ...createTestNode('x').transform, translation: { x: 0, y: 200 } } });
+    const edge = createTestConnector('a->b', 'a', 'b', { appearance: { markerEnd: 'circle' } });
+    for (const [theme, page] of [['light', '#ffffff'], ['dark', '#191b19']] as const) {
+      const ops = frameDrawList(pageOf({ nodes: [a, b], connectors: [edge] }), frameOf(), theme, VIEW_BOX);
+      expect(ops.find((op) => op.kind === 'rect' && op.radius === 4 && op.width === 8)).toMatchObject({ fill: { color: page } });
+    }
   });
 
   it('skips hidden nodes and their connectors', () => {

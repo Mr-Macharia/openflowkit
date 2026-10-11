@@ -7,7 +7,7 @@ import type { DrawOp, DrawPaint } from '../../domain/animation/drawList';
 // pixels and calls the canvas. Used by the worker's OffscreenCanvas and by the
 // MediaRecorder fallback's real canvas, so both encode the same picture.
 
-export type FrameCanvas2d = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+type FrameCanvas2d = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 function trace(context: FrameCanvas2d, commands: readonly ConnectorPathCommand[]): void {
   for (const command of commands) {

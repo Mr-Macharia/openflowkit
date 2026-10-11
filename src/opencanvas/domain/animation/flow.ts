@@ -57,7 +57,7 @@ function pageShowingElement(
   return document?.pages.find((page) => nodeIdForElement(page, elementId)) ?? current;
 }
 
-export interface ResolvedFlowStep {
+interface ResolvedFlowStep {
   readonly nodeIds: readonly string[];
   readonly connectorIds: readonly string[];
   readonly targetPage: ScenePage | null;

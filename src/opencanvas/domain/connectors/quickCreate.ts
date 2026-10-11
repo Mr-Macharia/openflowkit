@@ -24,7 +24,7 @@ function sourceShapeKind(node: SceneNode): ShapeKind {
   return node.content.shape === 'ellipse' ? 'ellipse' : 'rectangle';
 }
 
-export interface QuickCreatePlan {
+interface QuickCreatePlan {
   /** New node: same kind and size, blank label. */
   readonly node: SceneNode;
   readonly connector: SceneConnector;

@@ -3,8 +3,8 @@ import type { Bounds2d, Point2d } from '../geometry/types';
 import { resolveNodeStyle, type NodeStyle } from '../nodes/nodeStyle';
 import { isDarkCanvas } from '../color/adaptiveColor';
 
-// Connector labels share the node style vocabulary (docs/plan/phase-1-style.md
-// §1) under `label*` appearance keys, so the renderer, the label editor and
+// Connector labels share the node style vocabulary (nodeStyle.ts) under
+// `label*` appearance keys, so the renderer, the label editor and
 // the style bar use one NodeStyle for both. `fill` is the label plate,
 // `stroke` its border.
 // Presentation resolves every connector every frame while dragging; the

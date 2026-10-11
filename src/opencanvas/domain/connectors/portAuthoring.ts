@@ -93,7 +93,7 @@ function isSidePortId(portId: string): portId is SidePort {
   return SIDE_PORT_IDS.includes(portId);
 }
 
-export interface PortEnsuring {
+interface PortEnsuring {
   readonly before: SceneNode;
   readonly after: SceneNode;
 }

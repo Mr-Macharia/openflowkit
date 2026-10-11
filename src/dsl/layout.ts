@@ -1,5 +1,6 @@
 import type { SceneConnector } from '../opencanvas/domain/document/types';
 import type { Point2d, Size2d } from '../opencanvas/domain/geometry/types';
+import { CONTAINER_TITLE_HEIGHT } from '../opencanvas/domain/nodes/nodeLabelBounds';
 import { measurePortableText } from '../opencanvas/domain/text/measurement';
 import type { DslDirection } from './ast';
 
@@ -9,6 +10,18 @@ export interface LayoutInsets {
   bottom: number;
   left: number;
 }
+
+/** Air between a container's 40px header band and its first child: a frame's title is bigger and sits on the page, a group's sits in its box. */
+const FRAME_HEADER_GAP = 32;
+const GROUP_HEADER_GAP = 14;
+
+/** A frame's content padding; with a title the content starts below the header band. */
+export function frameInsets(header: boolean): LayoutInsets {
+  return { top: header ? CONTAINER_TITLE_HEIGHT + FRAME_HEADER_GAP : 28, right: 28, bottom: 28, left: 28 };
+}
+
+/** A group's content padding: its header band is always drawn. */
+export const GROUP_INSETS: LayoutInsets = { top: CONTAINER_TITLE_HEIGHT + GROUP_HEADER_GAP, right: 22, bottom: 22, left: 22 };
 
 export interface LayoutNodeInput {
   id: string;

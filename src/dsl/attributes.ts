@@ -2,6 +2,7 @@ import type { DslAttribute, DslDiagnostic } from './ast';
 import { diagnostic, tokenDiagnostic } from './diagnostics';
 import type { CanonicalAttribute } from './sceneMeta';
 import { joinTokens } from './segments';
+import { quoted } from './text';
 import type { DslToken } from './tokenize';
 import {
   ATTRIBUTE_KEYS, COLOR_ALIASES, COLOR_WORDS, DIRECTIONS, EDGE_FLAG_WORDS, FILL_WORDS,
@@ -17,6 +18,8 @@ export interface TypedAttributes {
   color?: string;
   fill: 'pastel' | 'bold' | 'outline';
   icon?: string;
+  /** `iconpos: left` — an icon card with its icon beside the text. `top` is the default and never written. */
+  iconpos?: 'left';
   flags: Set<string>;
   head: string;
   tail: string;
@@ -29,7 +32,7 @@ export interface TypedAttributes {
 }
 
 /** Attributes kept in `metadata.dsl.attrs` because no scene property holds them. */
-export const NON_VISUAL_KEYS = new Set(['tech', 'desc', 'kind', 'tags', 'link', 'pin', 'rank', 'width', 'height', 'order']);
+const NON_VISUAL_KEYS = new Set(['tech', 'desc', 'kind', 'tags', 'link', 'pin', 'rank', 'width', 'height', 'order']);
 
 // Derived from the vocabulary tables so a new shape or colour word can never
 // ship without its attribute spelling being recognised (W131 would hide it).
@@ -79,6 +82,7 @@ export function readAttributes(tokens: readonly DslToken[], diagnostics: DslDiag
       || (!key && (KNOWN_ATTRIBUTE_WORDS.has(value.toLowerCase()) || isHexColor(value)
         || canonicalShapeWord(value) !== undefined || canonicalColorWord(value) !== undefined || isIconWord(value)));
     if (!known) diagnostics.push(tokenDiagnostic('W131', 'warning', first, `Unknown attribute ${key ?? value}; kept verbatim`));
+    else if (key?.toLowerCase() === 'iconpos' && !['top', 'left'].includes(value.toLowerCase())) diagnostics.push(tokenDiagnostic('W131', 'warning', first, 'iconpos takes top or left; top used', 'iconpos: left'));
     attributes.push({ ...(key ? { key } : {}), value, line: first.line, col: first.col, endCol: last.endCol });
     part = [];
   };
@@ -87,7 +91,28 @@ export function readAttributes(tokens: readonly DslToken[], diagnostics: DslDiag
     else part.push(token);
   }
   commit();
-  return { body: [...tokens.slice(0, start), ...tokens.slice(end + 1)], attributes };
+  // One list per name (§5): a second `[ ]` right after the first is not read. Said, with the merged list as the fix.
+  let after = end + 1;
+  const lists = [tokens.slice(start + 1, end)];
+  while (tokens[after]?.value === '[') {
+    const close = tokens.findIndex((token, index) => index > after && token.value === ']');
+    if (close < 0) break;
+    lists.push(tokens.slice(after + 1, close));
+    after = close + 1;
+  }
+  if (lists.length > 1) {
+    diagnostics.push(tokenDiagnostic('W101', 'warning', tokens[end + 1], 'A second [ ] list after a name is not read; list dropped',
+      `merge into one [ ] list: [${lists.map(listText).join(', ')}]`));
+  }
+  return { body: [...tokens.slice(0, start), ...tokens.slice(after)], attributes };
+}
+
+/** A list's items as written: `pin: "228,28"`, `blue`. */
+function listText(tokens: readonly DslToken[]): string {
+  return tokens.reduce((text, token, index) => {
+    const value = token.kind === 'string' ? quoted(token.value) : token.value;
+    return index === 0 ? value : value === ':' || value === ',' ? `${text}${value}` : `${text} ${value}`;
+  }, '');
 }
 
 export function finite(value: string | undefined): number | undefined {
@@ -142,6 +167,7 @@ export function typedFrom(entries: readonly CanonicalAttribute[]): TypedAttribut
     ...(color ? { color: color.toLowerCase() } : {}),
     fill: FILL_WORDS.has(fill ?? '') ? fill as TypedAttributes['fill'] : 'pastel',
     ...(slot('icon') ? { icon: slot('icon')! } : {}),
+    ...(slot('key:iconpos')?.toLowerCase() === 'left' ? { iconpos: 'left' as const } : {}),
     flags: new Set(entries.filter((entry) => !entry.key && (EDGE_FLAG_WORDS.has(entry.value) || entry.value === 'shadow')).map((entry) => entry.value)),
     head: head && ['arrow', 'circle', 'cross', 'diamond', 'none'].includes(head) ? head : 'arrow',
     tail: tail && ['arrow', 'circle', 'cross', 'diamond', 'none'].includes(tail) ? tail : 'none',
@@ -157,6 +183,8 @@ export function typedFrom(entries: readonly CanonicalAttribute[]): TypedAttribut
 /** Attributes the serializer re-emits from metadata because no scene property holds them. */
 export function nonVisualAttributes(typed: TypedAttributes, context: 'node' | 'edge'): CanonicalAttribute[] {
   return typed.entries.filter((entry) => {
+    // A value the layout does not read is kept as written, like any attribute the scene has no property for.
+    if (entry.key === 'iconpos') return !['top', 'left'].includes(entry.value.toLowerCase());
     if (entry.key) return NON_VISUAL_KEYS.has(entry.key) || !ATTRIBUTE_KEYS.has(entry.key);
     if (canonicalShapeWord(entry.value) || canonicalColorWord(entry.value) || isHexColor(entry.value)) return false;
     if (FILL_WORDS.has(entry.value) || entry.value === 'shadow' || entry.value === 'dashed' || entry.value === 'thick' || entry.value === 'invisible') return false;

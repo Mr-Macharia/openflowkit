@@ -3,7 +3,7 @@ import type { SceneDocumentV1 } from '../../domain/document/types';
 import { projectPageConnectors } from '../../domain/connectors/routeProjection';
 import { cameraFitMatrix } from '../../domain/animation/camera';
 import {
-  DRAW_MS, GLIDE_MS, PULSE_DASH, PULSE_MS, REVEAL_MS, STORYBOARD_DIM,
+  DRAW_MS, GLIDE_MS, PULSE_DASH, PULSE_MS, PULSE_TRAVEL, REVEAL_MS, STORYBOARD_DIM,
   frameAt, stepRuns, stepWindows, timelineDuration,
 } from '../../domain/animation/frame';
 import type { Timeline } from '../../domain/animation/types';
@@ -31,7 +31,7 @@ const CAMERA_SAMPLE_MS = 40;
 /** Percent-point nudge that turns a value change into a cut. */
 const CUT = 0.001;
 
-export interface AnimatedSvgOptions {
+interface AnimatedSvgOptions {
   readonly pageId?: string;
   readonly theme?: 'light' | 'dark' | 'print';
   readonly padding?: number;
@@ -145,7 +145,7 @@ function planBuild(
     stop(fade, ((window.start + REVEAL_MS) / durationMs) * 100, shown);
     stop(fade, 100, shown);
     css.push(keyframes(name, fade));
-    let path: (CssAnimation & { readonly dash: string }) | undefined;
+    let path: ElementAnimations['path'];
     if (kind === 'connector' && !dashed.has(id)) {
       // ponytail: draw-on needs a unit dash, so only solid connectors draw;
       // dashed ones fade in (a unit dash would flatten their pattern mid-draw)
@@ -155,7 +155,7 @@ function planBuild(
       stop(draw, start, `stroke-dashoffset:1;animation-timing-function:${EASE}`);
       stop(draw, ((window.start + DRAW_MS) / durationMs) * 100, 'stroke-dashoffset:0');
       stop(draw, 100, 'stroke-dashoffset:0');
-      path = { ...clipAnimation(`${name}-draw`, clip), dash: '1' };
+      path = { ...clipAnimation(`${name}-draw`, clip), dash: '1', unitLength: true };
       css.push(keyframes(path.name, draw));
     }
     elements.set(key, { group: clipAnimation(name, clip), ...(path ? { path } : {}) });
@@ -252,14 +252,14 @@ function planCamera(
 
 function planPulse(timeline: Timeline, clip: ClipSettings): Planned {
   const elements = new Map<string, ElementAnimations>();
-  const css = [keyframes('ofk-pulse', new Map([['0', 'stroke-dashoffset:0'], ['100', 'stroke-dashoffset:-1']]))];
+  const css = [keyframes('ofk-pulse', new Map([['0', 'stroke-dashoffset:0'], ['100', `stroke-dashoffset:-${PULSE_TRAVEL}`]]))];
   const order = new Set<string>();
   timeline.steps.forEach((step) => step.connectorIds.forEach((id) => order.add(id)));
   [...order].forEach((id, index) => {
     elements.set(`connector:${id}`, {
       path: {
         name: 'ofk-pulse', durationMs: PULSE_MS, delayMs: -index * 0.25 * PULSE_MS - clip.seekMs,
-        iterationCount: 'infinite', fill: 'none', timing: 'linear', dash: PULSE_DASH,
+        iterationCount: 'infinite', fill: 'none', timing: 'linear', dash: PULSE_DASH.join(' '),
       },
     });
   });

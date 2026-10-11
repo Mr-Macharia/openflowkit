@@ -1,19 +1,19 @@
 // SVG → PNG via the platform rasterizer. The SVG is self-contained (see
 // canonicalSvg), so an <img> decode plus a canvas is enough; no library.
 
-export interface RasterizeOptions {
+interface RasterizeOptions {
   /** Integer CSS-pixel multiplier; the SVG's own width/height are already 1x. */
   readonly scale?: number;
   /** Painted behind the artwork; omit for transparency. */
   readonly background?: string;
 }
 
-export interface SvgSize {
+interface SvgSize {
   readonly width: number;
   readonly height: number;
 }
 
-export function svgIntrinsicSize(svg: string): SvgSize {
+function svgIntrinsicSize(svg: string): SvgSize {
   const width = Number(/\bwidth="([\d.]+)"/.exec(svg)?.[1]);
   const height = Number(/\bheight="([\d.]+)"/.exec(svg)?.[1]);
   const viewBox = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(svg);

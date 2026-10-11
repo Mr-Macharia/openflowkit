@@ -5,7 +5,7 @@ import { connectorLabelLineHeight, connectorLabelLines, connectorLabelPlate } fr
 import { projectPageConnectors } from '../../domain/connectors/routeProjection';
 import { compile } from '../../../dsl/compile';
 import { iconContent } from '../../domain/nodes/iconNode';
-import { architectureIconBounds } from '../../domain/nodes/architectureNodePresentation';
+import { architectureIconBounds } from '../../domain/nodes/iconCardLayout';
 import { createPresetFrame } from '../../domain/nodes/framePreset';
 import { createWidgetNode } from '../../domain/nodes/widgetNode';
 
@@ -119,6 +119,31 @@ describe('canonical SVG export', () => {
     // No art loaded (headless, or a failed fetch): the plate alone, never a broken link.
     expect(exportCanonicalSvg(document)).not.toContain('<image');
     expect(exportCanonicalSvg(document, { iconArt: {} })).not.toContain('<image');
+  });
+
+  it('draws an icon tile caption as the layout breaks it: a tspan per line, then the description', () => {
+    const node = createTestNode('db', {
+      kind: 'architecture', size: { width: 148, height: 130 },
+      content: { label: 'Primary\ndatabase', subLabel: 'postgres 16', ...iconContent({ provider: 'developer', packId: 'developer-icons-v1', shapeId: 'database-postgresql', label: 'Postgres' }) },
+    });
+    const svg = exportCanonicalSvg(createTestDocument({ nodes: [node] }));
+    // Line height 14.4 from the top at 88: the middles sit at 95.2 and 109.6; the description's line starts under them.
+    expect(svg).toContain('<tspan x="74" y="95.2">Primary</tspan><tspan x="74" y="109.6">database</tspan>');
+    expect(svg).toMatch(/<tspan x="74" y="[\d.]+">postgres 16<\/tspan>/);
+  });
+
+  // Found 2026-10-11: a Tabler or Kafka icon (one dark ink) vanished on a dark export's dark plate.
+  it('draws a one-colour dark icon in the label ink on a dark plate, and as authored on a light one', () => {
+    const node = createTestNode('queue', {
+      kind: 'architecture', size: { width: 148, height: 116 },
+      content: { label: 'Kafka', ...iconContent({ provider: 'developer', packId: 'developer-icons-v1', shapeId: 'kafka', label: 'Kafka' }) },
+    });
+    const document = createTestDocument({ nodes: [node] });
+    const art = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#334155"><path d="M1 1"/></svg>')}`;
+    const href = (theme: 'light' | 'dark') => decodeURIComponent(
+      /<image href="data:image\/svg\+xml;charset=utf-8,([^"]+)"/.exec(exportCanonicalSvg(document, { theme, iconArt: { [iconArtKey('developer-icons-v1', 'kafka')]: art } }))![1]!);
+    expect(href('light')).toContain('stroke="#334155"');
+    expect(href('dark')).toContain('stroke="#ffffff"');
   });
 
   it('draws a connector label where the projection puts it, wrapped like the canvas', () => {

@@ -8,7 +8,7 @@ import { SVG_BACKGROUND } from './canonicalSvg';
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
-export interface PrintDocumentOptions {
+interface PrintDocumentOptions {
   /** Page orientation; diagrams are usually wider than tall. */
   readonly landscape?: boolean;
   /** The sheet takes the export's own background, so a dark export has no white margins. */

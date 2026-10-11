@@ -6,6 +6,8 @@ import {
 } from '../../testing/builders/documentBuilder';
 import type { JsonObject } from '../document/json';
 import { intersectsBounds } from '../geometry/bounds';
+import type { Bounds2d, Point2d } from '../geometry/types';
+import { containerTextBounds } from '../nodes/nodeLabelBounds';
 import { nodeWorldBounds, buildNodeWorldMatrices } from '../scene/worldGeometry';
 import { connectorLabelPlate } from './labelStyle';
 import { clearLabelPoint, projectConnector, projectPageConnectors } from './routeProjection';
@@ -208,6 +210,65 @@ describe('connector route projection', () => {
     expect(projectConnector(page, connector)!.samples.at(-1)).toEqual({ x: 338, y: 40 });
   });
 
+  // Issue #68: an edge into the bottom of an icon tile ended in the empty band under its caption, and a
+  // side or straight edge ended beside the plate. Every end now meets what is painted.
+  describe('icon tile connect ends', () => {
+    const tile = (content: Record<string, unknown>, height = 115) => createTestNode('icon', {
+      kind: 'architecture', transform: at(0, 300), size: { width: 148, height: height },
+      content: { assetPresentation: 'icon', icon: 'stripe', ...content },
+    });
+    // Below the tile, 100 wide and centred on its middle (x 74): the edge comes straight up into its bottom.
+    const below = createTestNode('source', { transform: at(24, 600) });
+    const project = (target: ReturnType<typeof tile>, source = below, overrides: Partial<ReturnType<typeof createTestConnector>> = {}) => {
+      const connector = createTestConnector('edge', source.id, 'icon', { route: { kind: 'orthogonal', ownership: 'automatic' }, ...overrides });
+      const page = { ...createTestDocument({ nodes: [source, target] }).pages[0]!, connectors: [connector] };
+      return projectConnector(page, connector)!.samples.at(-1)!;
+    };
+
+    it('ends at the caption bottom, not the box bottom', () => {
+      // Caption top 88, one 14.4 line, 4 padding.
+      expect(project(tile({ label: 'Stripe' })).y).toBeCloseTo(300 + 106.4, 5);
+    });
+
+    it('does not follow a taller box', () => {
+      expect(project(tile({ label: 'Stripe' }, 200)).y).toBeCloseTo(300 + 106.4, 5);
+    });
+
+    it('ends at the plate bottom when there is no caption', () => {
+      expect(project(tile({ label: '' })).y).toBe(300 + 76);
+    });
+
+    it('follows a caption that takes two lines', () => {
+      expect(project(tile({ label: 'one\ntwo' }, 130)).y).toBeCloseTo(300 + 88 + 28.8 + 4, 5);
+    });
+
+    it('meets a side anchor at the plate, not the box edge', () => {
+      const left = createTestNode('source', { transform: at(-300, 300) });
+      const target = tile({ label: 'Stripe' });
+      const anchored = { target: { nodeId: 'icon', portId: null, anchor: { kind: 'side' as const, side: 'left' as const, ratio: 0.5 }, point: null } };
+      expect(project(target, left, anchored).x).toBe(38);
+    });
+
+    it('meets a straight route from the left at the plate', () => {
+      const left = createTestNode('source', { transform: at(-300, 330) });
+      expect(project(tile({ label: 'Stripe' }), left, { route: { kind: 'direct', ownership: 'automatic' } }).x).toBeCloseTo(38, 5);
+    });
+
+    it('meets a straight route from the right at the plate even under a tall caption', () => {
+      const right = createTestNode('source', { transform: at(500, 300) });
+      const tall = tile({ label: 'one\ntwo', subLabel: 'three\nfour' }, 152);
+      // The plate spans y 4 to 76; a ray aimed at the middle of plate and caption would land below it.
+      const end = project(tall, right, { route: { kind: 'direct', ownership: 'automatic' } });
+      expect(end.y).toBeLessThanOrEqual(300 + 76);
+      expect(end.x).toBeCloseTo(110, 5);
+    });
+
+    it.each(['star', 'venn'])('ends a %s on its outline, not the box bottom', (shape) => {
+      const target = createTestNode('icon', { transform: at(0, 300), size: { width: 100, height: 100 }, content: { label: 'X', shape } });
+      expect(project(target as ReturnType<typeof tile>, createTestNode('source', { transform: at(0, 600) })).y).toBeLessThan(400);
+    });
+  });
+
   it('staggers where a fan-out turns so its edges neither share a run nor cross', () => {
     const nodes = [
       createTestNode('hub', { transform: at(0, 0) }),
@@ -233,6 +294,62 @@ describe('connector route projection', () => {
     for (const one of segments(routes[0]!)) for (const other of segments(routes[1]!)) expect(crosses(one, other)).toBe(false);
   });
 
+  // 2026-10-11: the docs flowchart's "no" and "rework" ends floated 19 px under the diamond's slanted edges.
+  it('meets a side anchor on a diamond at its outline, not the box around it', () => {
+    const at = (x: number, y: number) => ({ translation: { x, y }, rotationRadians: 0, scale: { x: 1, y: 1 } });
+    const nodes = [
+      createTestNode('check', { transform: at(0, 0), size: { width: 160, height: 100 }, content: { label: 'check', shape: 'diamond' } }),
+      createTestNode('fix', { transform: at(0, 300), size: { width: 160, height: 60 } }),
+    ];
+    const connectors = [createTestConnector('no', 'check', 'fix', {
+      route: { kind: 'orthogonal', ownership: 'automatic' },
+      source: { nodeId: 'check', portId: null, point: null, anchor: { kind: 'side', side: 'bottom', ratio: 0.3 } },
+    })];
+    const page = { ...createTestDocument({ nodes }).pages[0], connectors };
+    const start = projectPageConnectors(page)[0]!.samples[0]!;
+    // 30% across a 160×100 diamond is x = 48; its lower-left edge runs from (0, 50) to (80, 100), so y = 80.
+    expect(start.x).toBeCloseTo(48, 5);
+    expect(start.y).toBeCloseTo(80, 5);
+  });
+
+  it('gives three ends on a diamond\'s bottom side their own runs: no two connectors share a collinear stretch', () => {
+    const at = (x: number, y: number) => ({ translation: { x, y }, rotationRadians: 0, scale: { x: 1, y: 1 } });
+    const nodes = [
+      createTestNode('check', { transform: at(209, 348), size: { width: 156, height: 96 }, content: { label: 'check', shape: 'diamond' } }),
+      createTestNode('ship', { transform: at(188, 600), size: { width: 120, height: 52 } }),
+      createTestNode('fix', { kind: 'sticky', transform: at(356, 600), size: { width: 180, height: 100 } }),
+    ];
+    const auto = { route: { kind: 'orthogonal', ownership: 'automatic' } } as const;
+    const connectors = [
+      createTestConnector('yes', 'check', 'ship', auto),
+      // The DSL anchors a pair of opposite edges at 30% and 70% of the facing sides.
+      createTestConnector('no', 'check', 'fix', { ...auto, source: { nodeId: 'check', portId: null, point: null, anchor: { kind: 'side', side: 'bottom', ratio: 0.3 } }, target: { nodeId: 'fix', portId: null, point: null, anchor: { kind: 'side', side: 'top', ratio: 0.3 } } }),
+      createTestConnector('rework', 'fix', 'check', { ...auto, source: { nodeId: 'fix', portId: null, point: null, anchor: { kind: 'side', side: 'top', ratio: 0.7 } }, target: { nodeId: 'check', portId: null, point: null, anchor: { kind: 'side', side: 'bottom', ratio: 0.7 } } }),
+    ];
+    const page = { ...createTestDocument({ nodes }).pages[0], connectors };
+    // What is drawn: the path commands.
+    const routes = projectPageConnectors(page).map((edge) => edge.commands.map((command) => command.point));
+    // Longest stretch two segments (of different routes) lie on one line together.
+    const shared = (a: readonly Point2d[], b: readonly Point2d[]) => {
+      let longest = 0;
+      for (let i = 1; i < a.length; i += 1) {
+        for (let j = 1; j < b.length; j += 1) {
+          const horizontal = a[i]!.y === a[i - 1]!.y && b[j]!.y === b[j - 1]!.y && a[i]!.y === b[j]!.y;
+          const vertical = a[i]!.x === a[i - 1]!.x && b[j]!.x === b[j - 1]!.x && a[i]!.x === b[j]!.x;
+          const axis = horizontal ? 'x' : vertical ? 'y' : null;
+          if (!axis) continue;
+          const low = Math.max(Math.min(a[i]![axis], a[i - 1]![axis]), Math.min(b[j]![axis], b[j - 1]![axis]));
+          const high = Math.min(Math.max(a[i]![axis], a[i - 1]![axis]), Math.max(b[j]![axis], b[j - 1]![axis]));
+          longest = Math.max(longest, high - low);
+        }
+      }
+      return longest;
+    };
+    for (let i = 0; i < routes.length; i += 1) {
+      for (let j = i + 1; j < routes.length; j += 1) expect(shared(routes[i]!, routes[j]!)).toBeLessThanOrEqual(2);
+    }
+  });
+
   it('moves a label off a node to the longest run where it sits clear', () => {
     const route = [{ x: 0, y: 0 }, { x: 0, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 200 }];
     const plate = (text: string, point: { x: number; y: number }) => ({ x: point.x - 20, y: point.y - 10, width: 40, height: 20 });
@@ -242,6 +359,17 @@ describe('connector route projection', () => {
     expect(clearLabelPoint('yes', 0.5, route, [], plate)).toEqual({ x: 100, y: 100 });
     // Nowhere clear: the asked-for point, not a guess.
     expect(clearLabelPoint('yes', 0.5, route, [{ x: -50, y: -50, width: 300, height: 300 }], plate)).toEqual({ x: 100, y: 100 });
+  });
+
+  it('keeps a label off another connector\'s line, sliding along its own route', () => {
+    const route = [{ x: 0, y: 0 }, { x: 200, y: 0 }];
+    const other = [{ x: 100, y: -50 }, { x: 100, y: 50 }];
+    const plate = (_text: string, point: { x: number; y: number }) => ({ x: point.x - 20, y: point.y - 10, width: 40, height: 20 });
+    const point = clearLabelPoint('yes', 0.5, route, [], plate, [other])!;
+    expect(point.y).toBe(0);
+    expect(Math.abs(point.x - 100)).toBeGreaterThanOrEqual(20);
+    // Clear where it was asked for: it stays.
+    expect(clearLabelPoint('yes', 0.5, route, [], plate, [[{ x: 100, y: 40 }, { x: 100, y: 90 }]])).toEqual({ x: 100, y: 0 });
   });
 
   it('steps a label off the line when no point along the route is clear', () => {
@@ -542,5 +670,84 @@ describe('connector route projection', () => {
     expect(projected.samples[0].x).toBeCloseTo(200, 4);
     expect(projected.samples[0].y).toBeCloseTo(100, 4);
     expect(projected.samples[1]).toEqual({ x: 400, y: 100 });
+  });
+});
+
+describe('connectors and container headers', () => {
+  const at = (x: number, y: number) => ({ translation: { x, y }, rotationRadians: 0, scale: { x: 1, y: 1 } });
+  const orthogonal = { route: { kind: 'orthogonal', ownership: 'automatic' } } as const;
+  const node = (id: string, x: number, y: number, extra: Record<string, unknown> = {}) =>
+    createTestNode(id, { transform: at(x, y), size: { width: 120, height: 52 }, ...extra });
+
+  /** Every container's header text and tag, world-space. */
+  function headerText(page: ReturnType<typeof createTestDocument>['pages'][number]): Bounds2d[] {
+    const matrices = buildNodeWorldMatrices(page);
+    return page.nodes.flatMap((container) => containerTextBounds(container).map((box) => {
+      const origin = matrices.get(container.id)!;
+      return { x: box.x + origin.tx, y: box.y + origin.ty, width: box.width, height: box.height };
+    }));
+  }
+  const crosses = (route: readonly Point2d[], box: Bounds2d) => route.slice(1).some((to, index) => {
+    const from = route[index]!;
+    return Math.max(from.x, to.x) > box.x && Math.min(from.x, to.x) < box.x + box.width
+      && Math.max(from.y, to.y) > box.y && Math.min(from.y, to.y) < box.y + box.height;
+  });
+  const grouped = (label: string, children = 'pick', sourceY = 0, width = 164) => [
+    node('payment', 22, sourceY),
+    createTestNode('fulfilment', { kind: 'group', transform: at(0, 200), size: { width, height: 134 }, content: { label } }),
+    node(children, 22, 54, { parentId: 'fulfilment' }),
+  ];
+  const pageOf = (nodes: ReturnType<typeof grouped>, connectors = [createTestConnector('e', 'payment', 'pick', orthogonal)]) =>
+    ({ ...createTestDocument({ nodes }).pages[0]!, connectors });
+
+  it('enters a group node past the group name, in one straight run', () => {
+    const page = pageOf(grouped('Fulfilment'));
+    const route = projectPageConnectors(page)[0]!.samples;
+    for (const box of headerText(page)) expect(crosses(route, box)).toBe(false);
+    const [from, to] = route.slice(-2) as [Point2d, Point2d];
+    expect(from.x).toBe(to.x);
+    expect(to.y).toBeGreaterThan(from.y);
+    // The text is one band's worth of words; the run clears it instead of going round.
+    expect(route.length).toBeLessThanOrEqual(4);
+  });
+
+  it('still clears a name wider than the node it holds', () => {
+    const page = pageOf(grouped('Fulfilment and shipping operations for every region', 'pick', 0, 400));
+    const route = projectPageConnectors(page)[0]!.samples;
+    expect(headerText(page)).toHaveLength(1);
+    for (const box of headerText(page)) expect(crosses(route, box)).toBe(false);
+    // Nowhere along the node's top is clear of the words: the route goes round them and still arrives on the top.
+    expect(route.at(-1)!.y).toBeGreaterThan(headerText(page)[0]!.y + headerText(page)[0]!.height);
+  });
+
+  it('keeps a label plate off the group name', () => {
+    // The source sits so the middle of the run lands on the name.
+    const page = pageOf(grouped('Fulfilment', 'pick', 134), [createTestConnector('e', 'payment', 'pick', {
+      ...orthogonal, labels: [{ id: 'l', text: 'ships', pathRatio: 0.5, offset: { x: 0, y: 0 }, metadata: {} }],
+    })]);
+    const [projected] = projectPageConnectors(page);
+    const plate = connectorLabelPlate('ships', projected!.presentation.label, projected!.labels[0]!.point);
+    for (const box of headerText(page)) expect(intersectsBounds(box, plate)).toBe(false);
+  });
+
+  it('leaves the spread of a fan-in alone: three ends on one side keep their own entries', () => {
+    const nodes = [
+      node('a', 0, 0), node('b', 150, 0), node('c', 300, 0),
+      createTestNode('fulfilment', { kind: 'group', transform: at(100, 200), size: { width: 164, height: 134 }, content: { label: 'Fulfilment' } }),
+      node('pick', 122, 254, { parentId: 'fulfilment' }),
+    ];
+    const connectors = ['a', 'b', 'c'].map((id) => createTestConnector(`e-${id}`, id, 'pick', orthogonal));
+    const page = { ...createTestDocument({ nodes }).pages[0]!, connectors };
+    const entries = projectPageConnectors(page).map((edge) => edge.samples.at(-1)!.x);
+    expect(new Set(entries).size).toBe(3);
+    expect([...entries]).toEqual([...entries].sort((x, y) => x - y));
+  });
+
+  it('does not steer a manual route', () => {
+    const page = pageOf(grouped('Fulfilment'), [createTestConnector('e', 'payment', 'pick', {
+      route: { kind: 'orthogonal', ownership: 'manual' }, waypoints: [{ x: 82, y: 120 }],
+    })]);
+    const route = projectPageConnectors(page)[0]!.samples;
+    expect(route.at(-1)!.x).toBe(82);
   });
 });

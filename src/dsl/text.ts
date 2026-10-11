@@ -1,3 +1,4 @@
+import { isJsonObject } from '../opencanvas/domain/document/json';
 import type { SceneConnector, SceneNode } from '../opencanvas/domain/document/types';
 import {
   paletteKeyForFillIn, paletteKeyForStrokeIn, paletteSwatch, type SwatchResolver,
@@ -106,6 +107,8 @@ export function nodeAttributes(node: SceneNode, swatchOf: SwatchResolver = palet
   // An inferred icon is the compiler's, not the author's: the text stays as written.
   const icon = shown && shown !== meta.autoIcon ? shown : meta.icon;
   if (icon) entries.push(isIconWord(icon) ? { value: icon } : { key: 'icon', value: icon });
+  // Only an icon card has a placement; `top` is the default and never written.
+  if (node.content.assetPresentation === 'icon' && isJsonObject(node.content.contentLayout) && node.content.contentLayout.iconPlacement === 'left') entries.push({ key: 'iconpos', value: 'left' });
   const label = nodeLabel(node);
   if (label !== nodeReference(node)) entries.push({ key: 'label', value: label });
   entries.push(...(meta.attrs ?? []));
@@ -125,7 +128,7 @@ export function commentLines(comments: readonly string[] | undefined, indent: st
   return (comments ?? []).map((text) => `${indent}//${text ? ` ${text}` : ''}`);
 }
 
-export function nodeOrder(node: SceneNode): readonly [number, number, number, string] {
+function nodeOrder(node: SceneNode): readonly [number, number, number, string] {
   const line = dslNodeMeta(node).line;
   return [line === Number.MAX_SAFE_INTEGER ? 1 : 0, line, node.transform.translation.y * 1000 + node.transform.translation.x, node.id];
 }
@@ -136,7 +139,7 @@ export function compareNodes(a: SceneNode, b: SceneNode): number {
   return left[0] - right[0] || left[1] - right[1] || left[2] - right[2] || left[3].localeCompare(right[3]);
 }
 
-export type MarkerName = 'arrow' | 'circle' | 'cross' | 'diamond';
+type MarkerName = 'arrow' | 'circle' | 'cross' | 'diamond';
 
 export function markerName(value: unknown): MarkerName | undefined {
   if (typeof value === 'string') {
@@ -160,7 +163,7 @@ export function connectorDashed(connector: SceneConnector): boolean {
 }
 
 /** `from:`/`to:` sides written by compile; the router honours matching anchors. */
-export function sideOf(endpoint: SceneConnector['source']): string | undefined {
+function sideOf(endpoint: SceneConnector['source']): string | undefined {
   return endpoint.anchor && endpoint.anchor.kind === 'side' && endpoint.anchor.ratio === 0.5 ? endpoint.anchor.side : undefined;
 }
 

@@ -49,6 +49,17 @@ describe('animated SVG', () => {
     expect(frame).not.toContain('ofk-anim');
   });
 
+  // 2026-10-11: a connector's draw-on ran on a path without the class, so reduced motion kept it drawing.
+  it('marks every animated element, so reduced motion stops all of it', async () => {
+    const document = await fixtureDocument();
+    for (const preset of ['build', 'walkthrough', 'pulse'] as const) {
+      const svg = exportAnimatedSvg(document, autoSequence(document.pages[0]!, preset));
+      const animated = [...svg.matchAll(/<[a-z]+\b[^>]*style="[^"]*animation:[^>]*>/g)].map(([tag]) => tag);
+      expect(animated.length).toBeGreaterThan(0);
+      expect(animated.filter((tag) => !tag.includes('class="ofk-anim"'))).toEqual([]);
+    }
+  });
+
   it('only walkthrough animates the camera', async () => {
     const document = await fixtureDocument();
     const page = document.pages[0]!;
@@ -62,7 +73,20 @@ describe('animated SVG', () => {
     const svg = exportAnimatedSvg(document, autoSequence(document.pages[0]!, 'pulse'));
     expect(svg).toContain('animation:ofk-pulse 1200ms linear');
     expect(svg).toContain('infinite none');
-    expect(svg).toContain('stroke-dasharray="0.03 0.07"');
+    expect(svg).toContain('stroke-dasharray="8 6"');
+  });
+
+  // 2026-10-11: the dash was a fraction of each path, so long connectors raced with long dashes and short ones crawled with dots.
+  it('rides the same pixel dash at the same speed on every connector in pulse', async () => {
+    const document = await fixtureDocument();
+    const svg = exportAnimatedSvg(document, autoSequence(document.pages[0]!, 'pulse'));
+    const pulsed = [...svg.matchAll(/<path\b[^>]*animation:ofk-pulse[^>]*>/g)].map(([tag]) => tag);
+    expect(pulsed.length).toBeGreaterThan(0);
+    for (const tag of pulsed) {
+      expect(tag).toContain('stroke-dasharray="8 6"');
+      expect(tag).not.toContain('pathLength');
+    }
+    expect(svg).toContain('100%{stroke-dashoffset:-42}');
   });
 
   it('seeks and loops for the preview without touching the file', async () => {

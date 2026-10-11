@@ -87,7 +87,7 @@ export function pickConnectorAtPoint(
 }
 
 /** The label plate is part of the connector: clicking it selects, double-clicking edits. */
-export function isPointOnConnectorLabel(
+function isPointOnConnectorLabel(
   label: { readonly text: string; readonly point: Point2d },
   point: Point2d
 ): boolean {

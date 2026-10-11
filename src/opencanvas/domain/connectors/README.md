@@ -2,13 +2,13 @@
 
 This module converts canonical scene connectors into renderer-neutral geometry
 and presentation. It does not draw, mutate the document, or depend on Pixi or
-React Flow.
+React.
 
 ## Input contract
 
 - endpoints resolve explicit anchors first, then port anchors, then the nearest
   transformed node boundary; free endpoints (`nodeId: null`) resolve to their
-  page-space point (see `docs/plan/README.md` §3 Connectors)
+  page-space point
 - direct routes ignore waypoints
 - polyline routes preserve authored waypoints
 - orthogonal routes preserve authored waypoints or create a deterministic elbow
@@ -30,7 +30,7 @@ interpreted here.
 ## Boundaries
 
 - domain: route and semantic projection
-- infrastructure: Pixi drawing or React Flow adaptation
+- infrastructure: Pixi drawing and SVG export
 - presentation: interaction state, feature flags, and accessibility
 
 ## Editing contract

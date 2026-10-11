@@ -2,6 +2,7 @@ import { isContainerNodeKind } from '../opencanvas/domain/nodes/containerNodePre
 import type { SceneNode, ScenePage } from '../opencanvas/domain/document/types';
 import { hashDslScene } from './compile';
 import { dslFrameMeta, dslFrameRaw, type DslFrameScene } from './sceneMeta';
+import { serialize } from './serialize';
 
 /** Everything under a frame, split the way compile() and the writers expect it. */
 export function frameScene(page: ScenePage, frameId: string): DslFrameScene | null {
@@ -43,4 +44,12 @@ export function frameEdited(scene: DslFrameScene): boolean {
   const hash = dslFrameMeta(scene.frame).hash;
   if (typeof hash !== 'string') return false;
   return hashDslScene(JSON.stringify({ nodes: scene.nodes, groups: scene.groups ?? [], connectors: scene.connectors })) !== hash;
+}
+
+/** A frame's code: the text that drew it while the canvas still matches, else the canvas written back as code. */
+export function frameSource(scene: DslFrameScene): string {
+  const source = dslFrameRaw(scene.frame).source;
+  return !frameEdited(scene) && typeof source === 'string'
+    ? source
+    : serialize({ frame: scene.frame, nodes: scene.nodes, groups: scene.groups ?? [], connectors: scene.connectors });
 }

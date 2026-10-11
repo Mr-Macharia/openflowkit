@@ -7,7 +7,7 @@ export type ConnectSide = 'top' | 'right' | 'bottom' | 'left';
 const CONNECT_OFFSET_PIXELS = 22;
 const CONNECT_PICK_RADIUS_PIXELS = 9;
 
-export interface ConnectHandlePoint {
+interface ConnectHandlePoint {
   readonly side: ConnectSide;
   readonly point: Point2d;
 }

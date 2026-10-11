@@ -6,7 +6,7 @@ import { polylineLength } from '../geometry/polyline';
 import { buildNodeStateMap } from '../scene/nodeState';
 import { buildNodeWorldMatrices } from '../scene/worldGeometry';
 import { projectPageConnectors } from '../connectors/routeProjection';
-import { connectorMarkerShapes, type MarkerShape } from '../connectors/markers';
+import { connectorMarkerShapes, markerOutward, type MarkerShape } from '../connectors/markers';
 import { connectorLabelLineHeight, connectorLabelLines, connectorLabelPlate } from '../connectors/labelStyle';
 import { resolveBasicNodePresentation } from '../nodes/basicNodePresentation';
 import { basicNodeDecorations } from '../nodes/basicNodeDecorations';
@@ -16,7 +16,7 @@ import { measurePortableText } from '../text/measurement';
 import { resolveNodeSizingPolicy } from '../node-sizing/model';
 import { FONT_STACKS, resolveNodeStyle, type NodeStyle } from '../nodes/nodeStyle';
 import { cameraFitMatrix } from './camera';
-import { PULSE_DASH } from './frame';
+import { PULSE_DASH, PULSE_TRAVEL } from './frame';
 import type { ElementFrameState, FrameState } from './types';
 
 /**
@@ -35,14 +35,14 @@ import type { ElementFrameState, FrameState } from './types';
  * SVG raster — upgrade = a per-node raster cache for the exotic kinds only.
  */
 
-export type DrawTheme = 'light' | 'dark' | 'print';
+type DrawTheme = 'light' | 'dark' | 'print';
 
 export interface DrawPaint {
   readonly color: string;
   readonly alpha: number;
 }
 
-export interface DrawShadow {
+interface DrawShadow {
   readonly color: string;
   readonly alpha: number;
   /** Canvas blur radius: `feDropShadow` stdDeviation 2.5 × 2. */
@@ -59,7 +59,7 @@ interface DrawOpBase {
   readonly clip: readonly Point2d[] | null;
 }
 
-export interface DrawRectOp extends DrawOpBase {
+interface DrawRectOp extends DrawOpBase {
   readonly kind: 'rect';
   readonly x: number;
   readonly y: number;
@@ -103,7 +103,7 @@ export interface DrawTextOp extends DrawOpBase {
 }
 
 /** Any visible node the canvas renderer does not cover; the frame goes to SVG. */
-export interface DrawFallbackOp {
+interface DrawFallbackOp {
   readonly kind: 'fallback';
 }
 
@@ -239,14 +239,8 @@ function shapeNodeOps(
   return ops;
 }
 
-function directionBetween(from: Point2d, to: Point2d): Point2d {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  return length > 1e-9 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
-}
-
-function markerOps(connector: ProjectedConnector, opacity: number, color: string): readonly DrawOp[] {
+// Hollow glyphs (circle, open triangle/diamond) fill with the page, as the canvas and the SVG fill them.
+function markerOps(connector: ProjectedConnector, opacity: number, color: string, surface: string): readonly DrawOp[] {
   const { samples, presentation } = connector;
   if (samples.length < 2) return [];
   const { width } = presentation.stroke;
@@ -256,12 +250,12 @@ function markerOps(connector: ProjectedConnector, opacity: number, color: string
       kind: 'rect', transform: IDENTITY, opacity, clip: null,
       x: shape.center.x - shape.radius, y: shape.center.y - shape.radius,
       width: shape.radius * 2, height: shape.radius * 2, radius: shape.radius,
-      fill: null, stroke, strokeWidth: width,
+      fill: paint(surface), stroke, strokeWidth: width,
     }
     : {
       kind: 'path', transform: IDENTITY, opacity, clip: null,
       commands: subpathCommands(shape.subpaths), closed: shape.closed,
-      fill: shape.filled ? stroke : null,
+      fill: shape.filled ? stroke : shape.closed ? paint(surface) : null,
       stroke: shape.filled ? null : stroke,
       strokeWidth: width, dash: [], dashOffset: 0,
       lineJoin: shape.round ? 'round' : 'miter', shadow: null,
@@ -273,8 +267,8 @@ function markerOps(connector: ProjectedConnector, opacity: number, color: string
   const first = samples[0]!;
   const last = samples[samples.length - 1]!;
   return [
-    ...glyphs(presentation.sourceMarkers, first, directionBetween(samples[1]!, first)),
-    ...glyphs(presentation.targetMarkers, last, directionBetween(samples[samples.length - 2]!, last)),
+    ...glyphs(presentation.sourceMarkers, first, markerOutward(samples, 'source')),
+    ...glyphs(presentation.targetMarkers, last, markerOutward(samples, 'target')),
   ];
 }
 
@@ -282,11 +276,8 @@ function markerOps(connector: ProjectedConnector, opacity: number, color: string
 function connectorDash(
   connector: ProjectedConnector, state: ElementFrameState | undefined,
 ): { readonly dash: readonly number[]; readonly dashOffset: number } {
+  if (state?.pulsePhase !== undefined) return { dash: PULSE_DASH, dashOffset: -state.pulsePhase * PULSE_TRAVEL };
   const length = polylineLength(connector.samples);
-  if (state?.pulsePhase !== undefined) {
-    const [on, off] = PULSE_DASH.split(' ').map(Number);
-    return { dash: [on! * length, off! * length], dashOffset: -state.pulsePhase * length };
-  }
   if (state && state.drawProgress < 1) {
     return { dash: [length, length], dashOffset: (1 - state.drawProgress) * length };
   }
@@ -307,7 +298,7 @@ function connectorOps(
     stroke: paint(color, presentation.stroke.opacity),
     strokeWidth: presentation.stroke.width,
     dash, dashOffset, lineJoin: 'miter', shadow: null,
-  }, ...markerOps(connector, opacity, color)];
+  }, ...markerOps(connector, opacity, color, BACKGROUNDS[theme])];
   // Labels as `connectorLabelMarkup` draws them: text on a plate over the line.
   const style = connector.presentation.label;
   for (const label of connector.labels) {

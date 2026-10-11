@@ -118,7 +118,7 @@ export function dslShapeWord(kind: unknown, shape: unknown, authored?: unknown):
   });
 }
 
-export interface DslColorSpec {
+interface DslColorSpec {
   /** Theme palette key (`nodePalette.ts`) written to the scene. */
   readonly key: string;
 }
@@ -191,12 +191,12 @@ export const DIRECTIONS: Readonly<Record<string, DslDirection>> = {
 
 export const ATTRIBUTE_KEYS = new Set([
   'label', 'link', 'tech', 'desc', 'kind', 'tags', 'pin', 'rank', 'width', 'height',
-  'icon', 'color', 'shape', 'fill', 'head', 'tail', 'from', 'to', 'order',
+  'icon', 'iconpos', 'color', 'shape', 'fill', 'head', 'tail', 'from', 'to', 'order',
 ]);
 
 /** Canonical attribute order (grammar §5.2). Unknown words go last, in input order. */
-export const ATTRIBUTE_SLOT_ORDER = [
-  'shape', 'color', 'fill', 'flag', 'icon', 'head', 'tail', 'from', 'to',
+const ATTRIBUTE_SLOT_ORDER = [
+  'shape', 'color', 'fill', 'flag', 'icon', 'iconpos', 'head', 'tail', 'from', 'to',
   'label', 'tech', 'desc', 'kind', 'tags', 'link', 'pin', 'rank', 'width', 'height',
 ] as const;
 
@@ -238,7 +238,7 @@ export function sortAttributes(entries: readonly CanonicalAttribute[]): Canonica
     .map(({ entry }) => entry);
 }
 
-export const DSL_FAMILY_DIRECTION: Readonly<Record<string, DslDirection>> = {
+const DSL_FAMILY_DIRECTION: Readonly<Record<string, DslDirection>> = {
   flowchart: 'down', state: 'down', erd: 'right', class: 'down',
   architecture: 'right', gitgraph: 'right', sequence: 'right', mindmap: 'right',
 };

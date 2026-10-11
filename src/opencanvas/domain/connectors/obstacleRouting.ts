@@ -4,7 +4,7 @@ import { distanceBetweenPoints } from '../geometry/point';
 import type { Bounds2d, Point2d } from '../geometry/types';
 import type { ConnectSide } from './connectHandles';
 
-const ROUTE_CLEARANCE = 12;
+export const ROUTE_CLEARANCE = 12;
 const MAX_DETOUR_ROUNDS = 4;
 const MAX_BLOCKERS_PER_ROUND = 8;
 
@@ -67,7 +67,7 @@ function detourLanes(start: Point2d, end: Point2d, obstacle: Bounds2d): DetourLa
 // Cost follows conflicts, not page size: each candidate lane tests only the
 // obstacles intersecting its own segments (one inline pass, no allocation),
 // and detour lanes generate around blocking obstacles alone.
-export interface OrthogonalRouteOptions {
+interface OrthogonalRouteOptions {
   /** Lane with a middle segment perpendicular to this axis is tried first (the Z shape). */
   readonly midSplit?: 'x' | 'y';
   /** How far the Z's middle segment sits off centre, so edges sharing a gap take their own runs. */
@@ -195,6 +195,23 @@ export function routeOrthogonalAroundObstacles(
   return dedupePolyline([start, { x: (start.x + end.x) / 2, y: start.y }, {
     x: (start.x + end.x) / 2, y: end.y,
   }, end]);
+}
+
+/**
+ * The position nearest `x` inside `span` that no `blocked` interval covers (an interval's own edges are clear).
+ * Nothing clear in the span: `x` stays, and the router goes round instead.
+ */
+export function clearAlong(
+  span: readonly [number, number],
+  x: number,
+  blocked: readonly (readonly [number, number])[]
+): number {
+  const covered = (at: number) => blocked.some(([from, to]) => at > from && at < to);
+  if (!covered(x)) return x;
+  const candidates = blocked.flatMap(([from, to]) => [from, to])
+    .filter((at) => at >= span[0] && at <= span[1] && !covered(at))
+    .sort((a, b) => Math.abs(a - x) - Math.abs(b - x) || a - b);
+  return candidates[0] ?? x;
 }
 
 const STUB_LENGTH = 20;

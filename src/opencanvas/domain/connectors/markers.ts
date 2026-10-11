@@ -18,6 +18,29 @@ export type MarkerShape =
     }
   | { readonly kind: 'circle'; readonly center: Point2d; readonly radius: number };
 
+/** Segments shorter than this at a route's end (a corner's rounding, a 1-3px jog) never set the head's direction. */
+const MICRO_SEGMENT = 4;
+
+/**
+ * Unit vector pointing out of the line at one end, for its arrowhead: from the first sample at least
+ * MICRO_SEGMENT away from the endpoint, so a micro-segment at the end cannot turn the head sideways (U4-08).
+ * The canvas, the motion frames and the export all orient heads with it.
+ */
+export function markerOutward(samples: readonly Point2d[], end: 'source' | 'target'): Point2d {
+  const ordered = end === 'target' ? samples : [...samples].reverse();
+  const endpoint = ordered[ordered.length - 1];
+  if (!endpoint || ordered.length < 2) return { x: 1, y: 0 };
+  let from = ordered[0]!;
+  for (let index = ordered.length - 2; index >= 0; index--) {
+    const candidate = ordered[index]!;
+    if (Math.hypot(endpoint.x - candidate.x, endpoint.y - candidate.y) >= MICRO_SEGMENT) { from = candidate; break; }
+  }
+  const dx = endpoint.x - from.x;
+  const dy = endpoint.y - from.y;
+  const length = Math.hypot(dx, dy);
+  return length > 1e-9 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+}
+
 function offsetPoint(point: Point2d, direction: Point2d, distance: number): Point2d {
   return { x: point.x + direction.x * distance, y: point.y + direction.y * distance };
 }
@@ -25,7 +48,7 @@ function offsetPoint(point: Point2d, direction: Point2d, distance: number): Poin
 /**
  * The glyphs `markerMarkup` can draw, at `endpoint` with `outward` pointing
  * away from the line. `offset` stacks glyphs when an end carries several.
- * Glyphs the exporter has never drawn (crow-foot) return nothing.
+ * The canvas draws the same shapes (PixiConnectorRenderer).
  */
 export function connectorMarkerShapes(
   glyph: ConnectorMarkerGlyph,
@@ -79,5 +102,10 @@ export function connectorMarkerShapes(
       ],
     }];
   }
-  return [];
+  // crow-foot: three prongs from a root on the line, fanning out to the entity ("many").
+  const root = offsetPoint(tip, outward, -9);
+  return [{
+    kind: 'polygon', closed: false, filled: false, round: false,
+    subpaths: [[root, offsetPoint(tip, normal, 5)], [root, tip], [root, offsetPoint(tip, normal, -5)]],
+  }];
 }

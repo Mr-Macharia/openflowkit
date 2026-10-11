@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { format, serialize } from './serialize';
+import { CONTAINER_TITLE_HEIGHT } from '../opencanvas/domain/nodes/nodeLabelBounds';
+import { measureGroupSize } from './sizing';
 import { compile, hashDslScene, slugifyDslId } from './compile';
 
 describe('compile presentation mapping', () => {
@@ -10,7 +12,11 @@ describe('compile presentation mapping', () => {
     expect(byId.check).toMatchObject({ kind: 'process', content: { shape: 'diamond' } });
     expect(byId.store).toMatchObject({ kind: 'process', content: { shape: 'cylinder' } });
     expect(byId.doc).toMatchObject({ kind: 'process', content: { shape: 'document' } });
-    expect(byId.actor).toMatchObject({ kind: 'process', content: { shape: 'actor' } });
+    // A person is a user-icon card, never the blank silhouette (owner, 2026-10-11); the text keeps `[person]`.
+    expect(byId.actor).toMatchObject({ kind: 'architecture', content: { icon: 'tabler/user' } });
+    expect(byId.actor?.metadata.dsl).toMatchObject({ shape: 'person', autoIcon: 'tabler/user' });
+    // Sized like the other icon cards, so it sits on its row instead of rising above it.
+    expect(byId.actor?.size).toEqual(byId.component ? (await compile('flowchart\nX [icon: tabler/user]')).nodes[0]!.size : undefined);
     expect(byId.component).toMatchObject({ kind: 'process', content: { shape: 'rounded' } });
     expect(byId.component?.metadata.dsl).toMatchObject({ shape: 'component' });
   });
@@ -73,6 +79,52 @@ describe('compile layout', () => {
       expect(node.transform.translation.x).toBeLessThan(result.frame.size.width);
       expect(node.transform.translation.y).toBeLessThan(result.frame.size.height);
     }
+  });
+
+  // Orchestrator 2026-10-11: `align row B, D` put D on C's row at C's x, exactly on top of C.
+  // The positions ELK gives that graph (down; for `right`, the same picture turned).
+  it.each(['row', 'column'])('an `align %s` never stacks a node on another: it moves past it, inside the frame', async (axis) => {
+    const at = (x: number, y: number) => (axis === 'row' ? { x, y } : { x: y, y: x });
+    const layout = { run: async (graph: { rootId: string }) => ({
+      positions: { a: at(48, 28), b: at(28, 144), c: at(196, 144), d: at(196, 260) },
+      sizes: { [graph.rootId]: axis === 'row' ? { width: 344, height: 340 } : { width: 340, height: 344 } },
+    }) };
+    const result = await compile(`flowchart${axis === 'column' ? ' right' : ''}\nA -> B, C\nC -> D\nalign ${axis} B, D`, { layout, measureLabel: () => ({ width: 120, height: 52 }) });
+    const box = (id: string) => {
+      const node = result.nodes.find((candidate) => candidate.id === id)!;
+      return { ...node.transform.translation, ...node.size };
+    };
+    const [b, c, d] = ['b', 'c', 'd'].map(box);
+    expect(axis === 'row' ? d!.y : d!.x).toBe(axis === 'row' ? b!.y : b!.x);
+    const overlaps = d!.x < c!.x + c!.width && c!.x < d!.x + d!.width && d!.y < c!.y + c!.height && c!.y < d!.y + d!.height;
+    expect(overlaps).toBe(false);
+    expect(d!.x + d!.width).toBeLessThanOrEqual(result.frame.size.width);
+    expect(d!.y + d!.height).toBeLessThanOrEqual(result.frame.size.height);
+  });
+
+  it('an aligned node moved past a sibling stays inside its group, and the group inside the frame', async () => {
+    const layout = { run: async (graph: { rootId: string }) => ({
+      positions: { g: { x: 28, y: 28 }, a: { x: 42, y: 54 }, b: { x: 22, y: 170 }, c: { x: 190, y: 170 }, d: { x: 190, y: 286 } },
+      sizes: { [graph.rootId]: { width: 400, height: 420 }, g: { width: 332, height: 360 } },
+    }) };
+    const result = await compile('flowchart\ngroup G {\n  A -> B\n  A -> C\n  C -> D\n}\nalign row B, D', { layout, measureLabel: () => ({ width: 120, height: 52 }) });
+    const g = result.groups.find((group) => group.id === 'g')!;
+    const d = result.nodes.find((node) => node.id === 'd')!;
+    expect(d.transform.translation.y).toBe(170);
+    expect(d.transform.translation.x + d.size.width).toBeLessThanOrEqual(g.size.width);
+    expect(g.transform.translation.x + g.size.width).toBeLessThanOrEqual(result.frame.size.width);
+  });
+
+  it('a note follows its node when `align` moves it', async () => {
+    const layout = { run: async (graph: { rootId: string }) => ({
+      positions: { a: { x: 48, y: 28 }, b: { x: 28, y: 144 }, c: { x: 196, y: 144 }, d: { x: 196, y: 260 } },
+      sizes: { [graph.rootId]: { width: 600, height: 400 } },
+    }) };
+    const result = await compile('flowchart\nA -> B, C\nC -> D\nnote D : hi\nalign row B, D', { layout, measureLabel: () => ({ width: 120, height: 52 }) });
+    const d = result.nodes.find((node) => node.id === 'd')!;
+    const note = result.nodes.find((node) => (node.metadata.dsl as { noteFor?: string }).noteFor === 'd')!;
+    expect(note.transform.translation.x).toBe(d.transform.translation.x + d.size.width + 36);
+    expect(Math.abs(note.transform.translation.y - d.transform.translation.y)).toBeLessThan(d.size.height);
   });
 
   it('honours width, height and pin attributes', async () => {
@@ -193,6 +245,58 @@ describe('compile graph structure', () => {
     expect(result.connectors[0]).toMatchObject({ source: { nodeId: 'api' }, target: { nodeId: 'db' } });
   });
 
+  // Persona U2 (2026-10-11): `Ledger DB = Aurora Postgres` warned "slugified as ledger-db", then
+  // `Payments API -> Ledger DB` made a second node `ledger-db-2` and left the declared one unconnected.
+  it.each(['flowchart', 'architecture', 'state'])('a reference written as a slugified explicit id is that node: %s', async (family) => {
+    const text = `${family}\ngroup Private {\n  Ledger DB = Aurora Postgres\n  a.b = Thing\n}\nPayments API -> Ledger DB : write\nPayments API -> a.b\nX -> ledger-db`;
+    const result = await compile(text);
+    const ids = (scene: typeof result) => scene.nodes.map((node) => node.id).sort();
+    const ends = (scene: typeof result) => scene.connectors.map((connector) => `${connector.source.nodeId}->${connector.target.nodeId}`);
+    expect(ids(result)).toEqual(['a-b', 'ledger-db', 'payments-api', 'x']);
+    expect(ends(result)).toEqual(['payments-api->ledger-db', 'payments-api->a-b', 'x->ledger-db']);
+    expect(result.diagnostics.filter((item) => item.code === 'W120').map((item) => item.message)).toEqual([
+      'Invalid explicit id Ledger DB; slugified as ledger-db', 'Invalid explicit id a.b; slugified as a-b',
+    ]);
+    const again = await compile(serialize(result));
+    expect(ids(again)).toEqual(ids(result));
+    expect(ends(again)).toEqual(ends(result));
+  });
+
+  it('keeps every written id its own node when their slugs collide (CJK, a.b beside a-b)', async () => {
+    const cjk = await compile('flowchart\n数据库 = Postgres\n缓存 = Redis\nApp -> 数据库\nApp -> 缓存');
+    const label = (scene: typeof cjk, id: string | null) => scene.nodes.find((node) => node.id === id)?.content.label;
+    expect(cjk.nodes.map((node) => node.content.label)).toEqual(['Postgres', 'Redis', 'App']);
+    expect(cjk.connectors.map((connector) => label(cjk, connector.target.nodeId))).toEqual(['Postgres', 'Redis']);
+    const dotted = await compile('flowchart\na.b = First\na-b = Second\nX -> a.b');
+    expect(dotted.nodes.map((node) => node.content.label)).toEqual(['First', 'Second', 'X']);
+    expect(label(dotted, dotted.connectors[0]!.target.nodeId)).toBe('First');
+    for (const scene of [cjk, dotted]) {
+      const again = await compile(serialize(scene));
+      expect(again.connectors.map((connector) => label(again, connector.target.nodeId))).toEqual(scene.connectors.map((connector) => label(scene, connector.target.nodeId)));
+    }
+  });
+
+  // Owner decision 2026-10-11: a node labelled exactly the reference text wins; a written id is a fallback.
+  it.each([
+    'ldb = Ledger DB\nLedger DB = Postgres',
+    'Ledger DB = Postgres\nldb = Ledger DB',
+  ])('a reference that is both a label and a slugified written id names the labelled node: %s', async (declarations) => {
+    const result = await compile(`flowchart\n${declarations}\nA -> Ledger DB`);
+    expect(result.connectors[0]!.target.nodeId).toBe('ldb');
+  });
+
+  // Orchestrator 2026-10-11: `Client [blue] [pin: "228,28"] -> API` silently made a node named `Client [pin : 228,28]`.
+  it('warns on a second [ ] list after a name, with the merged list as the fix, and keeps the name clean', async () => {
+    const result = await compile('flowchart\nClient [blue] [pin: "228,28"] -> API');
+    expect(result.nodes.map((node) => node.content.label)).toEqual(['Client', 'API']);
+    // The first list still applies, exactly as on its own.
+    const single = await compile('flowchart\nClient [blue] -> API');
+    expect(result.nodes[0]!.appearance).toEqual(single.nodes[0]!.appearance);
+    expect(result.nodes[0]!.appearance).not.toEqual((await compile('flowchart\nClient -> API')).nodes[0]!.appearance);
+    const warning = result.diagnostics.find((item) => item.code === 'W101')!;
+    expect(warning).toMatchObject({ severity: 'warning', line: 2, message: 'A second [ ] list after a name is not read; list dropped', hint: 'merge into one [ ] list: [blue, pin: "228,28"]' });
+  });
+
   it('an explicit id is a new node even when its label is taken (two nodes called API)', async () => {
     const result = await compile('flowchart\ngroup A {\n  API\n}\ngroup B {\n  api-2 = API\n}\nAPI -> api-2\nAPI -> Client');
     expect(result.nodes.slice(0, 2).map((node) => [node.id, node.content.label, node.parentId])).toEqual([['api', 'API', 'a'], ['api-2', 'API', 'b']]);
@@ -270,7 +374,7 @@ describe('compile graph structure', () => {
       'flowchart\nx [desc: "a\\nb"] -> y',
       'flowchart\nx -> y\nnote x : "a\\nb"',
       'sequence\nalt "c1\\nc2" {\n  A -> B : x\n}',
-      'flowchart\nx -> y\nanimate {\n  step "one\\ntwo" : x -> y\n}',
+      'flowchart\n"one two" -> y\nanimate {\n  step "one\\ntwo" : x -> y\n}',
       'class\nFoo {\n  "+a\\nb"\n}',
     ]) {
       const once = await format(source);
@@ -336,5 +440,59 @@ describe('compile connectors', () => {
     const titled = await compile('erd\ntitle: School\ncourses {\n  title text\n}\n');
     expect(titled.meta.title).toBe('School');
     expect((titled.nodes[0]!.content.erFields as { name: string }[]).map((field) => field.name)).toEqual(['title']);
+  });
+});
+
+describe('compile section headers', () => {
+  // Every family that shows the frame title keeps its content below the 40px header band, with air.
+  const TITLED: Record<string, string> = {
+    flowchart: 'flowchart down\ntitle: Order flow\nA -> B',
+    architecture: 'architecture\ntitle: Order flow\nA -> B',
+    state: 'state\ntitle: Order flow\nA -> B',
+    class: 'class\ntitle: Order flow\nclass A {\n+x: int\n}\nclass B {\n+y: int\n}\nA --> B',
+    erd: 'erd\ntitle: Order flow\nA {\nid int\n}\nB {\nid int\n}\nA ||--o{ B',
+    c4: 'architecture\ntitle: Order flow\nmodel {\n  person Customer\n  system Shop\n  Customer -> Shop\n}\nviews {\n  view context of Shop\n}',
+    sequence: 'sequence\ntitle: Order flow\nA -> B: hi',
+    'sequence with an actor': 'sequence\ntitle: Order flow\nactor A\nA -> B: hi',
+    gitgraph: 'gitgraph\ntitle: Order flow\ncommit\ncommit',
+    mindmap: 'mindmap\ntitle: Order flow\nRoot\n  A\n  B',
+  };
+
+  it.each(Object.entries(TITLED))('%s: every direct frame child starts below the title band', async (_family, text) => {
+    const result = await compile(text);
+    const children = [...result.groups, ...result.nodes].filter((node) => node.parentId === result.frame.id);
+    expect(children.length).toBeGreaterThan(0);
+    for (const child of children) {
+      expect(child.transform.translation.y, child.id).toBeGreaterThanOrEqual(CONTAINER_TITLE_HEIGHT + 16);
+    }
+  });
+
+  it('an untitled graph keeps its tight padding', async () => {
+    const result = await compile('flowchart\nA -> B');
+    expect(Math.min(...result.nodes.map((node) => node.transform.translation.y))).toBe(28);
+  });
+
+  it('a long title widens the frame to hold it', async () => {
+    const title = 'A very long diagram title that keeps going well past the width of two small boxes';
+    for (const text of [`flowchart\ntitle: ${title}\nA -> B`, `sequence\ntitle: ${title}\nA -> B: hi`, `gitgraph\ntitle: ${title}\ncommit`]) {
+      const result = await compile(text);
+      expect(result.frame.size.width, text.split('\n')[0]).toBeGreaterThanOrEqual(measureGroupSize(title, true).width);
+    }
+  });
+
+  it('a chart, which prints its own title, is not widened by it', async () => {
+    const title = 'A very long chart title that keeps going well past the width of the plot area itself here';
+    const result = await compile(`chart bar\ntitle: ${title}\nA: 1\nB: 2`);
+    expect(result.frame.size.width).toBeLessThan(measureGroupSize(title, true).width);
+  });
+
+  it('a C4 boundary leaves its kind tag a line below its last child', async () => {
+    const result = await compile('architecture\nmodel {\n  system Shop {\n    container Web\n    container API\n  }\n}\nviews {\n  view container of Shop\n}');
+    const boundary = result.groups.find((group) => group.content.label === 'Shop')!;
+    const children = result.nodes.filter((node) => node.parentId === boundary.id);
+    expect(children.length).toBeGreaterThan(0);
+    const bottom = Math.max(...children.map((node) => node.transform.translation.y + node.size.height));
+    // The kind tag is drawn from 22px above the boundary's bottom edge: the last child ends clear above it.
+    expect(bottom + 8).toBeLessThanOrEqual(boundary.size.height - 22);
   });
 });

@@ -14,9 +14,12 @@ export const REVEAL_MS = 320;
 export const DRAW_MS = 480;
 /** Walkthrough veil for every step but the current one. */
 export const STORYBOARD_DIM = 0.25;
-/** Pulse dash cycle length and the unit dash the travelling light rides on. */
+/** Pulse dash cycle length, and the dash the travelling light rides on in pixels: every
+ *  connector's light moves at the same speed and size, whatever the connector's length. */
 export const PULSE_MS = 1200;
-export const PULSE_DASH = '0.03 0.07';
+export const PULSE_DASH = [8, 6] as const;
+/** How far the dash travels in one cycle: whole dash periods, so the loop is seamless. */
+export const PULSE_TRAVEL = 3 * (PULSE_DASH[0] + PULSE_DASH[1]);
 /** Walkthrough camera glide length at the start of a step. */
 export const GLIDE_MS = 400;
 
@@ -46,7 +49,7 @@ export function scaleTimeline(timeline: Timeline, targetMs: number): Timeline {
   return { ...timeline, steps, durationMs: steps.reduce((sum, step) => sum + stepDuration(step), 0) };
 }
 
-export interface StepWindow {
+interface StepWindow {
   readonly start: number;
   readonly end: number;
 }

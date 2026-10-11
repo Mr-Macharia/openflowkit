@@ -1,15 +1,16 @@
 import type { SceneNode } from '../document/types';
-import { createBounds2d } from '../geometry/bounds';
-import type { Bounds2d } from '../geometry/types';
+import { isJsonObject } from '../document/json';
 import {
   optionalPresentationString,
   presentationString,
   safeImageUrl,
 } from './nodePresentationValues';
 
-export type ArchitectureNodeDisplay = 'architecture-card' | 'provider-icon';
+export type IconCardPlacement = 'top' | 'left';
 
-export type ArchitectureIconSource =
+type ArchitectureNodeDisplay = 'architecture-card' | 'provider-icon';
+
+type ArchitectureIconSource =
   | { readonly kind: 'provider'; readonly packId: string; readonly shapeId: string }
   | { readonly kind: 'url'; readonly url: string }
   | { readonly kind: 'asset'; readonly assetId: string }
@@ -27,6 +28,8 @@ export interface ArchitectureNodePresentation {
   readonly colorMode: 'subtle' | 'filled';
   readonly customColor?: string;
   readonly icon: ArchitectureIconSource;
+  /** Icon tiles only: the art above its caption (a tile) or beside it (a row card). Anything else is 'top'. */
+  readonly iconPlacement: IconCardPlacement;
 }
 
 function resolveIconSource(node: SceneNode, provider: string): ArchitectureIconSource {
@@ -50,17 +53,6 @@ function metadata(node: SceneNode): readonly string[] {
     .map(optionalPresentationString)
     .filter((value): value is string => value !== undefined);
   return [...new Set(values)];
-}
-
-/**
- * Where the icon art sits, node-local: centred in the 72px plate of an icon
- * node, or the small badge in a card's header. The canvas and every export
- * place it here, so they cannot drift.
- */
-export function architectureIconBounds(node: SceneNode, display: ArchitectureNodeDisplay): Bounds2d {
-  return display === 'provider-icon'
-    ? createBounds2d((node.size.width - 72) / 2 + 6, 10, 60, 60)
-    : createBounds2d(14, 12, 18, 18);
 }
 
 export function resolveArchitectureNodePresentation(
@@ -92,5 +84,6 @@ export function resolveArchitectureNodePresentation(
     colorMode: node.content.colorMode === 'filled' ? 'filled' : 'subtle',
     ...(customColor ? { customColor } : {}),
     icon: resolveIconSource(node, provider),
+    iconPlacement: iconOnly && isJsonObject(node.content.contentLayout) && node.content.contentLayout.iconPlacement === 'left' ? 'left' : 'top',
   };
 }

@@ -71,4 +71,12 @@ describe('architecture node presentation', () => {
   it('rejects unrelated structured families', () => {
     expect(resolveArchitectureNodePresentation(node('process', {}))).toBeNull();
   });
+
+  it('reads the icon placement of an icon tile only: left is a row card, anything else a tile', () => {
+    const layout = (iconPlacement: string) => ({ contentLayout: { version: 1, iconPlacement } });
+    expect(resolveArchitectureNodePresentation(node('architecture', { assetPresentation: 'icon', ...layout('left') }))!.iconPlacement).toBe('left');
+    expect(resolveArchitectureNodePresentation(node('architecture', { assetPresentation: 'icon', ...layout('right') }))!.iconPlacement).toBe('top');
+    expect(resolveArchitectureNodePresentation(node('architecture', { assetPresentation: 'icon' }))!.iconPlacement).toBe('top');
+    expect(resolveArchitectureNodePresentation(node('architecture', layout('left')))!.iconPlacement).toBe('top');
+  });
 });

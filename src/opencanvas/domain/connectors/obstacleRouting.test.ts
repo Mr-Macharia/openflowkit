@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBounds2d } from '../geometry/bounds';
-import { routeOrthogonalAroundObstacles, routeOrthogonalBetweenSides } from './obstacleRouting';
+import { clearAlong, routeOrthogonalAroundObstacles, routeOrthogonalBetweenSides } from './obstacleRouting';
 
 describe('orthogonal obstacle routing', () => {
   it('chooses a deterministic clear lane around a blocking node', () => {
@@ -77,5 +77,34 @@ describe('orthogonal obstacle routing', () => {
         }
       }
     }
+  });
+});
+
+describe('clearAlong', () => {
+  const span = [10, 110] as const;
+
+  it('keeps a position nothing covers', () => {
+    expect(clearAlong(span, 60, [])).toBe(60);
+    expect(clearAlong(span, 60, [[0, 40], [80, 100]])).toBe(60);
+  });
+
+  it('moves a covered position to the nearest edge of what covers it', () => {
+    expect(clearAlong(span, 50, [[20, 70]])).toBe(70);
+    expect(clearAlong(span, 30, [[20, 70]])).toBe(20);
+  });
+
+  it('steps past neighbours that cover each other, and an edge touching the position is clear', () => {
+    expect(clearAlong(span, 30, [[20, 50], [50, 90]])).toBe(20);
+    expect(clearAlong(span, 50, [[40, 60]])).toBe(40);
+    expect(clearAlong(span, 60, [[40, 60]])).toBe(60);
+    expect(clearAlong(span, 30, [[20, 50], [45, 90]])).toBe(20);
+    expect(clearAlong([20, 110], 30, [[10, 50], [45, 90]])).toBe(90);
+  });
+
+  it('stays inside the span: with nowhere clear it keeps the position', () => {
+    expect(clearAlong(span, 50, [[0, 200]])).toBe(50);
+    expect(clearAlong(span, 20, [[0, 60], [60, 200]])).toBe(60);
+    expect(clearAlong(span, 20, [[0, 90]])).toBe(90);
+    expect(clearAlong(span, 20, [[0, 200]])).toBe(20);
   });
 });
