@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNodeStateMap } from './nodeState';
+import { buildNodeStateMap, connectorVisible } from './nodeState';
 import { createProductionSceneNode } from '../../application/active-document/productionNodeCatalog';
 import type { ScenePage } from '../document/types';
 
@@ -36,5 +36,20 @@ describe('buildNodeStateMap', () => {
     const plain = createProductionSceneNode('process', 'plain', { x: 0, y: 0 }, 'default');
     expect(buildNodeStateMap({ ...p, nodes: [...p.nodes, plain] }).get('plain'))
       .toEqual({ visible: true, locked: false });
+  });
+});
+
+describe('connectorVisible', () => {
+  const end = (nodeId: string | null) => ({ nodeId, point: { x: 0, y: 0 } });
+  const connector = (source: string | null, target: string | null, hidden = false) =>
+    ({ source: end(source), target: end(target), metadata: hidden ? { hidden: true } : {} }) as unknown as Parameters<typeof connectorVisible>[0];
+  const states = new Map([['shown', { visible: true }], ['gone', { visible: false }]]);
+
+  it('draws only when it is not hidden and no bound end is', () => {
+    expect(connectorVisible(connector('shown', 'shown'), states)).toBe(true);
+    expect(connectorVisible(connector('shown', 'shown', true), states)).toBe(false);
+    expect(connectorVisible(connector('shown', 'gone'), states)).toBe(false);
+    // A free end hides nothing.
+    expect(connectorVisible(connector(null, 'shown'), states)).toBe(true);
   });
 });

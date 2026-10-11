@@ -57,4 +57,13 @@ describe('arrange commands', () => {
     const back = run(page(), buildStepOrderCommand(page(), ['c'], 'backward'));
     expect(back.nodes.map((n) => [n.id, n.zIndex])).toEqual([['a', 0], ['b', 2], ['c', 1]]);
   });
+
+  it('steps a frame past the next frame, not past a shape it paints under anyway (Bring forward looked broken)', () => {
+    const frame = (id: string, zIndex: number) => createTestNode(id, { kind: 'frame', zIndex });
+    const p = createTestDocument({ nodes: [frame('f1', 0), createTestNode('shape', { zIndex: 1 }), frame('f2', 2)] }).pages[0];
+    const forward = run(p, buildStepOrderCommand(p, ['f1'], 'forward'));
+    expect(forward.nodes.map((n) => [n.id, n.zIndex])).toEqual([['f1', 2], ['shape', 1], ['f2', 0]]);
+    // The front-most frame has no frame to pass: nothing to do, even with a shape above it.
+    expect(buildStepOrderCommand(forward, ['f1'], 'forward')).toBeNull();
+  });
 });

@@ -7,7 +7,7 @@ import {
 } from '../../domain/camera/camera';
 import { readableLanding, type LandingDirection } from '../../domain/camera/readableLanding';
 import { foundation } from '../design-system/tokens';
-import { visibleCanvasEdges } from './V2ContextBar';
+import { clearance } from './map/mapMode';
 import type { CanvasCamera } from '../../domain/camera/types';
 import type { Bounds2d } from '../../domain/geometry/types';
 import type { SceneDocumentV1 } from '../../domain/document/types';
@@ -16,6 +16,10 @@ import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHos
 
 /** The closest a landing ever zooms; drill-down uses the same ceiling. */
 const LANDING_MAX_ZOOM = 1.4;
+/** Breathing room inside the free canvas, which already keeps 8px off the chrome. */
+const FIT_PADDING = 32;
+/** Room above a fitted selection for its context bar (drawn 104px above it, never above y 80), so the bar never lands on it. */
+const CONTEXT_BAR_ROOM = 80;
 
 // Camera per I-12: wheel/trackpad pan-zoom anchored at the pointer, fit,
 // Space-pan (owned by the keyboard hook), zoom to 100%. Canvas zoom is
@@ -108,20 +112,19 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
     return { x: size.width / 2, y: size.height / 2 };
   }, [hostRef]);
 
-  /** The camera that frames `bounds` in the canvas the side panels leave free, and that free region. */
-  const fitInto = useCallback((bounds: Bounds2d, padding = 64, maxZoom = DEFAULT_CAMERA_LIMITS.maxZoom) => {
-    const size = hostRef.current!.getViewportSize();
-    // The canvas runs under the side panels: fit into what they leave free (a phone-width
-    // panel covers it all, so that falls back to the whole viewport).
-    const { left, right } = visibleCanvasEdges(document.querySelector<HTMLElement>('.ofk-v2'));
-    const clear = right - left >= size.width / 2;
-    const free = { left: clear ? left : 0, right: clear ? right : size.width, height: size.height };
-    const fitted = fitCameraToBounds(bounds, { width: free.right - free.left, height: free.height }, padding, { ...DEFAULT_CAMERA_LIMITS, maxZoom });
-    return { camera: { ...fitted, x: fitted.x + free.left }, free };
+  /**
+   * The camera that frames `bounds` in the canvas the side panels and the floating chrome (tool rail, workspace rail,
+   * document bar, view controls) leave free, and that free region. A phone, where they cover most of it, gets the whole viewport.
+   */
+  const fitInto = useCallback((bounds: Bounds2d, padding = FIT_PADDING, maxZoom = DEFAULT_CAMERA_LIMITS.maxZoom, reserveTop = 0) => {
+    const area = clearance(hostRef.current!);
+    const free = area.height - reserveTop >= area.height / 2 ? { ...area, top: area.top + reserveTop, height: area.height - reserveTop } : area;
+    const fitted = fitCameraToBounds(bounds, { width: free.width, height: free.height }, padding, { ...DEFAULT_CAMERA_LIMITS, maxZoom });
+    return { camera: { ...fitted, x: fitted.x + free.left, y: fitted.y + free.top }, free };
   }, [hostRef]);
 
   /** Drill-down / flow camera: frame the nodes without zooming in past readability. */
-  const glideToNodes = useCallback((nodeIds: readonly string[], padding = 96) => {
+  const glideToNodes = useCallback((nodeIds: readonly string[], padding = FIT_PADDING + 32) => {
     const host = hostRef.current;
     const bounds = host?.getContentBounds(nodeIds);
     if (!host || !bounds) return;
@@ -144,31 +147,39 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
       return false;
     }
     pendingLandingRef.current = null;
-    const { camera: fitted, free } = fitInto(bounds, 64, LANDING_MAX_ZOOM);
-    const landing = readableLanding(bounds, { width: free.right - free.left, height: free.height }, direction, 64,
+    // Landing on given nodes (a generated frame, the assistant's edit) leaves room above them for the bar their selection shows.
+    const { camera: fitted, free } = fitInto(bounds, FIT_PADDING, LANDING_MAX_ZOOM, nodeIds?.length ? CONTEXT_BAR_ROOM : 0);
+    const landing = readableLanding(bounds, { width: free.width, height: free.height }, direction, FIT_PADDING,
       { ...DEFAULT_CAMERA_LIMITS, maxZoom: LANDING_MAX_ZOOM });
-    updateCamera(landing.zoomedIn ? { ...landing.camera, x: landing.camera.x + free.left } : fitted);
+    updateCamera(landing.zoomedIn ? { ...landing.camera, x: landing.camera.x + free.left, y: landing.camera.y + free.top } : fitted);
     return landing.zoomedIn;
   }, [hostRef, updateCamera, fitInto]);
 
+  /** Fit all content, or `nodeIds` (a selection, a generated frame) with room above them for the bar that selection shows. */
   const fitView = useCallback((nodeIds?: readonly string[]) => {
     const bounds = hostRef.current?.getContentBounds(nodeIds);
     if (!bounds) return;
-    updateCamera(fitInto(bounds).camera);
+    updateCamera(fitInto(bounds, FIT_PADDING, DEFAULT_CAMERA_LIMITS.maxZoom, nodeIds?.length ? CONTEXT_BAR_ROOM : 0).camera);
   }, [hostRef, updateCamera, fitInto]);
 
   /** Whether `bounds` is fully on screen, beside any open panel. */
   const inView = useCallback((bounds: Bounds2d) => {
     const { free } = fitInto(bounds);
     const { x, y, zoom } = cameraRef.current;
-    return bounds.x * zoom + x >= free.left && (bounds.x + bounds.width) * zoom + x <= free.right
-      && bounds.y * zoom + y >= 0 && (bounds.y + bounds.height) * zoom + y <= free.height;
+    return bounds.x * zoom + x >= free.left && (bounds.x + bounds.width) * zoom + x <= free.left + free.width
+      && bounds.y * zoom + y >= free.top && (bounds.y + bounds.height) * zoom + y <= free.top + free.height;
   }, [fitInto]);
 
   /** Brings `bounds` into view, and leaves the camera alone when it is already fully visible. */
   const revealBounds = useCallback((bounds: Bounds2d) => {
     if (hostRef.current && !inView(bounds)) updateCamera(fitInto(bounds).camera);
   }, [hostRef, updateCamera, fitInto, inView]);
+
+  /** A Layers row: glides `nodeIds` to the middle at the current zoom when any of them is off screen, zooming out only if they do not fit. */
+  const revealNodes = useCallback((nodeIds: readonly string[]) => {
+    const bounds = hostRef.current?.getContentBounds(nodeIds);
+    if (bounds && !inView(bounds)) animateTo(fitInto(bounds, FIT_PADDING, cameraRef.current.zoom).camera);
+  }, [hostRef, animateTo, fitInto, inView]);
 
   /**
    * An agent's edit: left alone when it is already on screen, else landed like the assistant's (readable,
@@ -178,6 +189,19 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
     const bounds = hostRef.current?.getContentBounds(nodeIds);
     return bounds && !inView(bounds) ? landReadable(direction, nodeIds) : false;
   }, [hostRef, inView, landReadable]);
+
+  /**
+   * `revealReadable` once the host has drawn `nodeIds`: an agent's edit reaches the renderer a frame or more after
+   * it is applied, and a reveal with no bounds yet did nothing. Gives up after half a second.
+   */
+  const revealWhenDrawn = useCallback((direction: LandingDirection, nodeIds: readonly string[], onZoomedIn: () => void) => {
+    let frames = 0;
+    const attempt = () => {
+      if (hostRef.current?.getContentBounds(nodeIds)) { if (revealReadable(direction, nodeIds)) onZoomedIn(); return; }
+      if (++frames < 30) requestAnimationFrame(attempt);
+    };
+    requestAnimationFrame(attempt);
+  }, [hostRef, revealReadable]);
 
   const zoomStep = useCallback(
     (factor: number) => {
@@ -206,7 +230,9 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
       document: SceneDocumentV1 | null,
       docId: string | undefined,
       revision: number,
-      direction: LandingDirection
+      direction: LandingDirection,
+      /** Map is up: the host draws the map, so its bounds are the map's, and Map lands its own camera. */
+      mapActive = false
     ) => {
       if (docRef.current !== undefined && docId !== docRef.current) pendingLandingRef.current = null;
       docRef.current = docId;
@@ -230,6 +256,9 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
       }
       if (!hostRef.current?.getContentBounds()) return;
       fittedRef.current = docId ?? null;
+      // A document opened in Map: landing here would re-frame the map's scene a moment after Map framed it (leaving
+      // Map fits Canvas itself), so the open counts as done.
+      if (mapActive) return;
       landReadable(direction);
     },
     [landReadable, hostRef]
@@ -246,9 +275,11 @@ export function useV2Camera(hostRef: RefObject<PixiRendererHost | null>) {
     updateCamera,
     animateTo,
     glideToNodes,
+    revealWhenDrawn,
     fitView,
     landReadable,
     revealBounds,
+    revealNodes,
     revealReadable,
     zoomStep,
     zoomTo,

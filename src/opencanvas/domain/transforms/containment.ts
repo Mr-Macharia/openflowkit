@@ -1,4 +1,5 @@
 import type { SceneNode, ScenePage } from '../document/types';
+import type { Matrix2d } from '../geometry/types';
 import { applyMatrixToPoint, invertMatrix } from '../geometry/matrix';
 import { isContainerNodeKind } from '../nodes/containerNodePresentation';
 import { buildNodeWorldMatrices, nodeWorldBounds, nodeWorldCenter } from '../scene/worldGeometry';
@@ -42,22 +43,23 @@ export function reparentByPosition(
       && centre.x >= bounds.x && centre.x <= bounds.x + bounds.width
       && centre.y >= bounds.y && centre.y <= bounds.y + bounds.height) ?? null;
     const nextParentId = target?.node.id ?? null;
-    if (nextParentId === node.parentId) return node;
-    const world = matrices.get(node.id)!;
-    const inverse = nextParentId === null ? null : invertMatrix(matrices.get(nextParentId)!);
-    const origin = applyMatrixToPoint(world, { x: 0, y: 0 });
-    const local = inverse ? applyMatrixToPoint(inverse, origin) : origin;
-    return { ...node, parentId: nextParentId, transform: { ...node.transform, translation: local } };
+    return nextParentId === node.parentId ? node : withParentInPlace(node, nextParentId, matrices);
   });
 }
 
+/** `node` under `parentId` (null: the page), at the same place on the canvas: only its local translation changes. */
+export function withParentInPlace(node: SceneNode, parentId: string | null, matrices: ReadonlyMap<string, Matrix2d>): SceneNode {
+  const inverse = parentId === null ? null : invertMatrix(matrices.get(parentId)!);
+  const origin = applyMatrixToPoint(matrices.get(node.id)!, { x: 0, y: 0 });
+  const local = inverse ? applyMatrixToPoint(inverse, origin) : origin;
+  return { ...node, parentId, transform: { ...node.transform, translation: local } };
+}
+
 /**
- * A node about to be inserted, adopted by the frame its centre lands in: placing is a drop. Not into a
- * hidden or locked frame (the node would vanish or freeze), nor into a generated diagram or C4 view,
- * whose regeneration replaces everything inside it. An inserted container stays where it is put.
+ * The containers something may be dropped into: shown, unlocked, and not a generated diagram or C4 view, whose
+ * regeneration replaces everything inside it. ⌘G groups never adopt.
  */
-export function adoptOnInsert(page: ScenePage, node: SceneNode): SceneNode {
-  if (isContainerNodeKind(node.kind)) return node;
+export function dropTargetFilter(page: ScenePage): (container: SceneNode) => boolean {
   const states = buildNodeStateMap(page);
   const byId = new Map(page.nodes.map((candidate) => [candidate.id, candidate]));
   const generated = (container: SceneNode): boolean => {
@@ -67,11 +69,19 @@ export function adoptOnInsert(page: ScenePage, node: SceneNode): SceneNode {
     }
     return false;
   };
-  const accepts = (container: SceneNode) => {
+  return (container) => {
     const state = states.get(container.id);
-    return state?.visible === true && !state.locked && !generated(container);
+    return adopts(container) && state?.visible === true && !state.locked && !generated(container);
   };
-  return reparentByPosition({ ...page, nodes: [...page.nodes, node] }, [node], accepts)[0]!;
+}
+
+/**
+ * A node about to be inserted, adopted by the frame its centre lands in: placing is a drop, into the containers
+ * `dropTargetFilter` allows (a hidden or locked frame would hide or freeze it). An inserted container stays where it is put.
+ */
+export function adoptOnInsert(page: ScenePage, node: SceneNode): SceneNode {
+  if (isContainerNodeKind(node.kind)) return node;
+  return reparentByPosition({ ...page, nodes: [...page.nodes, node] }, [node], dropTargetFilter(page))[0]!;
 }
 
 function depthOf(page: ScenePage, node: SceneNode): number {

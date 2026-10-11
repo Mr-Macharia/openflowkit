@@ -1,6 +1,6 @@
-import type { SceneNode, ScenePage } from '../document/types';
+import type { SceneConnector, SceneNode, ScenePage } from '../document/types';
 
-export interface NodeEffectiveState {
+interface NodeEffectiveState {
   readonly visible: boolean;
   readonly locked: boolean;
 }
@@ -35,4 +35,14 @@ export function buildNodeStateMap(page: ScenePage): Map<string, NodeEffectiveSta
 
   for (const node of page.nodes) resolve(node, 0);
   return states;
+}
+
+/** A connector draws when it is not hidden and no bound end is: the renderer and the Layers panel share this. */
+export function connectorVisible(
+  connector: SceneConnector,
+  states: ReadonlyMap<string, { readonly visible: boolean }>
+): boolean {
+  return connector.metadata.hidden !== true
+    && (connector.source.nodeId === null || states.get(connector.source.nodeId)?.visible === true)
+    && (connector.target.nodeId === null || states.get(connector.target.nodeId)?.visible === true);
 }

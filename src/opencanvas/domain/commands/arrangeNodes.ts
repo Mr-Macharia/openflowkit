@@ -2,13 +2,13 @@ import type { BatchDocumentCommand, DocumentCommand, SetNodeCommand } from './ty
 import type { SceneNode, ScenePage } from '../document/types';
 import { alignNodes, distributeNodes, type AlignMode, type DistributeAxis } from '../transforms/arrangement';
 import { buildNodeStateMap } from '../scene/nodeState';
+import { isBackdropNode } from '../nodes/containerNodePresentation';
 import { buildNodeWorldMatrices, nodeWorldBounds } from '../scene/worldGeometry';
 import { unionBounds } from '../geometry/bounds';
 import { areStructurallyEqual } from './equality';
 
-// Arrange commands for the style bar, keyboard and context menu
-// (docs/plan/phase-1-style.md §3). Each is one batch per user intent, skips
-// locked nodes and returns null when nothing would change.
+// Arrange commands for the style bar, keyboard and context menu. Each is one
+// batch per user intent, skips locked nodes and returns null when nothing would change.
 
 function unlocked(page: ScenePage, nodeIds: readonly string[]): string[] {
   const states = buildNodeStateMap(page);
@@ -106,14 +106,32 @@ export function buildSetTransformCommand(page: ScenePage, nodeId: string, patch:
   return setNodes(page, `set-transform:${nodeId}`, 'Set position', [after]);
 }
 
-/** `⌘]` / `⌘[`: swap z with the nearest unselected sibling in that direction. */
+/**
+ * `⌘]` / `⌘[`: swap z with the nearest unselected node in that direction that paints in the same band: containers
+ * always paint under shapes, so a frame steps past the next frame, never past a shape (that swap changed nothing on screen).
+ */
 export function buildStepOrderCommand(page: ScenePage, nodeIds: readonly string[], direction: 'forward' | 'backward'): DocumentCommand | null {
   const selected = new Set(nodeIds);
   const ordered = [...page.nodes].sort((left, right) => left.zIndex - right.zIndex);
   const commands: SetNodeCommand[] = [];
-  const list = direction === 'forward' ? ordered : [...ordered].reverse();
-  // Walk from the leading edge so a contiguous block moves as one.
   const zAt = new Map(ordered.map((node) => [node.id, node.zIndex]));
+  for (const backdrop of [true, false]) {
+    const band = ordered.filter((node) => isBackdropNode(node) === backdrop);
+    stepBand(direction === 'forward' ? band : band.reverse(), selected, zAt);
+  }
+  for (const node of page.nodes) {
+    const z = zAt.get(node.id)!;
+    if (z !== node.zIndex) {
+      commands.push({ kind: 'set-node', id: `reorder:${node.id}`, label: 'Reorder', pageId: page.id, before: node, after: { ...node, zIndex: z } });
+    }
+  }
+  return commands.length
+    ? { kind: 'batch', id: `reorder-${direction}`, label: direction === 'forward' ? 'Bring forward' : 'Send backward', commands }
+    : null;
+}
+
+function stepBand(list: SceneNode[], selected: ReadonlySet<string>, zAt: Map<string, number>): void {
+  // Walk from the leading edge so a contiguous block moves as one.
   for (let index = list.length - 2; index >= 0; index -= 1) {
     const node = list[index];
     const neighbour = list[index + 1];
@@ -125,13 +143,4 @@ export function buildStepOrderCommand(page: ScenePage, nodeIds: readonly string[
     list[index] = neighbour;
     list[index + 1] = node;
   }
-  for (const node of page.nodes) {
-    const z = zAt.get(node.id)!;
-    if (z !== node.zIndex) {
-      commands.push({ kind: 'set-node', id: `reorder:${node.id}`, label: 'Reorder', pageId: page.id, before: node, after: { ...node, zIndex: z } });
-    }
-  }
-  return commands.length
-    ? { kind: 'batch', id: `reorder-${direction}`, label: direction === 'forward' ? 'Bring forward' : 'Send backward', commands }
-    : null;
 }
