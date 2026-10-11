@@ -3,7 +3,11 @@ name = "openflowkit-share"
 main = "index.ts"
 compatibility_date = "2026-03-18"
 
-# Route share.openflowkit.com/* to this Worker in the Cloudflare dashboard (or add a [[routes]] entry).
+routes = [{ pattern = "share.openflowkit.com", custom_domain = true }]
+
+# The production app plus the `v2` branch preview on Cloudflare Pages, so sharing can be tried before a merge.
+[vars]
+ALLOWED_ORIGINS = "https://app.openflowkit.com,https://v2.openflowkit-app.pages.dev"
 
 [[r2_buckets]]
 binding = "SHARES"
