@@ -27,7 +27,7 @@ export const OP_COMMANDS = `  op        run one agent op (the same ops as the MC
   ops       list the ops
   render    Mermaid, D2, Structurizr or OpenFlow DSL → SVG
   convert   the same → an editable .openflow.json
-  validate  per-line diagnostics; exit 1 on an error`;
+  validate  per-line diagnostics; exit 1 on an error or a dropped line`;
 
 /** Thrown for a usage mistake: exit 2 and the usage text, not exit 1. */
 class UsageError extends Error {}
@@ -189,10 +189,40 @@ export async function check(source: string, name: string, layout: 'elk' | 'none'
   return { lint, issues: once([...lint.diagnostics, ...(output.diagnostics ?? [])]), document: result.document, views: output.views?.length ?? 0 };
 }
 
+/**
+ * Codes for a statement the parser could not read, so the diagram is drawn without it: W101 (unparsable,
+ * unclosed, unnamed, an unexpected close, an architecture line kept verbatim), W111 (not an arrow in this
+ * family), W112 (a chain or fan this family does not read), W150 (an unknown target; the statement is ignored).
+ * Generating draws the rest; validating fails on them. W190 (an animate step) and W160 (a view or flow clause)
+ * leave the drawing whole and stay warnings.
+ */
+const DROPPED_CODES = new Set(['W101', 'W111', 'W112', 'W150']);
+/**
+ * W102 and W122 also name guesses (an unknown palette word, a flow step kept without its relation); only their
+ * dropping form counts. ponytail: worded until the parser gives an unterminated quote and a dropped relation their
+ * own codes — then this joins DROPPED_CODES.
+ */
+const DROPPED_IN_PART = new Set(['W102', 'W122']);
+const isDropped = ({ code, severity, message }: Diagnostic): boolean => severity === 'warning'
+  && (DROPPED_CODES.has(code) || (DROPPED_IN_PART.has(code) && /\bdropped\b/.test(message)));
+const DROPPED_HINT = 'Rewrite the line (get_syntax shows the form) or delete it; until then it is left out of the diagram.';
+
+/**
+ * `check` for a validator (`openflowkit validate`, validate_openflow_dsl): every dropped line is an error with
+ * a fix, so a draft that silently loses an edge does not pass. Unknown words and other guesses stay warnings.
+ */
+export async function checkForValidation(source: string): Promise<Checked> {
+  const checked = await check(source, 'validate', 'none');
+  return {
+    ...checked,
+    issues: checked.issues.map((issue) => (isDropped(issue) ? { ...issue, severity: 'error', hint: issue.hint ?? DROPPED_HINT } : issue)),
+  };
+}
+
 function report(checked: Checked, io: CliIo, command: string): void {
   const { converted } = checked.lint;
   for (const loss of converted?.losses ?? []) io.err(`${command}: ${converted!.from} line ${loss.line}: not converted — ${loss.message}`);
-  for (const issue of checked.issues) io.err(`${command}: line ${issue.line}:${issue.col} ${issue.severity} ${issue.code} ${issue.message}`);
+  for (const issue of checked.issues) io.err(`${command}: line ${issue.line}:${issue.col} ${issue.severity} ${issue.code} ${issue.message}${issue.hint ? ` — ${issue.hint}` : ''}`);
 }
 
 /** Losses and warnings are fine by default; `--strict` turns them into exit 1. */
@@ -266,7 +296,7 @@ async function runCompile(command: 'render' | 'convert', args: readonly string[]
 
 async function runValidate(args: readonly string[], io: CliIo): Promise<number> {
   const { values, positionals } = parse(args, { strict: { type: 'boolean' }, json: { type: 'boolean' } });
-  const checked = await check(await readInput(positionals[0], io), 'validate', 'none');
+  const checked = await checkForValidation(await readInput(positionals[0], io));
   const bad = failed(checked, Boolean(values.strict));
   const { lint } = checked;
   if (values.json) io.out(JSON.stringify(summary(checked, !bad), null, 2));

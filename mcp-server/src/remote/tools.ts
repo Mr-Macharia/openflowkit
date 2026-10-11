@@ -30,11 +30,11 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
   server.registerTool('render_diagram', {
     title: 'Draw a diagram',
     description:
-      'Draw a diagram from OpenFlowKit DSL or Mermaid and show it inline. Pass `source` (flowchart, architecture, sequence, ' +
+      'Draw a diagram from OpenFlow DSL or Mermaid and show it inline. Pass `source` (flowchart, architecture, sequence, ' +
       'state, ER and more; call get_syntax first if you are unsure of the DSL). Returns the picture plus the canonical DSL ' +
       '(edit it and call again to revise) and a link that opens it in the editor. Invalid source returns diagnostics with line numbers: fix and retry.',
     inputSchema: {
-      source: z.string().min(1).max(MAX_SOURCE_BYTES).describe('OpenFlowKit DSL or Mermaid, at most 100 KB.'),
+      source: z.string().min(1).max(MAX_SOURCE_BYTES).describe('OpenFlow DSL or Mermaid, at most 100 KB.'),
       title: z.string().max(200).optional().describe('Diagram title.'),
       theme: z.enum(['light', 'dark']).optional().describe('Picture theme; default light.'),
     },
@@ -80,7 +80,7 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
 
   server.registerTool('get_syntax', {
     title: 'Read the DSL grammar',
-    description: 'The OpenFlowKit DSL grammar, so you can write source for render_diagram. Pass a family (flowchart, architecture, sequence, state, erd, class, gitgraph, mindmap, chart, wireframe) for just that section.',
+    description: 'The OpenFlow DSL grammar, so you can write source for render_diagram. Pass a family (flowchart, architecture, sequence, state, erd, class, gitgraph, mindmap, chart, wireframe) for just that section.',
     inputSchema: {
       family: z.preprocess((value) => typeof value === 'string' ? value.trim().toLowerCase() : value, z.enum(DSL_FAMILIES))
         .optional().describe('One family’s section; omit for the full reference.'),

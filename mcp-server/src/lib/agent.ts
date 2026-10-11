@@ -86,7 +86,7 @@ export interface DslLintReport {
   readonly reserved: boolean;
   readonly statements: number;
   readonly lines: number;
-  readonly diagnostics: readonly { readonly code: string; readonly severity: string; readonly line: number; readonly col: number; readonly message: string }[];
+  readonly diagnostics: readonly { readonly code: string; readonly severity: string; readonly line: number; readonly col: number; readonly message: string; readonly hint?: string }[];
   readonly converted?: { readonly from: 'mermaid' | 'structurizr' | 'd2'; readonly dsl: string; readonly losses: readonly { readonly line: number; readonly message: string }[] };
 }
 
@@ -302,6 +302,13 @@ interface AgentBundle {
   findAgentOp(name: string): AgentOp | null;
   /** The op's fields, through a `.refine` wrapper: what a client advertises. */
   opInputShape(op: AgentOp): AgentOpSchemaObject['shape'];
+  /** Ops that read no document (no documentId field). */
+  readonly LOOKUP_OPS: ReadonlySet<string>;
+  /** Ops that take no pageId field. */
+  readonly PAGELESS_OPS: ReadonlySet<string>;
+  /** The largest image a tool result carries inline. */
+  readonly MAX_IMAGE_KB: number;
+  base64Kb(base64: string): number;
   runAgentOp(op: AgentOp, rawInput: unknown, context: {
     document: SceneDocumentV1; pageId: string; capabilities: OpCapabilities;
   }): Promise<{ document: SceneDocumentV1; changed: boolean; output: unknown }>;
@@ -375,7 +382,7 @@ export interface StarterTemplate {
 }
 
 export const {
-  AGENT_OPS, findAgentOp, opInputShape, runAgentOp, createFileCapabilities, grammarSection, lintDsl,
+  AGENT_OPS, LOOKUP_OPS, PAGELESS_OPS, MAX_IMAGE_KB, base64Kb, findAgentOp, opInputShape, runAgentOp, createFileCapabilities, grammarSection, lintDsl,
   createAgentDocument, parseAgentDocument,
   compileWorkspace, architectureWorkspaceText, archModelFromJson, exportCanonicalSvg,
   collectIconArt, tablerSvg, ICON_PACK_IDS, headlessElkLayout, deterministicLayout, CAPABILITY_MANIFEST,

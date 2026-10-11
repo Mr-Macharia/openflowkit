@@ -9,6 +9,7 @@ import { createAgentDocument } from '../index';
 import { resolveAgentOpCommand } from '../runAction';
 import { AGENT_OPS } from './index';
 import type { AgentOp, OpContext } from './types';
+import type { CompileOptions } from '../../dsl/compile';
 import { createTestCapabilities } from './testHost';
 import { lintDsl } from '../lint';
 import { MERMAID_COMPAT_FIXTURES } from '../../../scripts/mermaid-compat-fixtures.mjs';
@@ -147,6 +148,195 @@ views { view context of Shop; view container of Shop }
     const styled = await run.run('get_diagram', { frameId: run.frame().id });
     expect((styled.output as { losses: readonly string[] }).losses).toEqual(
       expect.arrayContaining([expect.stringContaining('opacity is not in the language')]));
+  });
+
+  // U3 2026-10-11: style → move → get_diagram said `losses: []` and update_diagram then dropped the fill
+  // and the move without a word. Regenerate still replaces canvas edits (as the code panel's does, under its
+  // "Canvas edited" banner); the agent is now told which ones, before and after.
+  it('names canvas edits the text does not carry, and what update_diagram discarded', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: FLOW });
+    const fresh = await run.run('get_diagram', { frameId: run.frame().id });
+    expect(fresh.output).toMatchObject({ edited: false, canvasEdits: [] });
+
+    const store = run.page().nodes.find((node) => node.content.label === 'Store')!;
+    const client = run.page().nodes.find((node) => node.content.label === 'Client')!;
+    await run.run('style', { ids: [store.id], fill: '#fde68a', strokeWidth: 3 });
+    await run.run('move', { ids: [client.id], delta: { x: 40, y: 0 } });
+    const moved = { x: client.transform.translation.x + 40, y: client.transform.translation.y };
+    const read = await run.run('get_diagram', { frameId: run.frame().id });
+    const edits = (read.output as { canvasEdits: readonly { id: string; changed: Record<string, unknown>; carry: string | null }[] }).canvasEdits;
+    expect(edits).toEqual(expect.arrayContaining([
+      { id: store.id, label: 'Store', kind: 'node', changed: { fill: '#fde68a', strokeWidth: 3 }, carry: '#fde68a' },
+      { id: client.id, label: 'Client', kind: 'node', changed: { position: moved }, carry: `pin: "${moved.x},${moved.y}"` },
+    ]));
+    expect(edits).toHaveLength(2);
+
+    const updated = await run.run('update_diagram', { frameId: run.frame().id, dsl: `${FLOW}
+  Store -> Cache` });
+    const discarded = (updated.output as { discarded: readonly { id: string; changed: Record<string, unknown> }[] }).discarded;
+    expect(discarded.map(({ id }) => id).sort()).toEqual([client.id, store.id].sort());
+    expect(run.page().nodes.find((node) => node.id === store.id)!.appearance.fill).not.toBe('#fde68a');
+
+    // Carried into the text, nothing is discarded.
+    await run.run('style', { ids: [store.id], fill: '#fde68a' });
+    const kept = await run.run('update_diagram', { frameId: run.frame().id, dsl: '%% ofk 1\nflowchart\n\n  Client [blue] -> API [emerald]\n  API -> Store [cylinder, #fde68a]\n  Store -> Cache' });
+    expect((kept.output as { discarded: readonly unknown[] }).discarded).toEqual([]);
+  });
+
+  it('names canvas edits on a C4 view frame against that view', async () => {
+    const run = await host();
+    const made = await run.run('create_diagram', { dsl: 'architecture\nmodel {\n  system Shop {\n    container Web\n    container API\n    Web -> API\n  }\n}\nviews {\n  view landscape\n  view container of Shop\n}' });
+    const view = (made.output as { views: { pageId: string; frameId: string }[] }).views[1]!;
+    const context = () => ({ ...run.context(), pageId: view.pageId });
+    const page = () => run.document().pages.find(({ id }) => id === view.pageId)!;
+    expect((await resolveAgentOpCommand(op('get_diagram'), { frameId: view.frameId }, context())).output).toMatchObject({ canvasEdits: [] });
+    const web = page().nodes.find((node) => node.content.label === 'Web')!;
+    const styled = await resolveAgentOpCommand(op('style'), { ids: [web.id], fill: '#fde68a' }, context());
+    const edited = { ...context(), document: applyDocumentCommand(run.document(), styled.command!).document };
+    const read = await resolveAgentOpCommand(op('get_diagram'), { frameId: view.frameId }, edited);
+    expect((read.output as { canvasEdits: unknown[] }).canvasEdits).toEqual([expect.objectContaining({ id: web.id, changed: { fill: '#fde68a' } })]);
+  });
+
+  // Review 2026-10-11 #1: a canvas-edit comparison that cannot run (a diagram over the headless layout caps)
+  // made get_diagram and update_diagram throw in file mode.
+  it('reads and regenerates when the canvas-edit comparison cannot run, saying so', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: FLOW });
+    const store = run.page().nodes.find((node) => node.content.label === 'Store')!;
+    await run.run('style', { ids: [store.id], fill: '#fde68a' });
+    const refusing = { ...run.capabilities, compileWorkspace: (text: string, options?: CompileOptions) => text === FLOW
+      ? Promise.reject(new RangeError('layout outside the app stops at 1000 shapes')) : run.capabilities.compileWorkspace(text, options) };
+    const context = { ...run.context(), capabilities: refusing };
+    const read = await resolveAgentOpCommand(op('get_diagram'), {}, context);
+    expect(read.output).toMatchObject({ edited: true, canvasEdits: null, canvasEditsNote: expect.stringMatching(/Not compared: layout outside/) });
+    const updated = await resolveAgentOpCommand(op('update_diagram'), { frameId: run.frame().id, dsl: `${FLOW}\n  Store -> Cache` }, context);
+    expect(updated.command).not.toBeNull();
+    expect(updated.output).toMatchObject({ discarded: [], discardedNote: expect.stringMatching(/Not compared/) });
+  });
+
+  // Review #2: update_diagram on one C4 view redraws every view page; an edit on another view was lost unreported.
+  it('reports edits discarded on every view page a workspace regenerate redraws', async () => {
+    const run = await host();
+    const dsl = 'architecture\nmodel {\n  system Shop {\n    container Web\n    container API\n    Web -> API\n  }\n}\nviews {\n  view landscape\n  view container of Shop\n}';
+    const made = await run.run('create_diagram', { dsl });
+    const [landscape, container] = (made.output as { views: { pageId: string; frameId: string }[] }).views;
+    const page = () => run.document().pages.find(({ id }) => id === container!.pageId)!;
+    const web = page().nodes.find((node) => node.content.label === 'Web')!;
+    const styled = await resolveAgentOpCommand(op('style'), { ids: [web.id], fill: '#fde68a' }, { ...run.context(), pageId: container!.pageId });
+    const edited = { ...run.context(), document: applyDocumentCommand(run.document(), styled.command!).document };
+    const updated = await resolveAgentOpCommand(op('update_diagram'), { frameId: landscape!.frameId, dsl }, { ...edited, pageId: landscape!.pageId });
+    expect((updated.output as { discarded: unknown[] }).discarded).toEqual([
+      expect.objectContaining({ id: web.id, frameId: container!.frameId, changed: { fill: '#fde68a' } }),
+    ]);
+  });
+
+  // Review #3: a rename, a bent connector or a deleted shape read `edited: true` with nothing listed.
+  it('lists renames, connector bends and shapes removed on the canvas', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: FLOW });
+    const api = run.page().nodes.find((node) => node.content.label === 'API')!;
+    const store = run.page().nodes.find((node) => node.content.label === 'Store')!;
+    const edge = run.page().connectors.find((connector) => connector.target.nodeId === api.id)!;
+    const document = applyDocumentCommand(run.document(), { kind: 'batch', id: 'edits', label: 'edits', commands: [
+      { kind: 'set-node', id: 'rename', label: 'Rename', pageId: run.page().id, before: api, after: { ...api, content: { ...api.content, label: 'Gateway' } } },
+      { kind: 'set-connector', id: 'bend', label: 'Bend', pageId: run.page().id, before: edge, after: { ...edge, waypoints: [{ x: 10, y: 10 }] } },
+    ] }).document;
+    const context = { ...run.context(), document };
+    const deleted = applyDocumentCommand(document, (await resolveAgentOpCommand(op('delete'), { ids: [store.id] }, context)).command!).document;
+    const read = await resolveAgentOpCommand(op('get_diagram'), {}, { ...context, document: deleted });
+    const edits = (read.output as { canvasEdits: { id: string; changed: Record<string, unknown>; carry: string | null }[] }).canvasEdits;
+    expect(edits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: api.id, changed: { label: 'Gateway' }, carry: 'label: Gateway' }),
+      expect.objectContaining({ kind: 'connector', changed: { waypoints: [{ x: 10, y: 10 }] }, carry: null }),
+      expect.objectContaining({ id: store.id, changed: { removed: true }, carry: null }),
+    ]));
+  });
+
+  it('moves an icon card\'s icon with style, and carries it as iconpos', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: '%% ofk 1\narchitecture\n\n  API [tabler/server]' });
+    const api = run.page().nodes.find((node) => node.content.label === 'API')!;
+    await expect(run.run('style', { ids: [api.id], iconPlacement: 'left', opacity: 0.5 })).rejects.toThrow('on its own');
+    await run.run('style', { ids: [api.id], iconPlacement: 'left' });
+    expect(run.page().nodes.find((node) => node.id === api.id)!.content.contentLayout).toMatchObject({ iconPlacement: 'left' });
+    const read = await run.run('get_diagram', { frameId: run.frame().id });
+    const edits = (read.output as { canvasEdits: readonly { id: string; carry: string | null }[] }).canvasEdits;
+    expect(edits.find((edit) => edit.id === api.id)!.carry).toContain('iconpos: left');
+  });
+
+  it('refuses an icon placement that changes nothing, naming why', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: '%% ofk 1\narchitecture\n\n  API [tabler/server]\n  Plain [rect]' });
+    const plain = run.page().nodes.find((node) => node.content.label === 'Plain')!;
+    await expect(run.run('style', { ids: [plain.id], iconPlacement: 'left' })).rejects.toThrow('icon card');
+  });
+
+  it('carries a card put back to top as iconpos: top, without pinning its size', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: '%% ofk 1\narchitecture\n\n  API [tabler/server, iconpos: left]' });
+    const api = run.page().nodes.find((node) => node.content.label === 'API')!;
+    await run.run('style', { ids: [api.id], iconPlacement: 'top' });
+    const read = await run.run('get_diagram', { frameId: run.frame().id });
+    const carry = (read.output as { canvasEdits: readonly { id: string; carry: string | null }[] }).canvasEdits.find((edit) => edit.id === api.id)!.carry;
+    expect(carry).toContain('iconpos: top');
+    expect(carry).not.toContain('width');
+  });
+
+  // Review #4: carry appended as a second `[…]` list renamed the node, and the lost edit went unreported.
+  it('gives carry as bare attributes, and reports an edit lost to a renamed id', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: '%% ofk 1\nflowchart\n\n  Client [blue] -> API' });
+    const client = run.page().nodes.find((node) => node.content.label === 'Client')!;
+    await run.run('style', { ids: [client.id], fill: '#fde68a' });
+    const read = await run.run('get_diagram', {});
+    expect((read.output as { canvasEdits: { carry: string }[] }).canvasEdits[0]!.carry).toBe('#fde68a');
+    const renamed = await run.run('update_diagram', { frameId: run.frame().id, dsl: '%% ofk 1\nflowchart\n\n  c2 = Client [blue] -> API' });
+    expect((renamed.output as { discarded: { label: string }[] }).discarded).toEqual([expect.objectContaining({ label: 'Client', changed: { fill: '#fde68a' } })]);
+  });
+
+  // Review #5: the comparison compiled with the reader's icons setting, not the one the diagram was drawn with.
+  it('compares against the icons setting the diagram was drawn with, and never reports a cleared value', async () => {
+    const resolveIcon = () => ({ packId: 'developer', shapeId: 'x' });
+    const drawn = createTestCapabilities();
+    const on = { ...drawn, compileWorkspace: (text: string, options?: CompileOptions) => drawn.compileWorkspace(text, { autoIcons: true, resolveIcon, ...options }) };
+    const off = { ...drawn, compileWorkspace: (text: string, options?: CompileOptions) => drawn.compileWorkspace(text, { autoIcons: false, resolveIcon, ...options }) };
+    const document = createAgentDocument('Icons', 'doc-icons');
+    const context = { document, pageId: document.pages[0]!.id, capabilities: on };
+    const made = await resolveAgentOpCommand(op('create_diagram'), { dsl: 'flowchart\nWeb -> Postgres -> Redis' }, context);
+    const withDiagram = applyDocumentCommand(document, made.command!).document;
+    const web = withDiagram.pages[0]!.nodes.find((node) => node.content.label === 'Web')!;
+    const styled = await resolveAgentOpCommand(op('style'), { ids: [web.id], fill: '#fde68a' }, { ...context, document: withDiagram });
+    const edited = applyDocumentCommand(withDiagram, styled.command!).document;
+    const read = await resolveAgentOpCommand(op('get_diagram'), {}, { ...context, document: edited, capabilities: off });
+    expect((read.output as { canvasEdits: { id: string }[] }).canvasEdits.map(({ id }) => id)).toEqual([web.id]);
+  });
+
+  it('refuses DSL with no statements: an error, not an empty frame', async () => {
+    const run = await host();
+    const before = run.document();
+    await expect(run.run('create_diagram', { dsl: 'flowchart\n' })).rejects.toThrow(/no statements/);
+    await expect(run.run('create_diagram', { dsl: '%% ofk 1\narchitecture\ntitle: Empty\n' })).rejects.toThrow(/no statements/);
+    expect(run.document()).toBe(before);
+  });
+
+  it('get_document lists what the user has selected on that page, live only', async () => {
+    const run = await host();
+    await run.run('create_diagram', { dsl: FLOW });
+    const [first, second] = run.dataIds();
+    const pageId = run.page().id;
+    const read = (selection?: { pageId: string; ids: readonly string[] }) => resolveAgentOpCommand(op('get_document'), {}, { ...run.context(), ...(selection ? { selection } : {}) });
+    expect((await read()).output).toMatchObject({ selection: [] });
+    expect((await read({ pageId, ids: [first!, second!, 'elsewhere'] })).output).toMatchObject({ selection: [first, second] });
+    // Review #6: C4 view pages share ids; a selection on another page is not this page's.
+    expect((await read({ pageId: 'another-page', ids: [first!] })).output).toMatchObject({ selection: [] });
+  });
+
+  it('says which colours style accepts instead of a raw pattern error', () => {
+    const parsed = op('style').schema.safeParse({ ids: ['a'], fill: 'red' });
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toMatch(/#rrggbb.*#e95420/);
+    expect(op('style').schema.safeParse({ ids: ['a'], fill: '#E95420' }).success).toBe(true);
   });
 
   it('regenerates a frame in place, keeping its position and id', async () => {

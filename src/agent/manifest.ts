@@ -36,7 +36,7 @@ const rows: Readonly<Record<string, Omit<CapabilityRow, 'action'>>> = {
   export: { operation: 'Export PNG / SVG / PDF / JSON', surface: 'document-bar', equivalenceTest: 'src/agent/ops/ops.test.ts', mutates: false },
   screenshot: { operation: 'Screenshot a diagram', surface: 'agent', equivalenceTest: null, mutates: false },
   fit_view: { operation: 'Zoom to fit / zoom to selection', surface: 'keyboard', equivalenceTest: null, mutates: false },
-  get_document: { operation: 'Read document and page', surface: 'canvas', equivalenceTest: null, mutates: false },
+  get_document: { operation: 'Read document, page and selection', surface: 'canvas', equivalenceTest: null, mutates: false },
   list_pages: { operation: 'Page list', surface: 'document-bar', equivalenceTest: null, mutates: false },
 };
 

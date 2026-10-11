@@ -1,4 +1,4 @@
-// Copies the canonical grammar (src/dsl/grammar.md), minus its §0 research notes, into mcp-server/data so
+// Copies the canonical grammar (src/dsl/grammar.md), minus any §0 research notes, into mcp-server/data so
 // the published package can serve `get_syntax` and the grammar resource without
 // the repository around it. Run by `prebuild`; missing source is tolerated.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -18,7 +18,7 @@ async function main() {
     console.error(`[grammar] ${relative(REPO_ROOT, SOURCE)} not found; leaving data/grammar.md untouched.`);
     return;
   }
-  // §0 is the design record (sources we checked), not reference: agents get the language only.
+  // A §0 design record (sources we checked) is not reference: agents get the language only. No-op today.
   const shipped = grammar.replace(/^## 0\. [^\n]*\n[\s\S]*?(?=^## )/m, '').replace('§0 prior art · ', '');
   await mkdir(dirname(OUT_FILE), { recursive: true });
   await writeFile(OUT_FILE, shipped, 'utf8');

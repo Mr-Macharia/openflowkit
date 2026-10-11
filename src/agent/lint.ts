@@ -19,6 +19,8 @@ export interface DslLintReport {
     readonly line: number;
     readonly col: number;
     readonly message: string;
+    /** How to fix it, when the parser knows. */
+    readonly hint?: string;
   }[];
   /** Set when the input was Mermaid, Structurizr or D2: the DSL it became, and what did not carry over. */
   readonly converted?: { readonly from: ForeignFormat; readonly dsl: string; readonly losses: readonly ConversionLoss[] };
@@ -141,7 +143,7 @@ export function lintDsl(text: string): DslLintReport {
     statements: document.segments.length,
     lines: document.lineCount,
     diagnostics: [
-      ...document.diagnostics.map(({ code, severity, line, col, message }) => ({ code, severity, line, col, message })),
+      ...document.diagnostics.map(({ code, severity, line, col, message, hint }) => ({ code, severity, line, col, message, ...(hint ? { hint } : {}) })),
       ...(typo ? [typo] : []),
     ],
     ...(source.converted ? { converted: { ...source.converted, dsl: source.dsl } } : {}),

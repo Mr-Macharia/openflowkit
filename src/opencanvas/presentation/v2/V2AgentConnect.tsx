@@ -7,7 +7,7 @@ import { Button, Icon, Panel } from '../design-system';
 import { BRIDGE_DEFAULT_PORT } from '../../../agent/bridge/protocol';
 import { TOKEN_REJECTED, type V2BridgeStatus } from './useV2AgentBridge';
 
-export interface V2AgentConnectModel {
+interface V2AgentConnectModel {
   readonly status: V2BridgeStatus;
   readonly detail: string;
   /** The last change the agent applied (its undo label), shown with an Undo while connected. */
@@ -18,6 +18,10 @@ export interface V2AgentConnectModel {
   readonly onPortChange: (port: number) => void;
   readonly onTokenChange: (token: string) => void;
   readonly onToggle: (connect: boolean) => void;
+  /** WebMCP tools this browser's agents can call; 0 or absent when the browser has no WebMCP (nothing is shown). */
+  readonly webMcpTools?: number;
+  /** The last change an agent in this browser applied (its undo label). */
+  readonly webMcpActivity?: string | null;
 }
 export interface V2AgentConnectProps extends V2AgentConnectModel { readonly onClose: () => void; }
 
@@ -34,10 +38,20 @@ const CAPABILITIES = [
 const bridgeEnv = (port: number, token: string): Record<string, string> =>
   ({ ...(port !== BRIDGE_DEFAULT_PORT ? { OPENFLOWKIT_BRIDGE_PORT: String(port) } : {}), ...(token ? { OPENFLOWKIT_BRIDGE_TOKEN: token } : {}) });
 
-/** The same server as one `claude mcp add` line, for Claude Code. */
+/** The same server as one `claude mcp add` line, for Claude Code: user scope, so every project has it, not just this one. */
 export function claudeCodeCommand(port: number, token: string): string {
   const env = Object.entries(bridgeEnv(port, token)).map(([key, value]) => `-e ${key}=${value} `).join('');
-  return `claude mcp add openflowkit ${env}-- npx -y @vrun-design/openflowkit-mcp`;
+  return `claude mcp add -s user openflowkit ${env}-- npx -y @vrun-design/openflowkit-mcp`;
+}
+
+/** One-click installs (Cursor's and VS Code's own link schemes) carrying the same server and env as the copied config. */
+export function installLinks(port: number, token: string): { cursor: string; vscode: string } {
+  const env = bridgeEnv(port, token);
+  const server = { command: 'npx', args: ['-y', '@vrun-design/openflowkit-mcp'], ...(Object.keys(env).length ? { env } : {}) };
+  return {
+    cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=openflowkit&config=${encodeURIComponent(btoa(JSON.stringify(server)))}`,
+    vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'openflowkit', ...server }))}`,
+  };
 }
 
 /** The MCP client config: the editor's token goes in env so the server and this window pair on their own. */
@@ -60,6 +74,7 @@ export function V2AgentConnect(props: V2AgentConnectProps) {
   const validPort = Number.isInteger(port) && port > 0 && port < 65536;
   const config = mcpConfig(props.port, props.token);
   const command = claudeCodeCommand(props.port, props.token);
+  const links = installLinks(props.port, props.token);
   async function copy(text: string, done: string): Promise<void> {
     try { await navigator.clipboard.writeText(text); setCopyStatus(done); }
     catch { setCopyStatus('Could not copy. Select it under MCP configuration.'); }
@@ -95,7 +110,8 @@ export function V2AgentConnect(props: V2AgentConnectProps) {
       <ol className="ofk-connection-steps">
         <li><span>1</span><div><strong>Add OpenFlowKit to your MCP client</strong>
           <Button onClick={copyConfig}><Icon icon={copyStatus === 'Copied' ? IconCheck : IconCopy} />{copyStatus === 'Copied' ? 'Config copied' : 'Copy MCP configuration'}</Button>
-          <Button variant="quiet" onClick={() => { void copy(command, 'Command copied'); }}><Icon icon={copyStatus === 'Command copied' ? IconCheck : IconTerminal2} />Copy Claude Code command</Button></div></li>
+          <Button variant="quiet" onClick={() => { void copy(command, 'Command copied'); }}><Icon icon={copyStatus === 'Command copied' ? IconCheck : IconTerminal2} />Copy Claude Code command</Button>
+          <p className="ofk-connection-oneclick">Or in one click: <a href={links.cursor}>Add to Cursor</a> · <a href={links.vscode}>Add to VS Code</a></p></div></li>
         <li><span>2</span><div><strong>Start the server, then connect</strong>
           <Button variant="primary" disabled={running || !validPort} onClick={() => props.onToggle(true)}>
             <Icon icon={IconPlugConnected} />{running ? 'Connecting…' : 'Connect'}
@@ -103,6 +119,11 @@ export function V2AgentConnect(props: V2AgentConnectProps) {
           {running ? <Button variant="quiet" onClick={() => props.onToggle(false)}>Cancel</Button> : null}</div></li>
       </ol>
     </>}
+    {props.webMcpTools ? <>
+      <p className="ofk-connection-activity" data-testid="webmcp-status"><span>WebMCP (experimental): agents in this browser can use {props.webMcpTools} tools.</span></p>
+      {props.webMcpActivity ? <p className="ofk-connection-activity" role="status"><span>Browser agent: {props.webMcpActivity}</span>
+        {props.onUndo ? <Button variant="quiet" onClick={props.onUndo}>Undo</Button> : null}</p> : null}
+    </> : null}
     <details className="ofk-accordion ofk-connection-details" open={props.status === 'error' || undefined}><summary>Connection settings<Icon icon={IconChevronDown} /></summary>
       <div className="ofk-accordion-body">
         <div className="ofk-connection-fields">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compile } from '../dsl/compile';
-import { C4_STARTER, STARTER_TEMPLATES, findStarterTemplate } from './starterTemplates';
+import { STARTER_TEMPLATES, findStarterTemplate } from './starterTemplates';
 
 describe('starter templates', () => {
   it('each compiles to a real diagram of its family, without errors or warnings', async () => {
@@ -16,8 +16,9 @@ describe('starter templates', () => {
     expect(findStarterTemplate('auth-flow')?.title).toBe('User authentication');
   });
 
-  it('opens under the name its card shows (the C4 starter is a workspace, named by its model)', async () => {
-    for (const template of STARTER_TEMPLATES.filter(({ dsl }) => dsl !== C4_STARTER)) {
+  // J11: the card said "System map" and opened "Shop architecture". The C4 starter is named by its model's title.
+  it('opens under the name its card shows', async () => {
+    for (const template of STARTER_TEMPLATES) {
       expect((await compile(template.dsl)).meta.title, template.name).toBe(template.title);
     }
   });

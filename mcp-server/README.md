@@ -17,8 +17,8 @@ OpenFlowKit MCP is **local-first by design** — it runs on your machine over st
 It gives the agent the same operations a human has, in two modes:
 
 - **Live** — click **Connect agent** in the app and the tools act on the document you
-  see, over a local bridge on `127.0.0.1:43119` (Host- and origin-checked; optional
-  `OPENFLOWKIT_BRIDGE_TOKEN`). `screenshot` returns a real PNG and every edit is one undo.
+  see, over a local bridge on `127.0.0.1:43119` (port: `OPENFLOWKIT_BRIDGE_PORT`; Host- and
+  origin-checked; optional `OPENFLOWKIT_BRIDGE_TOKEN`). `screenshot` returns a real PNG and every edit is one undo.
 - **File** — `openflow_open` a `.openflow.json`, edit it with the same tools,
   `openflow_save` it back.
 
@@ -127,7 +127,7 @@ last). Page-scoped ops (`update_diagram`, `move`, `style`, `delete`, `add_shape`
 | `create_diagram` / `update_diagram` | Compile DSL — or Mermaid, Structurizr DSL or D2, converted with a loss report — into a new frame, or replace one in place; one undo step |
 | `get_diagram` / `list_diagrams` | Read a frame's DSL, its drift from the canvas, and what the text cannot express |
 | `get_syntax` | The grammar, or one family's section |
-| `search_icons` / `find_icons_for` | Search 7,269 icons (AWS, Azure, GCP, CNCF, developer logos, 5,148 Standard glyphs), or expand a concept ("cache", "queue", "auth") |
+| `search_icons` / `find_icons_for` | Search 7,310 icons (AWS, Azure, Google Cloud, CNCF, developer logos, 5,148 Standard glyphs), or expand a concept ("cache", "queue", "auth") |
 | `move` / `style` / `delete` / `add_shape` | Scene edits the language cannot say |
 | `export` | SVG, PNG, PDF (print HTML) or JSON for a page, a selection or the document |
 | `screenshot` | PNG of one frame (live mode) |
@@ -215,7 +215,7 @@ Using openflowkit: call analyze_codebase on /path/to/project, read openflowkit:/
 
 ## Remote (MCP Apps)
 
-`start:http` serves two tools over Streamable HTTP for hosts that render MCP Apps (Claude, ChatGPT, VS Code): `render_diagram` (OpenFlowKit DSL or Mermaid in, inline SVG out, with the canonical DSL and an open-in-app link) and `get_syntax`. It is stateless (a fresh server per request), needs no login and **stores nothing**. It has no file system, bridge, discovery or document tools; the stdio server is unchanged.
+`start:http` serves two tools over Streamable HTTP for hosts that render MCP Apps (Claude, ChatGPT, VS Code): `render_diagram` (OpenFlow DSL or Mermaid in, inline SVG out, with the canonical DSL and an open-in-app link) and `get_syntax`. It is stateless (a fresh server per request), needs no login and **stores nothing**. It has no file system, bridge, discovery or document tools; the stdio server is unchanged.
 
 ```bash
 npm run build && PORT=8787 npm run start:http   # http://127.0.0.1:8787/mcp, health at /healthz

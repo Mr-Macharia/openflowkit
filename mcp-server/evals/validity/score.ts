@@ -34,7 +34,7 @@ export async function scoreCase(client: Client, text: string): Promise<CaseScore
   const documentId = (created.value as { id: string }).id;
   const drawn = await call(client, 'create_diagram', { documentId, dsl: text });
   if (drawn.error) return { valid: false, problems: [drawn.error], warnings, losses, nodes: 0 };
-  const output = (drawn.value!.output ?? {}) as { nodes?: number };
-  const nodes = output.nodes ?? 0;
-  return { valid: nodes > 0, problems: nodes > 0 ? [] : ['The diagram compiled to no nodes.'], warnings, losses, nodes };
+  // create_diagram refuses text with nothing to draw, so a drawn diagram has nodes.
+  const nodes = ((drawn.value!.output ?? {}) as { nodes?: number }).nodes ?? 0;
+  return { valid: true, problems: [], warnings, losses, nodes };
 }

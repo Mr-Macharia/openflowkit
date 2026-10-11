@@ -10,7 +10,10 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { AGENT_OPS, createAgentDocument, opInputShape, runAgentOp, type SceneDocumentV1 } from '../lib/agent.js';
+import {
+  AGENT_OPS, LOOKUP_OPS as LOOKUPS, MAX_IMAGE_KB, PAGELESS_OPS as PAGELESS, base64Kb, createAgentDocument, opInputShape, runAgentOp,
+  type SceneDocumentV1,
+} from '../lib/agent.js';
 import type { DocumentStore } from '../lib/documentStore.js';
 import type { LiveBridge } from '../lib/bridge.js';
 import { loadFileCapabilities } from '../lib/fileCapabilities.js';
@@ -25,10 +28,7 @@ export interface OpToolDeps {
 const documentIdField = z.string().min(1).optional()
   .describe('File-mode document id from openflow_open or openflow_create; omit to use the paired editor (or, in file mode, the document opened or created last).');
 
-const LOOKUPS = new Set(['get_syntax', 'search_icons', 'find_icons_for']);
 const SCRATCH = createAgentDocument('scratch');
-/** Ops that read no page, or only the one on screen (fit_view moves the editor's camera). */
-const PAGELESS = new Set([...LOOKUPS, 'list_diagrams', 'list_pages', 'fit_view']);
 const pageIdField = z.string().min(1).optional()
   .describe('Page to act on (see list_pages); defaults to the page the editor shows, or the first page in file mode.');
 
@@ -36,8 +36,6 @@ const pageIdField = z.string().min(1).optional()
 function text(payload: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
 }
-
-const MAX_IMAGE_KB = 1024;
 
 type Picture = { readonly mime?: unknown; readonly base64?: unknown };
 
@@ -51,7 +49,7 @@ function opResult(output: unknown, wrap: (output: unknown) => unknown): CallTool
     if (typeof file.base64 !== 'string' || typeof file.mime !== 'string' || !file.mime.startsWith('image/')) return file;
     const { base64, ...rest } = file;
     // A block this size is over most clients' cap: say how to get it instead.
-    const kb = Math.round(base64.length * 0.75 / 1024);
+    const kb = base64Kb(base64);
     if (kb > MAX_IMAGE_KB) return { ...rest, tooLarge: `The image is ${kb} KB, too large to show here. Call export with path to write it to a file, or use a lower scale.` };
     images.push({ type: 'image', data: base64, mimeType: file.mime });
     return { ...rest, image: images.length };
@@ -91,7 +89,8 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
       title: op.title,
       description: op.description,
       inputSchema: {
-        ...(PAGELESS.has(op.name) ? {} : { pageId: pageIdField }), ...opInputShape(op), documentId: documentIdField,
+        // Lookups read no document, so they take no documentId.
+        ...(PAGELESS.has(op.name) ? {} : { pageId: pageIdField }), ...opInputShape(op), ...(LOOKUPS.has(op.name) ? {} : { documentId: documentIdField }),
         ...(op.name === 'export' ? { path: exportPathField } : {}),
       },
     }, async (raw: Record<string, unknown>): Promise<CallToolResult> => {

@@ -17,6 +17,7 @@ import {
 } from './lib/architectureDiscovery.js';
 import { renderMapHtml } from './lib/mapHtml.js';
 import { MAP_DEPTHS, MapInputError, buildRepoMap, summarizeMap } from './lib/repoMap.js';
+import { MCP_SERVER_VERSION } from './lib/version.js';
 
 export interface CliIo {
   out(message: string): void;
@@ -46,12 +47,13 @@ Options:
   --no-svg        discover --out also writes <path>.svg for a README; this skips it
   --svg           op --doc / convert -o: also write the .svg beside the .openflow.json
   --model <path>  drift: model file (default: <dir>/architecture.ofk)
-  --json          drift: machine-readable report
+  --json          render, convert, validate, drift, ops: machine-readable output
   --depth <d>     map: overview (default), detailed or everything
   --html <path>   map: also write one self-contained, offline HTML page of the map
   --name <name>   discover: system name (default: directory name)
   --max-files <n> discover/drift: cap on files scanned (default: 2000)
-  --help          this text
+  --help          this text; <command> --help for one command's
+  --version       the version
 
 Exit codes: 0 done, 1 the input or the diagram is wrong (or drift found), 2 usage error.`;
 
@@ -611,12 +613,27 @@ async function runBuild(args: readonly string[], io: CliIo): Promise<number> {
 
 /* ------------------------------------------------------------------ main */
 
+/** One command's usage, options and summary, cut from USAGE so the two cannot disagree; null for no such command. */
+function commandHelp(command: string): string | null {
+  const lines = USAGE.split('\n');
+  const usage = lines.filter((line) => line.trimStart().startsWith(`openflowkit ${command} `));
+  if (usage.length === 0) return null;
+  const summary = lines.find((line) => line.startsWith(`  ${command} `))?.slice(command.length + 2).trim();
+  const options = lines.filter((line) => line.startsWith('  -') && new RegExp(`\\b${command}\\b`).test(line));
+  return [`openflowkit ${command}${summary ? ` — ${summary}` : ''}`, '', 'Usage:', ...usage, ...(options.length ? ['', 'Options:', ...options] : [])].join('\n');
+}
+
 export async function main(argv: readonly string[], io: CliIo): Promise<number> {
   const [command, ...rest] = argv;
-  if (!command || command === '--help' || command === '-h' || command === 'help') {
+  if (command === '--help' || command === '-h' || command === 'help') { io.out(USAGE); return 0; }
+  if (command === '--version' || command === '-v') { io.out(`openflowkit ${MCP_SERVER_VERSION}`); return 0; }
+  if (!command) {
     io.err(USAGE);
     return 2;
   }
+  // `op` answers --help itself (per op); every other command prints its own lines, never a parser's complaint.
+  const help = command !== 'op' && (rest.includes('--help') || rest.includes('-h')) ? commandHelp(command) : null;
+  if (help) { io.out(help); return 0; }
   if (command === 'drift') return runDrift(rest, io);
   if (command === 'discover') return runDiscover(rest, io);
   if (command === 'build') return runBuild(rest, io);

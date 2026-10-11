@@ -5,13 +5,9 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { LayoutPort } from '../dsl/layout';
 import { createElkLayoutPort } from '../services/dsl/elkLayoutPort';
+import { HEADLESS_LAYOUT_LIMITS } from './ops/types';
 
-/**
- * ELK time grows with connections far faster than with shapes (measured 2026-10-07:
- * a 500-shape chain 2 s; 2 links a shape, 200 links 1 s, 400 links 5 s, 500 links 13 s,
- * 2000 links over 7 min). Past these, the stdio server or the CLI would just hang.
- */
-export const HEADLESS_LAYOUT_LIMITS = { nodes: 1000, edges: 400 } as const;
+export { HEADLESS_LAYOUT_LIMITS } from './ops/types';
 
 let elk: InstanceType<typeof ELK> | null = null;
 const elkPort = createElkLayoutPort(async () => (elk ??= new ELK()));

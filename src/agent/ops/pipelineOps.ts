@@ -21,13 +21,13 @@ export const exportDiagram = defineOp({
   description: 'Export the document, a page, or a selection as SVG, PNG, PDF (print HTML), JSON, or an animation (animated SVG, GIF, MP4, WebM). Returns the file bodies. Raster animation needs a live editor (WebCodecs); a file host serves animated SVG only.',
   schema: z.object({
     format: z.enum(['svg', 'png', 'pdf', 'json', 'svg-animated', 'gif', 'mp4', 'webm']).default('svg'),
-    scope: z.enum(['selection', 'page', 'document']).default('document'),
-    pageId: z.string().min(1).optional(),
-    ids: z.array(z.string().min(1)).optional().describe('Selection scope ids; defaults to everything on the page.'),
+    scope: z.enum(['selection', 'page', 'document']).default('document').describe('document: every page; page: one page; selection: the ids you pass.'),
+    pageId: z.string().min(1).optional().describe('Page to act on (see list_pages); defaults to the page the editor shows, or the first page in file mode.'),
+    ids: z.array(z.string().min(1)).optional().describe('Selection scope: the node and connector ids to export; defaults to everything on the page.'),
     scale: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
     theme: z.enum(['light', 'dark', 'print']).default('light'),
     preset: z.enum(['build', 'walkthrough', 'pulse']).default('build').describe('Animation preset: build reveals in order, walkthrough spotlights each step, pulse shows everything with a moving light.'),
-    order: z.string().min(1).optional().describe('Animation order: a phase-5 flow id, or "code" for the animate block in the diagram source. Omit for the connector graph.'),
+    order: z.string().min(1).optional().describe('Animation order: a flow id from the architecture model, or "code" for the animate block in the diagram source. Omit for the connector graph.'),
     durationMs: z.number().int().min(500).max(600_000).optional().describe('Animation clip length in milliseconds; omit for the natural length.'),
     loop: z.boolean().default(false),
     size: z.union([z.literal(720), z.literal(1080), z.literal(1440)]).default(1080).describe('Raster animation width in pixels.'),
@@ -54,10 +54,10 @@ export const exportDiagram = defineOp({
 export const screenshotDiagram = defineOp({
   name: 'screenshot',
   title: 'Screenshot a diagram',
-  description: 'PNG of one diagram frame, or of the whole page. Requires a live editor (Connect agent).',
+  description: 'A PNG image of one diagram frame, or of the whole page, to check your work by eye. Needs a live editor (the user clicks "Connect agent").',
   schema: z.object({
-    frameId: z.string().min(1).optional(),
-    pageId: z.string().min(1).optional(),
+    frameId: z.string().min(1).optional().describe('Diagram frame id, from create_diagram or list_diagrams; omit for the whole page.'),
+    pageId: z.string().min(1).optional().describe('Page to act on (see list_pages); defaults to the page the editor shows, or the first page in file mode.'),
     scale: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(2),
     theme: z.enum(['light', 'dark']).default('light'),
   }),
@@ -79,10 +79,10 @@ export const screenshotDiagram = defineOp({
 export const fitView = defineOp({
   name: 'fit_view',
   title: 'Fit the view',
-  description: 'Frame the camera on the page, a selection, or one diagram frame. View only; no undo step.',
+  description: 'Point the live editor\'s camera at one diagram frame, some ids, or (with neither) the whole page. Changes the view only, not the document.',
   schema: z.object({
-    ids: z.array(z.string().min(1)).optional(),
-    frameId: z.string().min(1).optional(),
+    ids: z.array(z.string().min(1)).optional().describe('Node ids to frame.'),
+    frameId: z.string().min(1).optional().describe('Diagram frame id to frame (wins over ids).'),
   }),
   async run({ ids, frameId }, context) {
     if (!context.capabilities.fitView) throw new Error('This host has no viewport.');
@@ -97,10 +97,13 @@ export const fitView = defineOp({
 export const getDocument = defineOp({
   name: 'get_document',
   title: 'Read the page',
-  description: 'Nodes and connectors of one page, with geometry. Use get_diagram for DSL.',
-  schema: z.object({ pageId: z.string().min(1).optional() }),
+  description: 'Nodes and connectors of one page, with ids, labels and geometry, plus `selection`: the ids the user has '
+    + 'selected on that page in the live editor ("the box I selected"; empty in file mode or when nothing is selected). '
+    + 'Use get_diagram for a diagram\'s DSL.',
+  schema: z.object({ pageId: z.string().min(1).optional().describe('Page to read (see list_pages); defaults to the page the editor shows, or the first page in file mode.') }),
   async run({ pageId }, context) {
     const page = requirePage(context.document, pageId ?? context.pageId);
+    const onPage = (id: string) => page.nodes.some((node) => node.id === id) || page.connectors.some((connector) => connector.id === id);
     return {
       command: null,
       output: {
@@ -108,6 +111,8 @@ export const getDocument = defineOp({
         name: context.document.name,
         pageId: page.id,
         pageName: page.name,
+        // C4 view pages share element ids: a selection belongs to the page the editor shows, and only to it.
+        selection: context.selection?.pageId === page.id ? context.selection.ids.filter(onPage) : [],
         nodes: page.nodes.map((node) => ({
           id: node.id, kind: node.kind, parentId: node.parentId,
           label: typeof node.content.label === 'string' ? node.content.label : '',

@@ -15,6 +15,7 @@ const MAX_MAP_FILES = 20_000;
 const MAX_MAP_BYTES = 64 * 1024 * 1024;
 const SOURCE = /\.(?:[cm]?[jt]sx?|py|go)$/;
 const MAX_FILE_BYTES = 256 * 1024;
+const MAX_PARTS_LISTED = 20;
 
 /** Thrown for input the user can fix: a path that is not a directory, a tree with nothing to map. */
 export class MapInputError extends Error {}
@@ -93,6 +94,10 @@ export function summarizeMap({ name, model, capped }: RepoMap, depth: MapDepth):
     `depth ${depth}: ${open.size} box(es) open`,
   ];
   if (capped) lines.push(`note: the map reads ${capped.read.toLocaleString('en-US')} of ${capped.total.toLocaleString('en-US')} files; the rest are listed with 0 lines`);
+  const plural = (count: number, word: string) => `${count.toLocaleString('en-US')} ${word}${count === 1 ? '' : 's'}`;
+  const biggest = [...parts].sort((a, b) => b.loc - a.loc || (a.name < b.name ? -1 : 1));
+  lines.push('parts:', ...biggest.slice(0, MAX_PARTS_LISTED).map((part) => `  ${part.name}  ${plural(part.files, 'file')}, ${plural(part.loc, 'line')}`));
+  if (biggest.length > MAX_PARTS_LISTED) lines.push(`  … and ${biggest.length - MAX_PARTS_LISTED} more (--html shows them all)`);
   const pairs = insights(model, { top: 5 }).twoWay.slice(0, 5);
   if (pairs.length > 0) {
     lines.push('two-way pairs (import each other):');

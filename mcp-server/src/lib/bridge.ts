@@ -15,6 +15,8 @@ import { MCP_SERVER_NAME, MCP_SERVER_VERSION } from './version.js';
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const EDITOR_GONE = 'The editor tab was closed or reloaded. Reopen it and press Connect.';
+/** A refused token this recent means an editor is still trying (it retries every 1.5 s). */
+const REFUSED_FRESH_MS = 10_000;
 
 /**
  * This machine by name: a rebound DNS name (evil.example → 127.0.0.1) is refused. Any port, so an
@@ -44,6 +46,8 @@ export class LiveBridge {
   /** The paired editor dropped its poll without saying goodbye; calls say so until it pairs again. */
   private gone = false;
   private portInUse = false;
+  /** When an editor last knocked with the wrong token; the editor then shows the error, and so must whoami. */
+  private refusedAt: number | null = null;
   private parked: ServerResponse | null = null;
   private readonly queue: BridgeRequest[] = [];
   private readonly pending = new Map<string, PendingCall>();
@@ -83,9 +87,12 @@ export class LiveBridge {
 
   /** Why this process has no editor, for a tool that needed one. */
   get unpairedReason(): string | null {
-    return this.portInUse
-      ? `Another OpenFlowKit MCP server already owns port ${this.options.port}; this one can only edit files (openflow_open).`
-      : null;
+    if (this.portInUse) return `Another OpenFlowKit MCP server already owns port ${this.options.port}; this one can only edit files (openflow_open).`;
+    if (!this.connected && this.refusedAt !== null && Date.now() - this.refusedAt < REFUSED_FRESH_MS) {
+      return 'An editor tried to pair and this server refused its token: the editor and this server hold different tokens. '
+        + 'Ask the user to copy the MCP configuration from the editor\'s Connect agent panel again and restart this MCP client.';
+    }
+    return null;
   }
 
   async stop(): Promise<void> {
@@ -122,7 +129,7 @@ export class LiveBridge {
   /** Sends one op to the paired editor and waits for its result. */
   async call(op: string, input: unknown, pageId?: string): Promise<unknown> {
     if (!this.connected) {
-      throw new Error(this.gone ? EDITOR_GONE : 'No editor is connected. Open the app and click "Connect agent" (or start the MCP server from the editor).');
+      throw new Error(this.gone ? EDITOR_GONE : this.unpairedReason ?? 'No editor is connected. Open the app and click "Connect agent" (or start the MCP server from the editor).');
     }
     const request: BridgeRequest = { id: randomUUID(), op, input, ...(pageId ? { pageId } : {}) };
     const promise = new Promise<unknown>((resolve, reject) => {
@@ -172,6 +179,7 @@ export class LiveBridge {
     // The editor sends it as `?token=` (a plain request, so no preflight an older server could not answer); CLIs may use the header.
     const supplied = request.headers[bridgeTokenHeader] ?? new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('token');
     if (supplied === this.options.token) return false;
+    this.refusedAt = Date.now();
     this.respond(response, 401, { error: `Missing or wrong ${bridgeTokenHeader}.` });
     return true;
   }

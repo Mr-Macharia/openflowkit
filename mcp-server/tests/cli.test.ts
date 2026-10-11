@@ -79,11 +79,28 @@ describe('openflowkit CLI', () => {
     const unknown = capture();
     expect(await main(['frobnicate'], unknown.io)).toBe(2);
     expect(unknown.err.join('\n')).toContain('Usage:');
+    // Asked-for help is an answer, not a usage error (U3 2026-10-11: `--help` exited 2).
     const help = capture();
-    expect(await main(['--help'], help.io)).toBe(2);
-    expect(help.err.join('\n')).toContain('Usage:');
-    expect(help.out).toEqual([]);
+    expect(await main(['--help'], help.io)).toBe(0);
+    expect(help.out.join('\n')).toContain('Usage:');
+    expect(help.err).toEqual([]);
     expect(await main([], capture().io)).toBe(2);
+  });
+
+  it('prints its own usage for a subcommand --help, and --version', async () => {
+    for (const command of ['render', 'convert', 'validate', 'map', 'drift', 'discover', 'build', 'ops']) {
+      const run = capture();
+      expect(await main([command, '--help'], run.io), command).toBe(0);
+      const text = run.out.join('\n');
+      expect(text, command).toContain(`openflowkit ${command}`);
+      // Node's parseArgs text ("To specify a positional argument…") never leaks, and it is not the whole manual.
+      expect(text, command).not.toMatch(/positional argument|Exit codes/);
+      expect(run.err, command).toEqual([]);
+    }
+    expect((await (async () => { const run = capture(); await main(['map', '--help'], run.io); return run.out.join('\n'); })())).toContain('--depth');
+    const version = capture();
+    expect(await main(['--version'], version.io)).toBe(0);
+    expect(version.out).toEqual([expect.stringMatching(/^openflowkit \d+\.\d+\.\d+$/)]);
   });
 
   it('builds a self-contained site with views, model and flows', async () => {

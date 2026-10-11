@@ -3,6 +3,9 @@
 // records — the parity test in ./ops.test.ts keeps that honest.
 import { z } from 'zod';
 import { buildDeleteSelectionCommand, buildMoveNodesCommand } from '../../opencanvas/domain/commands/sceneEdits';
+import { buildNodeStateMap } from '../../opencanvas/domain/scene/nodeState';
+import { resolveArchitectureNodePresentation } from '../../opencanvas/domain/nodes/architectureNodePresentation';
+import { buildSetIconPlacementCommand } from '../../opencanvas/domain/commands/iconCommands';
 import { buildStyleNodesCommand } from '../../opencanvas/domain/commands/styleNodes';
 import { PRODUCTION_NODE_CATALOG, createProductionSceneNode } from '../../opencanvas/application/active-document/productionNodeCatalog';
 import { buildProductionNodeMutationCommand } from '../../opencanvas/application/active-document/productionNodeBridge';
@@ -18,16 +21,21 @@ import { defineOp, pointOf, pointSchema, requirePage } from './types';
 // A catalog entry can share a toolbar shape's id (ellipse); the enum lists it once.
 const CATALOG_IDS = [...new Set([...SHAPE_KINDS, ...PRODUCTION_NODE_CATALOG.map((entry) => entry.id)])];
 
-const hex = z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/).describe('Hex colour, e.g. #e95420.');
+// A factory, not one shared instance: a reused schema becomes a JSON-schema `$ref` strict clients reject.
+const hex = () => z.string()
+  .regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, 'Use a hex colour, #rrggbb or #rrggbbaa (e.g. #e95420); colour names are for DSL text, not this op.')
+  .describe('Hex colour, #rrggbb or #rrggbbaa, e.g. #e95420.');
+const nodeIds = (what: string) => z.array(z.string().min(1)).min(1, 'Pass at least one id (get_document lists them).').describe(what);
 
 export const moveNodes = defineOp({
   name: 'move',
   title: 'Move shapes',
-  description: 'Move nodes by an absolute position or a delta. One undo step.',
+  description: 'Move nodes on the canvas, by `delta`, or so the first id lands at `to` (the rest keep their offsets). '
+    + 'Pass exactly one of the two. One undo step. A diagram regenerated from text lays its nodes out again.',
   schema: z.object({
-    ids: z.array(z.string().min(1)).min(1),
-    to: pointSchema.optional(),
-    delta: pointSchema.optional(),
+    ids: nodeIds('Node ids to move together (get_document lists them).'),
+    to: pointSchema().optional().describe('Where the first id goes, in the x/y get_document reports for it (a node inside a frame counts from the frame).'),
+    delta: pointSchema().optional().describe('Offset added to every node, in pixels.'),
   }),
   async run({ ids, to, delta }, context) {
     if ((to === undefined) === (delta === undefined)) throw new TypeError('Pass exactly one of to or delta.');
@@ -54,20 +62,34 @@ export const moveNodes = defineOp({
 export const styleNodes = defineOp({
   name: 'style',
   title: 'Style shapes',
-  description: 'Fill, stroke, width, dash, opacity and text colour for a set of nodes. One undo step.',
+  description: 'Set fill, stroke, stroke width, dash, opacity or text colour on nodes, or move the icon on icon cards (iconPlacement). Pass at least one property. One undo step. '
+    + 'A diagram regenerated from text drops these unless its DSL carries them (get_diagram lists them as canvasEdits).',
   schema: z.object({
-    ids: z.array(z.string().min(1)).min(1),
-    fill: hex.optional(),
-    stroke: hex.optional(),
+    ids: nodeIds('Node ids to restyle (get_document lists them).'),
+    fill: hex().optional(),
+    stroke: hex().optional(),
     strokeWidth: z.number().min(0).max(32).optional(),
     strokeStyle: z.enum(['solid', 'dashed', 'dotted']).optional(),
     opacity: z.number().min(0).max(1).optional(),
-    textColor: hex.optional(),
+    textColor: hex().optional(),
+    iconPlacement: z.enum(['top', 'left']).optional().describe('Icon cards only: the icon above its caption (top) or left of its text (left). It resizes the card, so pass it on its own.'),
   }),
-  async run({ ids, ...patch }, context) {
+  async run({ ids, iconPlacement, ...patch }, context) {
     const page = requirePage(context.document, context.pageId);
     for (const id of ids) if (!page.nodes.some((node) => node.id === id)) throw new RangeError(`Node "${id}" was not found on this page.`);
     const defined = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    if (iconPlacement) {
+      if (Object.keys(defined).length > 0) throw new TypeError('Pass iconPlacement on its own: it resizes the card.');
+      // Only unlocked icon cards have a placement: say so when none of the ids is one, rather than report a change that never happened.
+      const states = buildNodeStateMap(page);
+      const cards = ids.filter((id) => {
+        const node = page.nodes.find((candidate) => candidate.id === id)!;
+        return resolveArchitectureNodePresentation(node)?.display === 'provider-icon' && !states.get(id)?.locked;
+      });
+      if (cards.length === 0) throw new RangeError('None of these ids is an unlocked icon card (an icon with its name, like `API [tabler/server]`): iconPlacement applies to those only.');
+      const command = buildSetIconPlacementCommand(page, ids, iconPlacement);
+      return { command, output: { ids: command ? cards : [] } };
+    }
     if (Object.keys(defined).length === 0) throw new TypeError('Pass at least one style property.');
     return { command: buildStyleNodesCommand(page, ids, defined), output: { ids } };
   },
@@ -76,10 +98,10 @@ export const styleNodes = defineOp({
 export const deleteShapes = defineOp({
   name: 'delete',
   title: 'Delete shapes',
-  description: 'Delete nodes (with their children and attached connectors) or connectors by id. One undo step.',
+  description: 'Delete nodes (with their children and the connectors attached to them) or connectors, by id. One undo step.',
   schema: z.object({
-    ids: z.array(z.string().min(1)).min(1),
-    kind: z.enum(['node', 'connector', 'any']).default('any'),
+    ids: nodeIds('Node or connector ids to delete (get_document lists both).'),
+    kind: z.enum(['node', 'connector', 'any']).default('any').describe('Only match ids of this kind; any (default) matches both.'),
   }),
   async run({ ids, kind }, context) {
     const page = requirePage(context.document, context.pageId);
@@ -100,10 +122,10 @@ export const addShape = defineOp({
   description: `Add one shape without writing DSL (hand-layout only). Prefer create_diagram. Kinds: ${CATALOG_IDS.join(', ')}, chart, widget (wireframe control), frame (phone, browser… preset; drop widgets in with parentId).`,
   schema: z.object({
     kind: z.union([z.enum(CATALOG_IDS as [string, ...string[]]), z.literal('chart'), z.literal('widget'), z.literal('frame')]).default('process'),
-    label: z.string().optional(),
-    x: z.number().finite().default(0),
-    y: z.number().finite().default(0),
-    id: z.string().min(1).optional(),
+    label: z.string().optional().describe('Text on the shape; required for catalog kinds other than the toolbar shapes.'),
+    x: z.number().finite().default(0).describe('Top-left x in page pixels (inside parentId: from the frame).'),
+    y: z.number().finite().default(0).describe('Top-left y in page pixels (inside parentId: from the frame).'),
+    id: z.string().min(1).optional().describe('Id for the new node; one is minted when omitted.'),
     /** Charts only: the data the node renders (categories and series, or points). */
     chart: z.object({
       kind: z.enum(['bar', 'line', 'area', 'scatter', 'pie', 'donut', 'radar', 'heatmap', 'table', 'quadrant']).default('bar'),

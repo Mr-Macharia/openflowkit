@@ -4,7 +4,7 @@ import { projectLegacyDocument } from '@/opencanvas/domain/document/legacyProjec
 import type { SceneDocumentV1 } from '@/opencanvas/domain/document/types';
 import { validateSceneDocumentV1 } from '@/opencanvas/domain/document/validation';
 
-export { AGENT_OPS, findAgentOp, opInputShape } from './ops';
+export { AGENT_OPS, LOOKUP_OPS, MAX_IMAGE_KB, PAGELESS_OPS, base64Kb, findAgentOp, opInputShape } from './ops';
 export { createFileCapabilities, grammarSection } from './host';
 export { headlessElkLayout } from './headlessLayout';
 export type { FileHostOptions } from './host';

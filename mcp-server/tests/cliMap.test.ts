@@ -45,6 +45,16 @@ describe('openflowkit map', () => {
     expect(text).toContain('6 imports resolved, 0 unresolved');
     expect(text).toContain('api <-> web  3 / 3');
     expect(text).toContain('depth overview');
+    // The help promises parts: name them, biggest first.
+    expect(text).toMatch(/parts:\n {2}(api|web) {2}\d+ files?, \d+ lines?\n {2}(api|web) /);
+    // Each two-way pair once, at every depth.
+    for (const depth of ['detailed', 'everything']) {
+      const deeper = capture();
+      expect(await main(['map', root, '--depth', depth], deeper.io)).toBe(0);
+      const pairs = deeper.out.join('\n').split('\n').filter((line) => line.includes(' <-> '));
+      expect(pairs, depth).toEqual([...new Set(pairs)]);
+      expect(pairs, depth).toHaveLength(1);
+    }
   });
 
   it('exits 1 with one line for a path that is not a directory', async () => {

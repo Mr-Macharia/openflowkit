@@ -202,12 +202,23 @@ describe('openflowkit render / convert / validate', () => {
     expect(await main(['render', '-', '--strict'], capture(source).io)).toBe(1);
   });
 
-  it('validates with per-line diagnostics: errors exit 1, warnings only with --strict', async () => {
-    const broken = 'Flowchart\nGood\nBad [oops\ngroup Open {\nChild';
-    const warned = capture(broken);
+  it('validates with per-line diagnostics: errors and dropped lines exit 1, warnings only with --strict', async () => {
+    const warnedOnly = 'Flowchart\nGood\ngroup Open {\nChild';
+    const warned = capture(warnedOnly);
     expect(await main(['validate', '-', '--json'], warned.io)).toBe(0);
     expect(JSON.parse(warned.out[0]!).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'W110', line: 1, severity: 'warning' })]));
-    expect(await main(['validate', '-', '--strict'], capture(broken).io)).toBe(1);
+    expect(await main(['validate', '-', '--strict'], capture(warnedOnly).io)).toBe(1);
+    // A line the parser drops fails validate, named with its line and a fix; render still draws the rest.
+    const dropped = capture('Flowchart\nGood\nBad [oops\nGood -> Fine');
+    expect(await main(['validate', '-'], dropped.io)).toBe(1);
+    expect(dropped.err.join('\n')).toMatch(/line 3:\d+ error W101 .*dropped — Rewrite the line/);
+    expect(await main(['render', '-'], capture('Flowchart\nGood\nBad [oops\nGood -> Fine').io)).toBe(0);
+    const mermaid = capture('flowchart LR\n  A --> B\n  B --> \n  C -> -> D');
+    expect(await main(['validate', '-'], mermaid.io)).toBe(1);
+    // By code, not wording (review 2026-10-11): an architecture line the parser kept verbatim is not drawn either,
+    // while an unreadable animate step leaves the drawing whole and stays a warning.
+    expect(await main(['validate', '-'], capture('architecture\nmodel {\n  system Shop {\n    container Web\n    ??? weird line\n  }\n}\n').io)).toBe(1);
+    expect(await main(['validate', '-'], capture('flowchart\nA -> B\nanimate build {\n  step a, b -> \n}\n').io)).toBe(0);
     const empty = capture('');
     expect(await main(['validate', '-'], empty.io)).toBe(1);
     expect(empty.err.join('\n')).toMatch(/line 1:1 error E001/);

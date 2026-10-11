@@ -51,6 +51,17 @@ describe('op tools', () => {
     }
   });
 
+  // U3 2026-10-11: one schema shared by two fields (move.to/delta, style.fill/stroke) became a `$ref`,
+  // which strict tool-calling clients drop or reject. Lookups read no document, so they take no documentId.
+  it('advertises self-contained input schemas: no $ref, and no documentId on lookups', async () => {
+    const { tools } = await (await client()).listTools();
+    expect(tools).toHaveLength(29);
+    for (const tool of tools) expect(JSON.stringify(tool.inputSchema), tool.name).not.toContain('$ref');
+    const props = (name: string) => Object.keys((tools.find((tool) => tool.name === name)!.inputSchema as { properties: object }).properties);
+    for (const name of ['get_syntax', 'search_icons', 'find_icons_for']) expect(props(name), name).not.toContain('documentId');
+    expect(props('move')).toEqual(expect.arrayContaining(['to', 'delta', 'documentId']));
+  });
+
   it('server_info lists exactly the tools the server registers', async () => {
     const target = await client();
     const { tools } = await target.listTools();
@@ -214,11 +225,18 @@ describe('op tools', () => {
 
   it('validate_openflow_dsl reports what compiling finds, as the CLI validate does', async () => {
     const target = await client();
+    // U3 2026-10-11: dropped lines passed as warnings, so an agent shipped a diagram missing edges. A line the
+    // parser cannot read now fails validation, with its line and a fix; generating still draws the rest.
     const partly = await call(target, 'validate_openflow_dsl', { dsl: 'flowchart\nA -> B\nA -> \nB -->' });
-    expect(partly).toMatchObject({ ok: true, hint: expect.stringMatching(/warning/i) });
+    expect(partly).toMatchObject({ ok: false, hint: expect.stringMatching(/Fix the errors/) });
     expect(partly.diagnostics).toEqual([
-      expect.objectContaining({ code: 'W101', line: 3 }), expect.objectContaining({ code: 'W101', line: 4 }),
+      expect.objectContaining({ code: 'W101', line: 3, severity: 'error', hint: expect.stringMatching(/delete it/) }),
+      expect.objectContaining({ code: 'W101', line: 4, severity: 'error' }),
     ]);
+    const { id: drawn } = await call(target, 'openflow_create', { name: 'Partly' });
+    expect(await run(target, 'create_diagram', { documentId: drawn, dsl: 'flowchart\nA -> B\nA -> \nB -->' })).toMatchObject({ nodes: 2 });
+    // An unknown attribute word is kept and only warned about: still ok.
+    expect(await call(target, 'validate_openflow_dsl', { dsl: 'flowchart\nA [sparkly] -> B' })).toMatchObject({ ok: true });
     // Every line dropped: nothing would be drawn, so it is not ok.
     const dropped = await call(target, 'validate_openflow_dsl', { dsl: 'flowchart\nA -> [[[ broken' });
     expect(dropped).toMatchObject({ ok: false, diagnostics: [expect.objectContaining({ code: 'W101', line: 2 }), expect.objectContaining({ code: 'E001' })] });

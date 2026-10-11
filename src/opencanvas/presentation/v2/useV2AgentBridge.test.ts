@@ -78,7 +78,8 @@ describe('useV2AgentBridge', () => {
     const onApplied = vi.fn();
     const commit = vi.fn();
     const { result, unmount } = renderHook(() => useV2AgentBridge({ ...options, commit, onApplied }));
-    await waitFor(() => expect(onApplied).toHaveBeenCalledWith(['n1']));
+    // The first request loads the op registry (a dynamic import): over 1 s on a loaded machine.
+    await waitFor(() => expect(onApplied).toHaveBeenCalledWith(['n1']), { timeout: 5000 });
     expect(commit).toHaveBeenCalledTimes(1);
     expect(result.current.activity).toBe('Create rectangle');
     unmount();

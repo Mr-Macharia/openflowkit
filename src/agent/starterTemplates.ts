@@ -47,7 +47,7 @@ flow "Place an order" {
 `;
 
 export const STARTER_TEMPLATES: readonly StarterTemplate[] = [
-  {name: 'c4-workspace', title: 'System map', family: 'architecture', summary: 'One model drawn as a system map, an overview and its services, with a checkout flow.', dsl: C4_STARTER},
+  {name: 'c4-workspace', title: 'Shop architecture', family: 'architecture', summary: 'One model drawn as a system map, an overview and its services, with a checkout flow.', dsl: C4_STARTER},
   {
     name: 'auth-flow',
     title: 'User authentication',
@@ -69,7 +69,7 @@ title: User authentication
     name: 'three-tier-architecture',
     title: 'Three-tier AWS architecture',
     family: 'architecture',
-    summary: 'Edge, application and data tiers with real AWS icon slugs.',
+    summary: 'Edge, app and data tiers with the official AWS icons.',
     dsl: `%% ofk 1
 architecture right
 title: Three-tier AWS architecture

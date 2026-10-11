@@ -205,6 +205,21 @@ describe('live bridge', () => {
     await editor.hello();
     expect(bridge.connected).toBe(true);
   });
+  // U3 2026-10-11: the editor showed "did not accept this token" while whoami told the agent to click Connect agent.
+  it('whoami says an editor was refused for its token, not that none is there', async () => {
+    bridge = new LiveBridge({ port: 0, token: 'right', log: () => undefined });
+    const port = await bridge.start();
+    const { server } = createServerWithDeps({ bridge, log: () => undefined });
+    const client = new Client({ name: 'test', version: '0' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(b), client.connect(a)]);
+    const whoami = async () => JSON.parse((await client.callTool({ name: 'whoami', arguments: {} }) as { content: { text: string }[] }).content[0]!.text) as { hint: string };
+    expect((await whoami()).hint).toMatch(/Connect agent/);
+    await (await startEditor(port, { token: 'wrong' })).hello();
+    expect((await whoami()).hint).toMatch(/refused.*token/);
+    expect((await client.callTool({ name: 'list_pages', arguments: {} }) as { content: { text: string }[] }).content[0]!.text).toMatch(/refused.*token/);
+  });
+
   it('a second server on a taken port says so in whoami, server_info and its errors', async () => {
     bridge = new LiveBridge({ port: 0, log: () => undefined });
     const port = await bridge.start();

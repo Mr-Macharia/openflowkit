@@ -16,7 +16,7 @@ import { loadIconArt } from './v2IconArt';
 
 const MOTION_FORMATS: readonly ExportFormat[] = ['svg-animated', 'gif', 'mp4', 'webm'];
 
-export interface V2AgentHostOptions {
+interface V2AgentHostOptions {
   readonly fitView: (ids?: readonly string[]) => void;
   /** The user's "Icons from labels" setting; a DSL `icons:` line still wins. */
   readonly autoIcons: boolean;
