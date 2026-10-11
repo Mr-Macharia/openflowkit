@@ -55,6 +55,9 @@ const SHARED_KERNEL = [
   path.join(srcDir, 'services', 'discovery'),
   // Living Map: loads a repo's code facts into the pure map engine (src/dsl/map).
   path.join(srcDir, 'services', 'map'),
+  // Usage counts and feedback: beacon/fetch adapters for the share Worker plus the pure prompt rules.
+  path.join(srcDir, 'services', 'usage'),
+  path.join(srcDir, 'services', 'feedback'),
 ];
 
 // Data read as text at runtime (the grammar for get_syntax), not code. It sits

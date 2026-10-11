@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MapModel } from '../../../../dsl/map/types';
 import { RepoError } from '../../../../services/discovery/githubRepo';
 import { loadRepoMap, type LoadMapOptions, type MapProgress } from '../../../../services/map/loadRepoMap';
+import { track } from '../../../../services/usage/usage';
 import type { RepoMapSource } from '../../../application/map/repoMapSource';
 import { describeRepoError, keepToken, storedToken, type RepoProblemView } from '../v2RepoProblem';
 
@@ -66,11 +67,15 @@ export function useRepoMap(source: RepoMapSource | null, load: Loader = loadRepo
         const progress: MapProgress = { read: model.stats.files, total: model.stats.files, ...(sampled ? { sampled } : {}), ...stale };
         // A stale map is not remembered for the session: the next visit asks GitHub again.
         if (!stale.stale) remember(memoKey, { model, progress });
+        // A map read is a diagram made from a repo; reopening a finished one this session is not.
+        track('repo_map_ok');
+        track('created_map');
         put(() => ({ key, status: 'ready', model, progress }));
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
         if (error instanceof RepoError && error.problem.kind === 'token-rejected') keepToken(null);
+        track('repo_map_fail');
         put(() => ({ key, status: 'problem', problem: describeRepoError(error, 'map') }));
       },
     );

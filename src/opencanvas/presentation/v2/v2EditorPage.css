@@ -1199,6 +1199,38 @@
 .ofk-v2-tip-card :is(button, a) { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .ofk-v2-tip.ofk-enter { animation: ofk-v2-tip-fade 140ms linear both; } }
 
+/* Feedback prompt (V2Feedback): the tip's card above Help, bottom right; no caret, it is about the app, not a control.
+   The whole card takes the pointer (it has fields). It leaves as it came, a short fade and settle. */
+.ofk-v2-feedback { width: min(320px, calc(100vw - 32px)); }
+.ofk-v2-feedback::before { display: none; }
+.ofk-v2-feedback .ofk-v2-tip-card { pointer-events: auto; gap: 10px; }
+.ofk-v2-feedback .ofk-v2-tip-head { align-items: start; }
+.ofk-v2-feedback .ofk-v2-tip-head strong { padding-top: 5px; text-wrap: pretty; }
+.ofk-v2-feedback[data-leaving] { animation: ofk-v2-feedback-out 140ms var(--ofk-curve-exit, ease-in) both; pointer-events: none; }
+@keyframes ofk-v2-feedback-out { to { opacity: 0; transform: var(--ofk-tip-from, translateY(4px)); } }
+.ofk-v2-feedback-step { display: grid; gap: 10px; margin-left: 38px; animation: ofk-v2-tip-fade 160ms var(--ofk-curve-enter) both; }
+.ofk-v2-feedback-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ofk-v2-feedback-thumbs { display: flex; gap: 6px; }
+.ofk-system .ofk-v2-feedback-thumbs .ofk-icon-button { min-width: 36px; min-height: 32px; border-color: var(--ofk-border); }
+.ofk-system .ofk-v2-feedback-thumbs .ofk-icon-button svg { width: 16px; height: 16px; }
+.ofk-system .ofk-v2-feedback .ofk-button { min-height: 30px; font-size: 12.5px; }
+.ofk-system .ofk-v2-feedback-never.ofk-button { min-height: 26px; padding: 0 6px; color: var(--ofk-muted); font-size: 12px; }
+.ofk-system .ofk-v2-feedback-never.ofk-button:hover { color: var(--ofk-secondary); }
+.ofk-v2-feedback-choices { display: grid; gap: 6px; }
+.ofk-system .ofk-v2-feedback-choices .ofk-button { justify-content: flex-start; border-color: var(--ofk-border); }
+.ofk-v2-feedback-checks { display: grid; gap: 6px; font-size: 13px; }
+.ofk-v2-feedback-count { color: var(--ofk-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ofk-v2-feedback-form { display: grid; gap: 10px; }
+.ofk-v2-feedback-form .ofk-v2-tip-actions { margin-top: 0; }
+.ofk-v2-feedback-text { box-sizing: border-box; width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid var(--ofk-controlBorder); border-radius: var(--ofk-radius-control); background: var(--ofk-surface); color: var(--ofk-text); font: inherit; font-size: 13px; line-height: 1.45; resize: vertical; }
+.ofk-v2-feedback-text::placeholder { color: var(--ofk-muted); }
+.ofk-system .ofk-v2-feedback-text:focus-visible { outline: var(--ofk-focus-width) solid var(--ofk-focus); outline-offset: var(--ofk-focus-offset); }
+@media (prefers-reduced-motion: reduce) {
+  .ofk-v2-feedback[data-leaving] { animation: ofk-v2-feedback-fade-out 140ms linear both; }
+  .ofk-v2-feedback-step { animation: none; }
+}
+@keyframes ofk-v2-feedback-fade-out { to { opacity: 0; } }
+
 .ofk-v2-model-relationships li { display: grid; gap: 3px; padding-block: 6px; }
 @media (pointer: coarse) {
  .ofk-v2-model-row, .ofk-v2-model-tag, .ofk-v2-card-child, .ofk-v2-card-back { min-height: 44px; }

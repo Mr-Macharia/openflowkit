@@ -16,6 +16,7 @@ import { describeStorageFailure } from '../../../services/storage/v2/v2Errors';
 import { UNTITLED_DOCUMENT_NAME } from '../../domain/document/defaults';
 import { isV1Backup, openV1Backup, readV1ImportMarker, runV1Import } from '../../../services/storage/v2/v1Import';
 import { documentFromFileText } from '../../../services/storage/v2/openDocumentFile';
+import { track } from '../../../services/usage/usage';
 import { buildV2Thumbnail } from './v2Thumbnail';
 import { STARTER_TEMPLATES } from '../../../agent/starterTemplates';
 import { ISSUE_URL } from '../../application/ai/assistantReport';
@@ -296,6 +297,7 @@ export function V2HomePage(): React.JSX.Element {
       }
     }
     refresh();
+    if (imported > 0) track('created_import');
     if (sources.length) problems.push(`${plural(sources.length, 'text file')} (drop those one at a time)`);
     const description = [...(problems.length ? [`Couldn’t open ${problems.join('; ')}`.replace(/([^.])$/, '$1.')] : []), ...notes].join(' ');
     toast({

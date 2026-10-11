@@ -1,4 +1,5 @@
-import { useId, type RefObject } from 'react';
+import { useId, useState, type RefObject } from 'react';
+import { setUsageSwitch, usageSwitchOn } from '../../../services/usage/usage';
 import { Popover, PopoverHeader, Segmented, Switch } from '../design-system';
 import type { V2Density, V2Preferences, V2ThemePreference } from './useV2Preferences';
 import { V2PanelField } from './V2PanelField';
@@ -13,6 +14,8 @@ export interface V2SettingsProps {
 export function V2Settings({ open, anchorRef, onClose, preferences, onPreferencesChange }:
   V2SettingsProps & { open: boolean; anchorRef: RefObject<HTMLButtonElement | null>; onClose: () => void }): React.JSX.Element {
   const id = useId();
+  // Not a preference: it lives with the counter, which reads it on every count.
+  const [stats, setStats] = useState(usageSwitchOn);
   return (
     <Popover role="dialog" aria-label="Settings" open={open} anchorRef={anchorRef} onClose={onClose} placement="bottom-start">
       <PopoverHeader title="Settings" onClose={onClose} />
@@ -43,6 +46,14 @@ export function V2Settings({ open, anchorRef, onClose, preferences, onPreference
           <div className="ofk-v2-setting-row">
             <Switch label="Icons from labels" aria-describedby={`${id}-icons`} checked={preferences.autoIcons} onChange={(event) => onPreferencesChange({ autoIcons: event.target.checked })} />
             <p id={`${id}-icons`} className="ofk-caption">Add matching logos when generating diagrams. Explicit icon settings take priority.</p>
+          </div>
+        </section>
+        <section className="ofk-v2-panel-section" aria-label="Privacy">
+          <h3>Privacy</h3>
+          <div className="ofk-v2-setting-row">
+            <Switch label="Share usage stats" aria-describedby={`${id}-stats`} checked={stats}
+              onChange={(event) => { setUsageSwitch(event.target.checked); setStats(event.target.checked); }} />
+            <p id={`${id}-stats`} className="ofk-caption">Helps us improve OpenFlowKit. Your diagrams stay on your device.</p>
           </div>
         </section>
 

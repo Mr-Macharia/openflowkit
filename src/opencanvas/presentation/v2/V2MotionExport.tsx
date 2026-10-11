@@ -17,6 +17,7 @@ import { renderMotionFile, webCodecsAvailable } from '../../infrastructure/expor
 import { animatedSvgFor, animateBlockFromText, motionFileStem, motionFrameSvgFor, motionTimeline, buildMotionSvgFile } from './v2Motion';
 import { V2MotionSteps } from './V2MotionSteps';
 import { loadIconArt } from './v2IconArt';
+import { track } from '../../../services/usage/usage';
 import { copyImageToClipboard, downloadV2Export } from './v2Export';
 
 type MotionOutput = 'svg' | MotionFormat;
@@ -140,6 +141,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
     if (empty) return;
     const file = await buildMotionSvgFile(request);
     downloadV2Export([file]);
+    track('export_motion');
     onToast(`${file.filename} downloaded`, 'success');
   }
   async function encode(): Promise<void> {
@@ -156,6 +158,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
         onProgress: (done, total) => setProgress({ done, total }),
       });
       downloadV2Export([file]);
+      track('export_motion');
       onToast(`${file.filename} downloaded`, 'success');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -182,7 +185,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
         format: output, size, fps, theme, iconArt,
       });
       const copied = await copyImageToClipboard(file.bytes, file.mime);
-      if (copied) onToast(`${output.toUpperCase()} copied`, 'success');
+      if (copied) { track('export_motion'); onToast(`${output.toUpperCase()} copied`, 'success'); }
       else setFailure('This browser cannot copy that format to the clipboard — download it instead.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The export failed.';

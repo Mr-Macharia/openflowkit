@@ -5,6 +5,7 @@ import { capUnits, discoverArchitecture, discoveryToDsl } from '../../../dsl/dis
 import { fetchRepoFiles, githubEvidenceLink, parseRepoPath, RepoError, type RepoRef } from '../../../services/discovery/githubRepo';
 import { repoMapDocumentId } from '../../application/map/repoMapSource';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
+import { track } from '../../../services/usage/usage';
 import type { V2StartIntent } from './v2Document';
 import { V2StateHero } from './V2StateHero';
 import { CliText, cliCommand, describeRepoError, keepToken, RepoTokenForm, storedToken, type RepoProblemView } from './v2RepoProblem';
@@ -85,19 +86,24 @@ export function V2FromGithubPage(): React.JSX.Element {
     stored(id).then((exists): Promise<Outcome | 'stored'> | 'stored' => (exists ? 'stored' : readRepo(repo, controller.signal, (done, total) => setCounted({ request, done, total })))).then(
       (outcome) => {
         if (controller.signal.aborted) return;
+        if (outcome !== 'stored') track(outcome.status === 'notes' ? 'repo_map_ok' : 'repo_map_fail');
         if (outcome === 'stored') navigate(`/d/${id}`, { replace: true });
         // Nothing to say: straight to the editor, as home's Import does.
-        else if (outcome.status === 'notes' && outcome.notes.length === 0) navigate(`/d/${id}`, { replace: true, state: { source: outcome.source } satisfies V2StartIntent });
+        else if (outcome.status === 'notes' && outcome.notes.length === 0) navigate(`/d/${id}`, { replace: true, state: { source: outcome.source, via: 'repo' } satisfies V2StartIntent });
         else publish(outcome);
       },
-      (error: unknown) => { if (!controller.signal.aborted) publish(describeRepoError(error, 'discover')); },
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        track('repo_map_fail');
+        publish(describeRepoError(error, 'discover'));
+      },
     );
     return () => controller.abort();
   }, [pathname, request, navigate]);
   const outcome = answer?.request === request ? answer.outcome : null;
   const home = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} onClick={() => navigate('/home')}>Back to home</Button>;
   const name = parseRepoPath(pathname.replace(/^\/from\/github\//, ''));
-  const open = (outcome: Extract<Outcome, { status: 'notes' }>) => navigate(`/d/${name ? fromGithubDocumentId(name) : 'gh'}`, { replace: true, state: { source: outcome.source } satisfies V2StartIntent });
+  const open = (outcome: Extract<Outcome, { status: 'notes' }>) => navigate(`/d/${name ? fromGithubDocumentId(name) : 'gh'}`, { replace: true, state: { source: outcome.source, via: 'repo' } satisfies V2StartIntent });
 
   return (
     <V2StateShell testId="v2-from-github">

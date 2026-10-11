@@ -1,8 +1,7 @@
 import type { SceneDocumentV1 } from '../../opencanvas/domain/document/types';
+import { SHARE_ORIGIN } from './origin';
 import { decryptDocument, encryptDocument, ShareCryptoError } from './shareCrypto';
 
-/** The one place the share endpoint is named. */
-const SHARE_ORIGIN: string = import.meta.env.VITE_SHARE_ORIGIN ?? 'https://share.openflowkit.com';
 /** Same ceiling as the Worker's (worker/index.ts); checked here first so an oversize document never leaves the browser. */
 const MAX_SHARE_BYTES = 1_048_576;
 

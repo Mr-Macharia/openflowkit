@@ -1,4 +1,5 @@
 import { V2Settings, type V2SettingsProps } from './V2Settings';
+import { V2FeedbackDialog } from './V2Feedback';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   IconCloudCheck,
@@ -16,12 +17,14 @@ import {
   IconArchive,
   IconLoader2,
   IconLock,
+  IconMessageCircle,
   IconShare2,
 } from '@tabler/icons-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
 import { documentFromFileText } from '../../../services/storage/v2/openDocumentFile';
+import { track } from '../../../services/usage/usage';
 import { buildV1Backup, isV1Backup, openV1Backup, readV1ImportMarker } from '../../../services/storage/v2/v1Import';
 import { downloadTextFile } from './v2Export';
 import type { HomeNotice } from './V2LegacyRoutes';
@@ -101,7 +104,7 @@ function saveLabel(status: V2SaveStatus): { tone: 'neutral' | 'success' | 'warni
 }
 
 export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
-  const [panel, setPanel] = useState<'menu' | 'settings' | 'pages' | null>(null);
+  const [panel, setPanel] = useState<'menu' | 'settings' | 'pages' | 'feedback' | null>(null);
   function closePanel(name: typeof panel): void {
     setPanel((current) => current === name ? null : current);
   }
@@ -172,6 +175,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
     if (isV1Backup(parsed)) {
       // 12.1's "Export all my diagrams" file: every diagram in it, then the list.
       const { opened, existing, failures } = await openV1Backup(parsed, createV2Repository(window.indexedDB));
+      if (opened.length) track('created_import');
       const parts = [`Opened ${opened.length} ${opened.length === 1 ? 'diagram' : 'diagrams'} from the backup.`];
       if (existing) parts.push(`${existing} ${existing === 1 ? 'was' : 'were'} already here and kept as is.`);
       if (failures.length) parts.push(`${failures.length} could not be opened: ${failures.map((failure) => failure.name).join(', ')}.`);
@@ -188,6 +192,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
       toast('Couldn’t save the opened file', 'danger');
       return;
     }
+    track('created_import');
     navigate(`/d/${opened.document.id}`, opened.notice ? { state: { openedNotice: opened.notice } } : undefined);
   };
   // What opening the file had to change, told once in the new document's editor.
@@ -346,6 +351,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
         ) : null}
         <MenuSeparator />
         <MenuItem icon={<Icon icon={IconBook2} />} onSelect={() => { window.open(DOCS_URL, '_blank', 'noopener'); }}>Docs</MenuItem>
+        <MenuItem icon={<Icon icon={IconMessageCircle} />} onSelect={() => openPanel('feedback')}>Send feedback…</MenuItem>
       </Menu>
       <input ref={fileRef} type="file" accept=".json,application/json" hidden aria-hidden="true" tabIndex={-1}
         onChange={(event) => {
@@ -356,6 +362,8 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
       <V2Settings open={panel === 'settings'} anchorRef={settingsRef} onClose={() => closePanel('settings')}
         preferences={props.preferences} canvasDefaultColor={props.canvasDefaultColor}
         onPreferencesChange={props.onPreferencesChange} />
+      <V2FeedbackDialog open={panel === 'feedback'} onToast={props.onToast}
+        onClose={() => { closePanel('feedback'); settingsRef.current?.focus(); }} />
       <V2PagesMenu open={panel === 'pages'} anchorRef={pagesRef} pages={props.pages} onClose={() => closePanel('pages')} />
     </>
   );

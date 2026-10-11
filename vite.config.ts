@@ -11,8 +11,12 @@ const deployedHeaders = Object.fromEntries(
     .map((line) => [line.slice(0, line.indexOf(':')), line.slice(line.indexOf(':') + 1).trim()]),
 );
 
+// Only the version reaches the bundle (usage beacons report it); importing package.json would ship all of it.
+const { version } = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as { version: string };
+
 export default defineConfig(() => {
   return {
+    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(version) },
     server: {
       port: 3000,
       host: '0.0.0.0',

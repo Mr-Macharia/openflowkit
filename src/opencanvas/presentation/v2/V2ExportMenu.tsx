@@ -10,6 +10,7 @@ import { IconChevronRight, IconCode, IconCopy, IconDownload, IconLink, IconLinkO
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
 import { Button, Icon, Popover, PopoverHeader, Segmented, Tooltip, type ToastItem } from '../design-system';
+import { track } from '../../../services/usage/usage';
 import { createShareLink, browserStorage, deleteShare, forgetShare, latestShareFor, rememberShare, ShareError } from '../../../services/share/shareClient';
 import { getTurnstileToken } from '../../../services/share/turnstile';
 import { dslLink } from '../../../services/discovery/dslLink';
@@ -139,6 +140,7 @@ export function V2ExportMenu({
       onToast('Couldn’t copy', 'danger', { description: 'This browser blocked the clipboard.' });
       return;
     }
+    track('export_data');
     onToast(`Copied “${frameName(mermaidTarget)}” as Mermaid`, 'success', mermaid.losses.length > 0 ? { description: mermaidLossSummary(mermaid.losses) } : undefined);
     onClose();
   }
@@ -148,17 +150,20 @@ export function V2ExportMenu({
     try {
       if (effectiveFormat === 'pdf') {
         await printV2Export(request);
+        track('export_image');
         onToast('Print dialog opened', 'info', { description: 'Choose “Save as PDF” to keep a file.' });
       } else if (action === 'copy-png') {
         const [file] = await buildV2Export({ ...request, format: 'png', scale });
         if (!file?.bytes || !(await copyImageToClipboard(file.bytes, 'image/png'))) {
           onToast('Couldn’t copy the image', 'danger', { description: 'This browser can’t copy images to the clipboard.' });
         } else {
+          track('export_image');
           onToast('PNG copied', 'success');
         }
       } else {
         const files = await buildV2Export(request);
         downloadV2Export(files);
+        track(effectiveFormat === 'json' ? 'export_data' : 'export_image');
         onToast(files.length > 1 ? `${files.length} files downloaded` : `${files[0]?.filename ?? 'Export'} downloaded`, 'success');
       }
       // The panel stays open: the next variant (theme, scale, format) is one click, not a reopen.
@@ -175,6 +180,7 @@ export function V2ExportMenu({
     try {
       const link = await createShareLink(whole, { appUrl: window.location.href, getTurnstileToken });
       rememberShare(browserStorage(), document.id, link.id, link.deleteToken);
+      track('share_view');
       setShareTick((tick) => tick + 1);
       const copied = await navigator.clipboard.writeText(link.url).then(() => true, () => false);
       // No clipboard permission: the link is shown instead of lost.
@@ -207,6 +213,7 @@ export function V2ExportMenu({
         onToast('Too long for an editable link', 'danger', { description: canShare ? 'Share a view-only link instead, or send the file.' : 'Send the file instead.' });
         return;
       }
+      track('share_edit');
       const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
       onToast(copied ? 'Editable link copied' : 'Editable link ready', 'success',
         copied ? { description: `Opens “${frameName(mermaidTarget)}” as a new copy to edit. Nothing was uploaded.` } : { description: url, persistent: true });

@@ -2,6 +2,7 @@
 // browser has a model context; otherwise nothing loads. Every op runs through runLiveAgentOp, as the MCP bridge's do.
 import { useEffect, useRef, useState } from 'react';
 import { runLiveAgentOp, type LiveAgentSession } from '../../../agent/liveOp';
+import { trackOnce } from '../../../services/usage/usage';
 import { modelContextOf, registerWebMcpTools } from '../../../agent/webMcp';
 import type { WebMcpEditor } from '../../../agent/webMcpTools';
 import type { CanvasCamera } from '../../domain/camera/types';
@@ -71,6 +72,7 @@ export function useV2WebMcp(options: V2WebMcpOptions): V2WebMcp {
       const next = queue.then(async () => {
         const before = optionsRef.current.document;
         const { command, output } = await runLiveAgentOp(() => optionsRef.current, name, input, pageId, signal);
+        trackOnce('agent_webmcp');
         if (command) {
           setActivity(command.label);
           await settled(() => optionsRef.current.document, before);

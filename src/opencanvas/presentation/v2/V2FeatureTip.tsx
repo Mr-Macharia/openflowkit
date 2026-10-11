@@ -18,6 +18,34 @@ export function overlapsFloatingUi(tip: Element): boolean {
 }
 
 /**
+ * True while the card holding `layer` would sit over other floating UI. Floating UI appears, moves and goes by DOM
+ * changes (a selection by keyboard, a context bar following a drag): one check per frame at most, only while something changed.
+ */
+export function useYielding(layer: React.RefObject<HTMLElement | null>, active: boolean): boolean {
+  const [yielding, setYielding] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const card = layer.current?.closest('.ofk-v2-tip');
+      if (card) setYielding(overlapsFloatingUi(card));
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(check); };
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class', 'open'] });
+    window.addEventListener('resize', schedule);
+    schedule();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      cancelAnimationFrame(frame);
+    };
+  }, [layer, active]);
+  return yielding;
+}
+
+/**
  * One hint beside the control it is about. Passive: it never takes focus or a key,
  * and only its buttons catch the pointer, so a gesture under it still reaches the canvas.
  * It yields (hides, keeps its place) while other floating UI — a selection's context bar,
@@ -32,7 +60,6 @@ export function V2FeatureTip({ id, onAction, onClose }: {
   const anchor = useRef<HTMLElement | null>(null);
   const layer = useRef<HTMLDivElement>(null);
   const [found, setFound] = useState(false);
-  const [yielding, setYielding] = useState(false);
   useEffect(() => {
     anchor.current = document.querySelector<HTMLElement>(tip.anchor);
     setFound(anchor.current !== null);
@@ -50,27 +77,7 @@ export function V2FeatureTip({ id, onAction, onClose }: {
       window.removeEventListener('pointerdown', onPointer, true);
     };
   }, [onClose]);
-  // Floating UI appears, moves and goes by DOM changes (a selection by keyboard, a context bar following a drag):
-  // one check per frame at most, only while something changed.
-  useEffect(() => {
-    if (!found) return;
-    let frame = 0;
-    const check = () => {
-      frame = 0;
-      const card = layer.current?.closest('.ofk-v2-tip');
-      if (card) setYielding(overlapsFloatingUi(card));
-    };
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(check); };
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class', 'open'] });
-    window.addEventListener('resize', schedule);
-    schedule();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', schedule);
-      cancelAnimationFrame(frame);
-    };
-  }, [found]);
+  const yielding = useYielding(layer, found);
   if (!found) return null;
   const keys = tip.keys ? platformKeys(tip.keys) : null;
   return (

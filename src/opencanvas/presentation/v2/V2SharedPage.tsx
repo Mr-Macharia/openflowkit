@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button, ErrorState } from '../design-system';
 import { loadSharedDocument, type SharedProblem } from '../../../services/share/shareClient';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
+import { track } from '../../../services/usage/usage';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { mintV2Id } from './v2Document';
 import { V2StateHero } from './V2StateHero';
@@ -33,6 +34,7 @@ export function V2SharedPage(): React.JSX.Element {
     const saved = await createV2Repository(window.indexedDB).saveDocument(copy.id, copy, 0);
     if (saved.status !== 'saved') throw new Error('Could not save a copy of this diagram.');
     navigate(`/d/${copy.id}`);
+    track('shared_copied');
   }, [document, navigate]);
   const shared = useMemo(() => document ? { document, onEdit: edit } : undefined, [document, edit]);
 

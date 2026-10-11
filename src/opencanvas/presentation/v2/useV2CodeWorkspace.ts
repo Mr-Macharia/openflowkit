@@ -243,8 +243,8 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     }
   }, [pageRef, document, readOnly, generating, frameId, draft, palette, autoIcons, commit, onViews, announce, offerIconRemoval, applySelection, pushToast, dismissToast]);
 
-  /** One template path for the canvas welcome, home's cards and the starter gallery. The Model panel's own button keeps itself open (`openPanel: false`). */
-  const startFrom = useCallback((dsl: string, { openPanel: showPanel = true, baseline = false }: { openPanel?: boolean; baseline?: boolean } = {}) => {
+  /** One template path for the canvas welcome, home's cards and the starter gallery. The Model panel's own button keeps itself open (`openPanel: false`). True once drawn. */
+  const startFrom = useCallback((dsl: string, { openPanel: showPanel = true, baseline = false }: { openPanel?: boolean; baseline?: boolean } = {}): Promise<boolean> => {
     setFrameId(null);
     setDraft(dsl);
     if (showPanel) {
@@ -253,10 +253,12 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     }
     // A skipped generate committed nothing: the undo it would have replaced stays.
     // A template opens on the diagram, not on a selected frame with its style bar over it (J11).
-    void generate(dsl, undefined, null).then((committed) => {
-      if (!baseline || !committed) return;
-      forgetHistory?.();
-      applySelection(replaceSelection([]));
+    return generate(dsl, undefined, null).then((committed) => {
+      if (baseline && committed) {
+        forgetHistory?.();
+        applySelection(replaceSelection([]));
+      }
+      return committed;
     });
   }, [openPanel, generate, focusCanvas, forgetHistory, applySelection]);
   /** Writes the draft for a new diagram without opening the panel (the motion chips). */
@@ -267,6 +269,8 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
   return {
+    /** The diagram Generate replaces; null draws a new one. */
+    frameId,
     draft, setDraft, edit, writeNew, generating, diagnostics, canvasEdited, panelFocus, panelSelect,
     foreign: foreign ? { label: foreign.label, convert: convertForeign } : null,
     openNew, openFrame, generate, startFrom, cancel,

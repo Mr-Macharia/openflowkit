@@ -45,6 +45,7 @@ import { V2ContextMenu, type ContextMenuTarget } from './V2ContextMenu';
 import type { V2Tool } from './V2CreationToolbar';
 import { V2ExportMenu } from './V2ExportMenu';
 import { V2FeatureTip } from './V2FeatureTip';
+import { V2FeedbackPrompt } from './V2Feedback';
 import { V2FindBar } from './V2FindBar';
 import { V2FlowPanel } from './V2FlowPanel';
 import { V2LoadCenter } from './V2LoadCenter';
@@ -71,6 +72,7 @@ import { useV2DocumentLoad } from './useV2DocumentLoad';
 import { useV2EditActions } from './useV2EditActions';
 import { useV2EditorNotices } from './useV2EditorNotices';
 import { useV2FeatureTips } from './useV2FeatureTips';
+import { useV2FeedbackPrompts } from './useV2FeedbackPrompts';
 import { useV2Find } from './useV2Find';
 import { useV2FlowPlayback } from './useV2FlowPlayback';
 import { diagramIconsOn, iconToggleFrame, useV2IconActions } from './useV2IconActions';
@@ -101,10 +103,16 @@ import { scheduleV2Thumbnail } from './v2Thumbnail';
 import { DEFAULT_TOOL_CONFIG, type V2ConnectorTool, type V2ToolConfig } from './v2ToolCatalog';
 import type { ShapeKind } from '../../domain/nodes/shapeNode';
 import { TURNSTILE_SITE_KEY } from '../../../services/share/turnstile';
+import { track, trackOnce } from '../../../services/usage/usage';
+import type { UsageEvent } from '../../../services/usage/usageEvents';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import './v2EditorPage.css';
 
 const imageFiles = (list: DataTransfer | null): File[] => Array.from(list?.files ?? []).filter(isImageFile);
+const insertsNode = (command: DocumentCommand): boolean =>
+  command.kind === 'insert-node' || (command.kind === 'batch' && command.commands.some(insertsNode));
+/** A diagram made one way counts once it is drawn. */
+const counted = (way: UsageEvent) => (committed: boolean) => { if (committed) track(way); };
 
 /** A shared link opens here: the decrypted document, read-only, never stored; `onEdit` saves a local copy. */
 export interface V2SharedView { readonly document: SceneDocumentV1; readonly onEdit: () => Promise<void> }
@@ -283,6 +291,13 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     return true;
   }, []);
   const commit = useCallback((command: DocumentCommand) => { if (writable(command)) sessionCommit(command); }, [writable, sessionCommit]);
+  // The tools' commit: the first shape on an empty document is a diagram drawn by hand.
+  const documentRef = useRef(session.document);
+  useEffect(() => { documentRef.current = session.document; });
+  const drawCommit = useCallback((command: DocumentCommand) => {
+    if (insertsNode(command) && writable(command) && documentRef.current?.pages.every((candidate) => candidate.nodes.length === 0)) track('created_draw');
+    commit(command);
+  }, [commit, writable]);
   const load = useV2DocumentLoad({
     documentId: id,
     initialize: repo.initialize,
@@ -438,10 +453,10 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     if (!startIntent || load.phase !== 'ready' || !page) return;
     navigate(location.pathname, { replace: true, state: null });
     if ('start' in startIntent) openWorkspace(startIntent.start);
-    else if ('source' in startIntent) code.startFrom(startIntent.source, { baseline: true });
+    else if ('source' in startIntent) void code.startFrom(startIntent.source, { baseline: true }).then(counted(startIntent.via === 'repo' ? 'created_map' : 'created_import'));
     else if ('template' in startIntent) { // a repoMap intent needs nothing here: the document was born with its source
       const template = findStarterTemplate(startIntent.template);
-      if (template) code.startFrom(template.dsl, { baseline: true });
+      if (template) void code.startFrom(template.dsl, { baseline: true }).then(counted('created_template'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per intent
   }, [startIntent, load.phase, page === null]);
@@ -562,7 +577,10 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
   );
   architectureActionsRef.current = architectureActions;
   const workspaceFolder = useV2WorkspaceFolder({
-    onLoad: (dsl, snaps) => { code.setDraft(dsl); return code.generate(dsl, snaps); },
+    onLoad: (dsl, snaps) => {
+      code.setDraft(dsl);
+      return code.generate(dsl, snaps).then((committed) => { counted('created_import')(committed); return committed; });
+    },
     onToast: (title, tone, description) => pushToast({ id: `workspace-${Date.now()}`, tone, title, ...(description ? { description } : {}) }),
   });
   // Committing a view writes the DSL + snaps back to the open folder. The
@@ -698,9 +716,14 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     tools: { document: session.document, capabilities: agentCapabilities, compile: compileDraft },
     undo: session.undo, announce: setAnnouncement,
     // The committed page arrives next frame; land on what was drawn (a removal leaves the camera alone).
-    onApplied: (nodeIds) => requestAnimationFrame(() => {
-      if (nodeIds.length && camera.landReadable(landingDirection(), nodeIds)) toastZoomedToRead();
-    }),
+    onApplied: (nodeIds) => {
+      track('ai_applied');
+      // pageRef still holds the page from before this apply: a root it lacks is a diagram the assistant made.
+      if (nodeIds.some((nodeId) => !pageRef.current?.nodes.some((node) => node.id === nodeId))) track('created_ai');
+      requestAnimationFrame(() => {
+        if (nodeIds.length && camera.landReadable(landingDirection(), nodeIds)) toastZoomedToRead();
+      });
+    },
   });
   const diagramCount = useMemo(() => (page ? dslFrames(page).length : 0), [page]);
   const selectedDiagramCount = useMemo(() => (page ? selectedFrameIds(page, selection.nodeIds).length : 0), [page, selection.nodeIds]);
@@ -726,6 +749,9 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     token: preferences.bridgeToken,
     revision: session.revision,
   });
+  useEffect(() => { if (agentBridge.status === 'connected') trackOnce('agent_mcp'); }, [agentBridge.status]);
+  // Opened by the person, not by a template drawing beside its source (that opens it without focus).
+  useEffect(() => { if (panels.workspace === 'code' && code.panelFocus) track('code_opened'); }, [panels.workspace]); // eslint-disable-line react-hooks/exhaustive-deps
   const webMcp = useV2WebMcp({
     ...agentSession,
     scene: viewPage, mode: map.mode,
@@ -773,14 +799,14 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
   });
 
   const iconLibrary = useV2IconLibrary({
-    hostRef, pageRef, commit: commit, mintId: mintV2Id, openEditor, readOnly: editLocked,
+    hostRef, pageRef, commit: drawCommit, mintId: mintV2Id, openEditor, readOnly: editLocked,
   });
 
   // The icon library hosts emoji on their own tab; I and E open it there.
   const [librarySection, setLibrarySection] = useState<'icons' | 'emoji'>('icons');
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const media = useV2MediaInsert({
-    pageRef, commit: commit, applySelection, applyConnectorSelection,
+    pageRef, commit: drawCommit, applySelection, applyConnectorSelection,
     announce: setAnnouncement, mintId: mintV2Id, readOnlyRef,
     onFailure: (title) => pushToast({ id: `media-${Date.now()}`, tone: 'danger', title }),
     centreWorld: () => {
@@ -791,7 +817,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     },
   });
   const inserts = useV2Inserts({
-    pageRef, readOnlyRef, selectionRef, commit: commit, applySelection, applyConnectorSelection,
+    pageRef, readOnlyRef, selectionRef, commit: drawCommit, applySelection, applyConnectorSelection,
     centreWorld: media.centreWorld, setTool, openEditor, openChart, announce: setAnnouncement,
   });
   const pickImageFile = () => imageInputRef.current?.click();
@@ -828,7 +854,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     } else if (looksLikeMermaid(text)) {
       // The code panel converts and draws it as one undo step, its source open beside it.
       event.preventDefault();
-      code.startFrom(text);
+      void code.startFrom(text).then(counted('created_import'));
     } else if (editActions.pasteShapes()) {
       event.preventDefault();
     }
@@ -931,12 +957,15 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
   });
 
   const [exported, setExported] = useState(false);
+  // Typing a label is not the moment: a tip or prompt waits, so the Escape that ends editing cannot eat it.
+  const transient = panels.motionOpen || playback.flow !== null || panels.shortcutsOpen
+    || exportOpen || contextMenu !== null || editing !== null || connectorLabel.editing !== null;
+  // A prompt asks about the app, never in a shared view or an embed; side panels it steps aside from (useYielding).
+  const feedback = useV2FeedbackPrompts({ enabled: !shared && !load.readOnly && window.self === window.top, blocked: transient });
   const tips = useV2FeatureTips({
     page, readOnly: editLocked, rendererReady, selectedCount: selection.nodeIds.length,
     aiConfigured: aiSettings.configured, workspace: panels.workspace, motionOpen: panels.motionOpen,
-    // Typing a label is not the moment: the tip waits, so the Escape that ends editing cannot eat it.
-    blocked: panels.workspace !== null || panels.motionOpen || playback.flow !== null || panels.treeOpen || panels.shortcutsOpen
-      || exportOpen || contextMenu !== null || editing !== null || connectorLabel.editing !== null
+    blocked: transient || panels.workspace !== null || panels.treeOpen || feedback.prompt !== null
       // An agent is drawing: a coachmark would talk over it.
       || agentBridge.status === 'connected',
     exported,
@@ -1091,7 +1120,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
               readOnlyRef={readOnlyRef} gestureApiRef={gestureApiRef}
               selection={selection} selectedConnectorId={selectedConnectorId} selectedConnectorIds={selectedConnectorIds}
               editing={editing}
-              commit={commit}
+              commit={drawCommit}
               applySelection={applySelection} applyConnectorSelection={applyConnectorSelection}
               updateCamera={camera.updateCamera} openEditor={openEditor} openConnectorEditor={connectorLabel.open} onToolChange={setTool} mintId={mintV2Id}
               extendConnectorCommand={extendConnectorCommand}
@@ -1107,7 +1136,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
             >
               {repoSource && map.active ? <V2RepoMapOverlay source={repoSource} map={repo.state} links={map.links} /> : null}
               {map.start ? (
-                <V2MapStart busy={code.generating} onStartModel={() => { code.startFrom(C4_STARTER, { openPanel: false }); setModelPanelOnStart(true); }}
+                <V2MapStart busy={code.generating} onStartModel={() => { void code.startFrom(C4_STARTER, { openPanel: false }).then(counted('created_template')); setModelPanelOnStart(true); }}
                   onMapRepo={(repoRef) => navigate(mapRepoPath(repoRef))}
                   onAgent={() => openWorkspace('agent')} />
               ) : null}
@@ -1198,7 +1227,11 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
               onCodeChange={code.edit}
               diagnostics={code.diagnostics} generating={code.generating} canvasEdited={code.canvasEdited}
               {...(code.foreign ? { convertFrom: code.foreign } : {})}
-              onGenerate={() => { void code.generate(); }} onClose={() => { code.cancel(); panels.closeWorkspace(); }} /> : null}
+              onGenerate={() => {
+                // Regenerating a bound diagram is an edit, not a new one.
+                const fresh = code.frameId === null;
+                void code.generate().then((committed) => { if (fresh) counted('created_code')(committed); });
+              }} onClose={() => { code.cancel(); panels.closeWorkspace(); }} /> : null}
             {panels.workspace === 'agent' ? <V2AgentConnect status={agentBridge.status} detail={agentBridge.detail}
               activity={agentBridge.activity} onUndo={session.undo} webMcpTools={webMcp.tools} webMcpActivity={webMcp.activity}
               port={preferences.bridgePort} token={preferences.bridgeToken}
@@ -1219,7 +1252,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
             {panels.workspace === 'model' ? (
               <V2ModelPanel
                 onOpenCode={() => openWorkspace('code')}
-                onCreateWorkspace={() => code.startFrom(C4_STARTER, { openPanel: false })}
+                onCreateWorkspace={() => { void code.startFrom(C4_STARTER, { openPanel: false }).then(counted('created_template')); }}
                 architecture={architecture}
                 elementPageIds={new Map(session.document!.pages.flatMap((candidate) => candidate.nodes.flatMap((node) => {
                   const elementId = placedElementId(node);
@@ -1287,6 +1320,8 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
             {panels.shortcutsOpen ? <V2Shortcuts onClose={panels.closeShortcuts} /> : null}
             {find.open ? <V2FindBar find={find} label={map.active ? 'Find in map' : 'Find on canvas'} /> : null}
             {tips.tip ? <V2FeatureTip id={tips.tip} onAction={() => runTip(tips.tip!)} onClose={tips.dismiss} /> : null}
+            {feedback.prompt ? <V2FeedbackPrompt prompt={feedback.prompt} hidden={transient} onToast={pushToast}
+              onFinish={(outcome) => { feedback.finish(outcome); if (document.activeElement === document.body) focusCanvas(); }} /> : null}
             {panels.motionOpen ? (
               <Panel title="Animation export" className="ofk-motion-panel ofk-v2-workspace-panel"
                 onClose={panels.closeMotion}>

@@ -3,6 +3,8 @@
 .ofk-v2-panel-section + .ofk-v2-panel-section { border-top: 1px solid var(--ofk-border); padding-top: var(--ofk-space-lg); }
 .ofk-v2-panel-section h3 { margin: 0; font-size: 13px; font-weight: var(--ofk-weight-emphasis); color: var(--ofk-text); }
 .ofk-v2-properties.ofk-v2-settings { gap: var(--ofk-space-lg); width: min(320px, calc(100vw - 48px)); }
+/* Scrolls inside rather than growing past the viewport, so it never slides up over the Canvas menu that opened it. */
+.ofk-v2-properties.ofk-v2-settings { max-height: calc(100dvh - 140px); overflow-y: auto; overscroll-behavior: contain; }
 .ofk-v2-panel-field { display: grid; gap: var(--ofk-space-xs); min-width: 0; }
 .ofk-v2-field-label { font-size: 11px; color: var(--ofk-secondary); }
 .ofk-v2-panel-field > .ofk-segmented { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }

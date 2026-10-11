@@ -103,7 +103,7 @@ export type V2StartIntent =
   | { readonly start: 'assistant' | 'code' | 'agent' }
   | { readonly template: string }
   /** A file's text from home's Import: OpenFlow DSL, or Mermaid / Structurizr / D2 to convert first. */
-  | { readonly source: string }
+  | { readonly source: string; readonly via?: 'repo' }
   /** `/map/github/<owner>/<repo>`: a new document that is the repo's map. `ref` absent = default branch. */
   | { readonly repoMap: { readonly owner: string; readonly repo: string; readonly ref?: string } };
 
