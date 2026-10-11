@@ -34,6 +34,8 @@ The first public release of the new editor, shipping as **2.1.0** when `v2` merg
 - **Official Google Cloud icons**, found by product name in the icon library and drawn automatically from labels.
 - **Feedback from inside the app:** Send feedback… in the main menu, and an occasional one-tap question after you use a feature.
 - **Basic usage stats** help us see what people use; turn them off in Settings.
+- **OpenFlowKit Pro waitlist** on the home screen: pick a plan, tell us what you'd pay for, and lock in a founding
+  price. Nothing is for sale yet, and everything you use today stays free and open source.
 - **Map mode.** A Canvas | Map switch on every document (`M`) draws the architecture model as boxes that open in
   place: Top level, One level in or All levels; arrow keys walk, Enter opens, Escape backs out, ⌘F finds. An arrow
   lists the relations (or, on a repo map, the `file:line` evidence) behind it. Edit as drawing (⇧M) copies the map to

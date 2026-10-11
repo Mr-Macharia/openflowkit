@@ -89,6 +89,10 @@ try {
   })));
   console.log(`  ${pct(s.pmf.veryShare)} very disappointed of ${int(s.pmf.total)} (40% is the usual PMF bar)`);
   table(`Would pay for (${days} days, votes)`, PAY_OPTIONS.map((option) => ({ option, votes: int(s.pay[option]) })));
+  console.log(`\nPro waitlist (${days} days): ${int(s.pro.opened)} opened it, ${int(s.pro.joined)} joined (${pct(s.pro.joinRate)})`);
+  table('  Plan they\'d join', Object.entries(s.pro.plans).map(([plan, people]) => ({ plan, people: int(people) })));
+  table(`  Feels fair a month (median ${s.pro.price.median === null ? '—' : `$${s.pro.price.median}`})`, s.pro.price.bands);
+  table('  Would pay for (waitlist)', Object.entries(s.pro.features).filter(([option]) => option !== 'free').map(([option, votes]) => ({ option, votes: int(votes) })));
   console.log(`\nEmails left: ${int(s.emails)} (${days} days)`);
   console.log(s.unread ? `Unread feedback: ${int(s.unread.count)} (mark read at stats.openflowkit.com)`
     : 'Unread feedback: unavailable — apply worker/migrations/0002_feedback_read.sql');

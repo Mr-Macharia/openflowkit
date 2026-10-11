@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   IconAlertTriangle, IconArrowBackUp, IconArrowUpRight, IconBook2, IconBrandGithub, IconBulb, IconChevronDown, IconClock, IconFileImport, IconHierarchy2,
-  IconKeyboard, IconLayoutGrid, IconLayoutList, IconLock, IconMoon, IconPlus, IconSearch, IconSpeakerphone, IconStar,
+  IconKeyboard, IconLayoutGrid, IconLayoutList, IconLock, IconMoon, IconPlus, IconSearch, IconSparkles, IconSpeakerphone, IconStar,
   IconArchive, IconStarFilled, IconSun, IconTemplate, IconTrashX, IconUpload, IconX,
 } from '@tabler/icons-react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -26,6 +26,7 @@ import {
   CHIP_ICON, DiagramCard, HomeCard, HomeNoticeStrip, SkeletonCard, StartCard, StartChip, ArchivedCard, type CardSelection, type StartKind,
 } from './V2HomeCards';
 import { V2StateHero } from './V2StateHero';
+import { V2ProWaitlist, joinedProPlan } from './V2ProWaitlist';
 import { HOME_NEWS } from './homeNews';
 import { DOCS_URL, REPO_URL, formatStars, useGitHubStars } from './homeStars';
 import {
@@ -97,7 +98,8 @@ export function V2HomePage(): React.JSX.Element {
   const [selected, setSelected] = useState<readonly string[]>([]);
   const anchor = useRef<string | null>(null);
   const [toasts, setToasts] = useState<readonly ToastItem[]>([]);
-  const [open, setOpen] = useState<'sort' | 'palette' | 'keys' | null>(null);
+  const [open, setOpen] = useState<'sort' | 'palette' | 'keys' | 'pro' | null>(null);
+  const [proJoined, setProJoined] = useState(() => joinedProPlan() !== null);
   const [dragging, setDragging] = useState(false);
   const renameRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -411,6 +413,8 @@ export function V2HomePage(): React.JSX.Element {
       run: () => create({ template: name }),
     })),
     { id: 'view-news', group: 'Go to', label: 'What’s new', icon: <Icon icon={IconSpeakerphone} />, run: () => navigate(viewLink('news')) },
+    { id: 'pro', group: 'Go to', label: 'OpenFlowKit Pro: join the waitlist', keywords: ['pricing', 'team', 'upgrade'], icon: <Icon icon={IconSparkles} />,
+      run: () => setOpen('pro') },
     { id: 'theme', group: 'Settings', label: dark ? 'Switch to light theme' : 'Switch to dark theme', icon: <Icon icon={dark ? IconSun : IconMoon} />,
       run: () => updatePreferences({ theme: dark ? 'light' : 'dark' }) },
     { id: 'keys', group: 'Help', label: 'Keyboard shortcuts', shortcut: '?', icon: <Icon icon={IconKeyboard} />, run: () => setOpen('keys') },
@@ -564,6 +568,11 @@ export function V2HomePage(): React.JSX.Element {
                 {count(entry.view) ? <span className="ofk-home-nav-count">{count(entry.view)}</span> : null}
               </Link>
             ))}
+            <button type="button" className="ofk-home-nav-item ofk-home-pro" data-joined={proJoined || undefined} onClick={() => setOpen('pro')}>
+              <Icon icon={IconSparkles} />
+              <span>OpenFlowKit Pro</span>
+              <span className="ofk-home-pro-pill">{proJoined ? 'On the list' : 'Waitlist'}</span>
+            </button>
           </nav>
 
           {starredDocs.length > 0 ? (
@@ -690,6 +699,8 @@ export function V2HomePage(): React.JSX.Element {
           <CommandPalette open onClose={() => setOpen(null)} commands={commands} label="Find anything"
             placeholder="Find a diagram, template or action…" emptyLabel="Nothing matches." />
         ) : null}
+
+        {open === 'pro' ? <V2ProWaitlist open onClose={() => setOpen(null)} onJoined={() => setProJoined(true)} /> : null}
 
         <Dialog open={open === 'keys'} onClose={() => setOpen(null)} title="Keyboard shortcuts"
           actions={<Button variant="quiet" onClick={() => setOpen(null)}>Close</Button>}>

@@ -15,9 +15,9 @@ const CERTS = `https://${TEAM}/cdn-cgi/access/certs`;
 const NOW = new Date('2026-10-14T12:00:00.000Z'); // a Wednesday
 const SECONDS = NOW.getTime() / 1000;
 
-// ---- real SQLite with both migrations ---------------------------------------------------------------------------
+// ---- real SQLite with every migration ---------------------------------------------------------------------------
 
-const MIGRATIONS = ['0001_init.sql', '0002_feedback_read.sql']
+const MIGRATIONS = ['0001_init.sql', '0002_feedback_read.sql', '0003_pro_waitlist.sql']
   .map((name) => readFileSync(new URL(`../worker/migrations/${name}`, import.meta.url), 'utf8'));
 function database(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
@@ -47,11 +47,15 @@ function beacon(db: DatabaseSync, day: string, user: string, firstSeen: string, 
     VALUES (?, ?, ?, ?, ?, ?, '2.1.0', 0, ?${columns.map(() => ', ?').join('')})`)
     .run(`${day}T10:00:00.000Z`, day, user, firstSeen, source, entry, country, ...Object.values(counts) as number[]);
 }
-interface Feedback { created_at: string; kind: string; feature?: string; rating?: string; pmf?: string; pay?: string; text?: string; email?: string; country?: string; read_at?: string }
+interface Feedback {
+  created_at: string; kind: string; feature?: string; rating?: string; pmf?: string; pay?: string; plan?: string; price?: number;
+  text?: string; email?: string; country?: string; read_at?: string;
+}
 function feedback(db: DatabaseSync, row: Feedback) {
-  db.prepare('INSERT INTO feedback (created_at, kind, feature, rating, pmf, pay, text, email, version, country, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(row.created_at, row.kind, row.feature ?? null, row.rating ?? null, row.pmf ?? null, row.pay ?? null, row.text ?? null,
-      row.email ?? null, '2.1.0', row.country ?? 'DE', row.read_at ?? null);
+  db.prepare(`INSERT INTO feedback (created_at, kind, feature, rating, pmf, pay, plan, price, text, email, version, country, read_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(row.created_at, row.kind, row.feature ?? null, row.rating ?? null, row.pmf ?? null, row.pay ?? null, row.plan ?? null,
+      row.price ?? null, row.text ?? null, row.email ?? null, '2.1.0', row.country ?? 'DE', row.read_at ?? null);
 }
 
 const PAYLOAD = `<script>alert(1)</script> "quoted" & 'single'`;
@@ -238,7 +242,10 @@ describe('loadStats on seeded SQLite', () => {
   it('PMF, pay votes, emails, thumbs, unread', async () => {
     const s = await loadStats(sqliteRun(db), NOW, 30);
     expect(s.pmf).toEqual({ very: 1, somewhat: 1, not: 1, total: 3, veryShare: 1 / 3 });
-    expect(s.pay).toEqual({ collaboration: 1, private_repos: 0, sync: 1, free: 1 });
+    expect(s.pay).toEqual({
+      collaboration: 1, private_repos: 0, sync: 1, free: 1, history: 0, libraries: 0, private_links: 0, ai_included: 0, sso: 0,
+      comments: 0, drift: 0, integrations: 0, branding: 0, self_host: 0,
+    });
     expect(s.emails).toBe(2);
     expect(s.thumbs).toEqual([{ feature: 'ai', up: 1, down: 1 }]);
     expect(s.comments.map((row) => row.text)).toEqual([PAYLOAD]);
@@ -257,9 +264,34 @@ describe('loadStats on seeded SQLite', () => {
     expect(JSON.stringify(s)).not.toMatch(/NaN|Infinity/);
   });
 
-  it('unread is null, and the rest still loads, before migration 0002', async () => {
+  it('Pro waitlist: who opened it, plans, fair prices and features, apart from the product prompt', async () => {
+    const pro = database();
+    beacon(pro, '2026-10-10', 'P', '2026-10-10', 'direct', 'DE', { session: 1, pro_opened: 2 });
+    beacon(pro, '2026-10-12', 'P', '2026-10-10', 'direct', 'DE', { session: 1, pro_opened: 1 });
+    beacon(pro, '2026-10-12', 'Q', '2026-10-12', 'direct', 'DE', { session: 1, pro_opened: 1 });
+    beacon(pro, '2026-10-12', 'R', '2026-10-12', 'direct', 'DE', { session: 1 });
+    feedback(pro, { created_at: '2026-10-10T11:00:00.000Z', kind: 'pro', plan: 'team', price: 12, pay: 'collaboration,sso', email: 'a@b.co' });
+    feedback(pro, { created_at: '2026-10-11T11:00:00.000Z', kind: 'pro', plan: 'team', price: 40, email: 'e@f.co' });
+    feedback(pro, { created_at: '2026-10-11T12:00:00.000Z', kind: 'pro', plan: 'team', price: 4, email: 'g@h.co' });
+    feedback(pro, { created_at: '2026-10-12T11:00:00.000Z', kind: 'pro', plan: 'pro', pay: 'sync', email: 'c@d.co' });
+    feedback(pro, { created_at: '2026-10-12T12:00:00.000Z', kind: 'product', pmf: 'very', pay: 'collaboration' });
+    const s = await loadStats(sqliteRun(pro), NOW, 30);
+    // P and Q opened it (P twice counts once); 4 entries (seeded without a beacon each), so the rate is 4 of 2.
+    expect([s.pro.opened, s.pro.joined, s.pro.joinRate]).toEqual([2, 4, 2]);
+    expect(s.pro.plans).toEqual({ pro: 1, team: 3, enterprise: 0 });
+    // Prices 4, 12, 40 (one left it unanswered): median 12; 40 is the slider's top, in the last band.
+    expect([s.pro.price.answered, s.pro.price.median]).toEqual([3, 12]);
+    expect(s.pro.price.bands.map((band) => band.people)).toEqual([1, 0, 1, 0, 0, 1]);
+    expect([s.pro.features.collaboration, s.pro.features.sso, s.pro.features.sync, s.pro.features.history]).toEqual([1, 1, 1, 0]);
+    // The product prompt's votes stay its own.
+    expect([s.pay.collaboration, s.pay.sso, s.pay.sync]).toEqual([1, 0, 0]);
+    expect(s.unread?.items.map((row) => row.plan)).toEqual([null, 'pro', 'team', 'team', 'team']);
+  });
+
+  it('unread is null, and the rest still loads, without migration 0002', async () => {
     const old = new DatabaseSync(':memory:');
     old.exec(MIGRATIONS[0]);
+    old.exec(MIGRATIONS[2]);
     const s = await loadStats(sqliteRun(old), NOW, 30);
     expect(s.unread).toBeNull();
     expect(s.reach.mau).toBe(0);

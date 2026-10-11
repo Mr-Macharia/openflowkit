@@ -38,7 +38,10 @@ export async function getTurnstileToken(siteKey: string | undefined = TURNSTILE_
   const container = document.createElement('div');
   container.setAttribute('data-testid', 'turnstile-host');
   Object.assign(container.style, { position: 'fixed', bottom: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: '2147483647' });
-  document.body.append(container);
+  // A modal <dialog> (Send feedback, the Pro waitlist) makes the rest of the page inert and sits in the top layer:
+  // a challenge that needs a click must render inside it to be seen and clicked.
+  const dialogs = document.querySelectorAll('dialog[open]');
+  (dialogs[dialogs.length - 1] ?? document.body).append(container);
   let widget = '';
   let timer = 0;
   return new Promise<string>((resolve, reject) => {

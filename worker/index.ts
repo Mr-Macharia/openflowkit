@@ -10,8 +10,8 @@
 // Types are the minimum this file uses from Workers; no @cloudflare/workers-types dependency.
 
 import {
-  FEEDBACK_FEATURES, PAY_OPTIONS, USAGE_ENTRIES, USAGE_EVENTS,
-  type FeedbackFeature, type PayOption, type UsageEntry, type UsageEvent,
+  FEEDBACK_FEATURES, MAX_PRO_PRICE, PAY_OPTIONS, PRO_PLANS, USAGE_ENTRIES, USAGE_EVENTS,
+  type FeedbackFeature, type PayOption, type ProPlan, type UsageEntry, type UsageEvent,
 } from '../src/services/usage/usageEvents';
 
 export interface R2ObjectLike {
@@ -263,8 +263,9 @@ async function usageBeacon(request: Request, env: Env, now: Date): Promise<Respo
 }
 
 type Feedback = {
-  kind: 'feature' | 'product' | 'general'; feature: FeedbackFeature | null; rating: 'up' | 'down' | null;
-  pmf: 'very' | 'somewhat' | 'not' | null; pay: PayOption[] | null; text: string | null; email: string | null; version: string;
+  kind: 'feature' | 'product' | 'general' | 'pro'; feature: FeedbackFeature | null; rating: 'up' | 'down' | null;
+  pmf: 'very' | 'somewhat' | 'not' | null; pay: PayOption[] | null; plan: ProPlan | null; price: number | null;
+  text: string | null; email: string | null; version: string;
 };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -281,22 +282,31 @@ const words = (value: unknown, max: number): string | null | typeof INVALID => {
 
 function parseFeedback(value: unknown): Feedback | null {
   if (!isRecord(value) || typeof value.version !== 'string' || value.version.length > 20) return null;
-  const kind = pick(['feature', 'product', 'general'] as const, value.kind);
+  const kind = pick(['feature', 'product', 'general', 'pro'] as const, value.kind);
   const feature = pick(FEEDBACK_FEATURES, value.feature);
   const rating = pick(['up', 'down'] as const, value.rating);
   const pmf = pick(['very', 'somewhat', 'not'] as const, value.pmf);
+  const plan = pick(PRO_PLANS, value.plan);
+  const price = value.price === undefined || value.price === null ? null
+    : Number.isInteger(value.price) && (value.price as number) >= 0 && (value.price as number) <= MAX_PRO_PRICE ? value.price as number : INVALID;
   const text = words(value.text, 2_000);
   const email = words(value.email, 254);
   if (kind === null || kind === INVALID || feature === INVALID || rating === INVALID || pmf === INVALID) return null;
+  if (plan === INVALID || price === INVALID) return null;
   if (text === INVALID || email === INVALID || (email !== null && !EMAIL.test(email))) return null;
   if (kind === 'feature' && feature === null) return null;
+  // A waitlist entry is a plan and somewhere to say it opened; the plan fields belong to it alone.
+  if (kind === 'pro' ? plan === null || email === null : plan !== null || price !== null) return null;
   if (value.pay !== undefined && !(Array.isArray(value.pay) && value.pay.every((option) => oneOf(PAY_OPTIONS, option)))) return null;
   const pay = [...new Set((value.pay ?? []) as PayOption[])];
-  const parsed: Feedback = { kind, feature, rating, pmf, pay: pay.length ? pay : null, text, email, version: slug(value.version, 20) };
+  const parsed: Feedback = {
+    kind, feature, rating, pmf, pay: pay.length ? pay : null, plan, price, text, email, version: slug(value.version, 20),
+  };
   return rating || pmf || parsed.pay || text || email ? parsed : null;
 }
 
-const INSERT_FEEDBACK = insert('feedback', ['created_at', 'kind', 'feature', 'rating', 'pmf', 'pay', 'text', 'email', 'version', 'country']);
+const INSERT_FEEDBACK = insert('feedback',
+  ['created_at', 'kind', 'feature', 'rating', 'pmf', 'pay', 'plan', 'price', 'text', 'email', 'version', 'country']);
 
 async function feedback(request: Request, env: Env, fetcher: typeof fetch, now: Date): Promise<Response> {
   const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
@@ -313,7 +323,7 @@ async function feedback(request: Request, env: Env, fetcher: typeof fetch, now: 
     if (!verdict) return json(403, { error: 'turnstile-failed' });
   }
   await env.DB.prepare(INSERT_FEEDBACK).bind(
-    now.toISOString(), entry.kind, entry.feature, entry.rating, entry.pmf, entry.pay?.join(',') ?? null,
+    now.toISOString(), entry.kind, entry.feature, entry.rating, entry.pmf, entry.pay?.join(',') ?? null, entry.plan, entry.price,
     entry.text, entry.email, entry.version, country(request),
   ).run();
   return json(201, { ok: true });

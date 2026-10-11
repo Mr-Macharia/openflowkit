@@ -149,7 +149,12 @@ const FAMILY_LABELS: Record<string, string> = {
 const FEATURE_NAMES: Record<string, string> = { repo_map: 'Repo map', ai: 'AI assistant', agent: 'Agent', export: 'Export', share: 'Share link' };
 const PAY_NAMES: Record<string, string> = {
   collaboration: 'Real-time collaboration', private_repos: 'Private repos + PR checks', sync: 'Sync across devices', free: 'Nothing, free is great',
+  history: 'Version history', libraries: 'Team libraries', private_links: 'Private share links', ai_included: 'AI included', sso: 'SSO and audit logs',
+  comments: 'Comments and mentions', drift: 'Drift alerts on PRs', integrations: 'Notion, Confluence, Slack', branding: 'Unbranded embeds',
+  self_host: 'Self-hosted',
 };
+const PLAN_NAMES: Record<string, string> = { pro: 'Pro ($8, founding $6)', team: 'Team ($12/person, founding $9)', enterprise: 'Enterprise' };
+
 const SOURCE_NAMES: Record<string, string> = {
   hn: 'Hacker News', producthunt: 'Product Hunt', x: 'X', reddit: 'Reddit', github: 'GitHub', google: 'Google',
   linkedin: 'LinkedIn', direct: 'Direct', other: 'Other sites',
@@ -215,6 +220,7 @@ ${table}</figure>`;
 
 function feedbackItem(row: FeedbackRow): string {
   const tags = [row.kind, named(FEATURE_NAMES, row.feature), row.rating && `rated ${row.rating}`, row.pmf && `PMF: ${row.pmf}`,
+    row.plan && `plan: ${named(PLAN_NAMES, row.plan)}`, row.price !== null && row.price !== undefined && `fair: $${row.price}/mo`,
     ...(row.pay ? row.pay.split(',').map((option) => `pays for: ${named(PAY_NAMES, option)}`) : [])].filter(Boolean);
   const meta = [row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : '', esc(row.country), `v${esc(row.version)}`, esc(when(row.created_at))]
     .filter(Boolean).join(' · ');
@@ -277,6 +283,17 @@ export function renderPage(stats: Stats, growth: Growth): string {
       label: named(PAY_NAMES, option), value: votes, display: int(votes),
     })))}</div></div><div class="tiles">${tile('Emails left', int(stats.emails))}</div><h3>Feature ratings</h3>${thumbs}`,
     `Last ${days} days of feedback. Features asked about: ${FEEDBACK_FEATURES.join(', ')}.`),
+    section('Pro waitlist', `<div class="tiles">${[
+      tile('Opened it', int(stats.pro.opened), `${pct(reach.active ? stats.pro.opened / reach.active : null)} of ${int(reach.active)} active people`),
+      tile('Joined', int(stats.pro.joined), `${pct(stats.pro.joinRate)} of those who opened it`),
+    ].join('')}</div><div class="pair"><div><h3>Plan they'd join</h3>${stats.pro.joined ? bars(Object.entries(stats.pro.plans).map(([plan, n]) => ({
+      label: named(PLAN_NAMES, plan), value: n, display: `${pct(n / stats.pro.joined, 0)} · ${int(n)}`,
+    }))) : empty('No one yet.')}</div><div><h3>Feels fair a month${stats.pro.price.median === null ? '' : ` · median $${int(stats.pro.price.median)}`}</h3>${
+      stats.pro.price.answered ? bars(stats.pro.price.bands.map((band) => ({ label: band.label, value: band.people, display: int(band.people) })))
+        : empty('No answers yet.')}</div></div><h3>Would pay for</h3>${stats.pro.joined ? bars(Object.entries(stats.pro.features)
+      .filter(([option]) => option !== 'free').sort(([, a], [, b]) => b - a).map(([option, n]) => ({
+        label: named(PAY_NAMES, option), value: n, display: `${pct(n / stats.pro.joined, 0)} · ${int(n)}`,
+      }))) : empty('No one yet.')}`, `Last ${days} days. A waitlist, not sales: nobody has paid. The fair-price slider is optional, so it can sum below joins.`),
     section('Growth outside the app', `<div class="tiles">${[
       tile('GitHub stars', int(growth.stars), 'Vrun-design/openflowkit'),
       tile('npm downloads', int(growth.npm), 'MCP server, last week'),

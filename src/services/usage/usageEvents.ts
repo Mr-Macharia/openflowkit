@@ -17,6 +17,8 @@ export const USAGE_EVENTS = [
   'app_error',
   /** Seconds the tab was visible with input in the last 60 s (engaged time, not open time). */
   'active_seconds',
+  /** The Pro waitlist dialog opened (migration 0003). */
+  'pro_opened',
 ] as const;
 export type UsageEvent = (typeof USAGE_EVENTS)[number];
 
@@ -41,17 +43,29 @@ export interface UsageBeacon {
 
 export const FEEDBACK_FEATURES = ['repo_map', 'ai', 'agent', 'export', 'share'] as const;
 export type FeedbackFeature = (typeof FEEDBACK_FEATURES)[number];
-export const PAY_OPTIONS = ['collaboration', 'private_repos', 'sync', 'free'] as const;
+/** Append only: the dashboard counts each by name. The product prompt offers the first four; the Pro waitlist all but 'free'. */
+export const PAY_OPTIONS = [
+  'collaboration', 'private_repos', 'sync', 'free', 'history', 'libraries', 'private_links', 'ai_included', 'sso',
+  'comments', 'drift', 'integrations', 'branding', 'self_host',
+] as const;
 export type PayOption = (typeof PAY_OPTIONS)[number];
+/** Pro waitlist: the plan someone would join. */
+export const PRO_PLANS = ['pro', 'team', 'enterprise'] as const;
+export type ProPlan = (typeof PRO_PLANS)[number];
+/** The fair-price slider's top, in whole dollars per person a month; the top means "this or more". */
+export const MAX_PRO_PRICE = 40;
 
-/** POST /feedback body (JSON). A text or email needs the X-Turnstile-Token header. */
+/** POST /feedback body (JSON). A text or email needs the X-Turnstile-Token header. 'pro' needs a plan and an email. */
 export interface FeedbackBody {
-  readonly kind: 'feature' | 'product' | 'general';
+  readonly kind: 'feature' | 'product' | 'general' | 'pro';
   readonly feature?: FeedbackFeature;
   readonly rating?: 'up' | 'down';
   /** "How would you feel if you could no longer use OpenFlowKit?" */
   readonly pmf?: 'very' | 'somewhat' | 'not';
   readonly pay?: readonly PayOption[];
+  readonly plan?: ProPlan;
+  /** Whole dollars per person a month that feel fair, 0..MAX_PRO_PRICE. */
+  readonly price?: number;
   /** ≤ 2000 characters. */
   readonly text?: string;
   /** ≤ 254 characters. */

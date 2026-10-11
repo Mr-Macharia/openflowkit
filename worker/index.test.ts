@@ -323,10 +323,12 @@ describe('usage beacon (POST /e)', () => {
     expect((await handle(new Request('https://share.openflowkit.com/e'), env)).status).toBe(405);
   });
 
-  it('the migration declares an integer column for every usage event (a new event needs a migration)', () => {
-    const sql = readFileSync(new URL('./migrations/0001_init.sql', import.meta.url), 'utf8');
-    const table = /CREATE TABLE sessions \(([\s\S]*?)\n\);/.exec(sql)?.[1] ?? '';
-    const declared = new Set([...table.matchAll(/^\s*"?(\w+)"?\s+INTEGER NOT NULL DEFAULT 0/gm)].map((match) => match[1]));
+  it('the migrations declare an integer column for every usage event (a new event needs a migration)', () => {
+    const migration = (name: string) => readFileSync(new URL(`./migrations/${name}`, import.meta.url), 'utf8');
+    const table = /CREATE TABLE sessions \(([\s\S]*?)\n\);/.exec(migration('0001_init.sql'))?.[1] ?? '';
+    const added = migration('0003_pro_waitlist.sql').match(/ALTER TABLE sessions ADD COLUMN \w+ INTEGER NOT NULL DEFAULT 0/g) ?? [];
+    const declared = new Set([...`${table}\n${added.map((line) => line.slice('ALTER TABLE sessions ADD COLUMN '.length)).join('\n')}`
+      .matchAll(/^\s*"?(\w+)"?\s+INTEGER NOT NULL DEFAULT 0/gm)].map((match) => match[1]));
     expect(USAGE_EVENTS.filter((event) => !declared.has(event))).toEqual([]);
   });
 });
@@ -351,7 +353,7 @@ describe('feedback (POST /feedback)', () => {
     expect(await response.json()).toEqual({ ok: true });
     expect(rows()).toEqual([{
       created_at: '2026-10-11T09:30:00.000Z', kind: 'product', feature: null, rating: null, pmf: 'very', pay: 'sync,collaboration',
-      text: 'Love the repo map', email: 'ada@example.com', version: '2.1.0', country: 'DE',
+      plan: null, price: null, text: 'Love the repo map', email: 'ada@example.com', version: '2.1.0', country: 'DE',
     }]);
   });
 
@@ -376,6 +378,25 @@ describe('feedback (POST /feedback)', () => {
       { ...ok, pay: ['crypto'] }, { ...ok, pay: 'sync' }, { ...ok, text: 'x'.repeat(2_001) }, { ...ok, text: 7 },
       { ...ok, email: 'not-an-email' }, { ...ok, email: 'a b@c.d' }, { ...ok, email: `${'a'.repeat(250)}@b.co` },
       { ...ok, version: '1'.repeat(21) }, { ...ok, version: undefined }, { kind: 'general', text: '   ', pay: [], version: '2.1.0' },
+    ];
+    for (const body of bad) expect((await sendFeedback(body)).status, JSON.stringify(body)).toBe(400);
+    expect(rows()).toHaveLength(0);
+  });
+
+  it('a Pro waitlist entry: plan, price, features and an email (Turnstile checked)', async () => {
+    const response = await sendFeedback({
+      kind: 'pro', plan: 'team', price: 12, pay: ['collaboration', 'drift'], email: 'ada@example.com', version: '2.1.0',
+    });
+    expect(response.status).toBe(201);
+    expect(rows()).toMatchObject([{ kind: 'pro', plan: 'team', price: 12, pay: 'collaboration,drift', email: 'ada@example.com' }]);
+  });
+
+  it('400 for a Pro entry without a plan or an email, a bad plan or price, or plan fields on other kinds', async () => {
+    const pro = { kind: 'pro', plan: 'pro', email: 'ada@example.com', version: '2.1.0' };
+    const bad = [
+      { ...pro, plan: undefined }, { ...pro, email: undefined }, { ...pro, plan: 'gold' }, { ...pro, price: '12' }, { ...pro, price: 12.5 },
+      { ...pro, price: -1 }, { ...pro, price: 41 }, { kind: 'general', text: 'hi', plan: 'pro', version: '2.1.0' },
+      { kind: 'product', pmf: 'very', price: 9, version: '2.1.0' },
     ];
     for (const body of bad) expect((await sendFeedback(body)).status, JSON.stringify(body)).toBe(400);
     expect(rows()).toHaveLength(0);

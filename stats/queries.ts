@@ -2,7 +2,9 @@
 // so the terminal and the page can't disagree. Each statement is bounded by a day range on an indexed column
 // (sessions.day, sessions.first_seen, sessions(user, day), feedback.created_at).
 // Plain TypeScript with no parameter properties or enums: Node runs this file directly by stripping types.
-import { PAY_OPTIONS, USAGE_EVENTS, type PayOption, type UsageEvent } from '../src/services/usage/usageEvents.ts';
+import {
+  MAX_PRO_PRICE, PAY_OPTIONS, PRO_PLANS, USAGE_EVENTS, type PayOption, type ProPlan, type UsageEvent,
+} from '../src/services/usage/usageEvents.ts';
 
 export interface Query { readonly sql: string; readonly params: readonly (string | number)[] }
 export type Row = Record<string, unknown>;
@@ -40,7 +42,8 @@ export interface RetentionCell {
 }
 export interface FeedbackRow {
   readonly id: number; readonly created_at: string; readonly kind: string; readonly feature: string | null;
-  readonly rating: string | null; readonly pmf: string | null; readonly pay: string | null; readonly text: string | null;
+  readonly rating: string | null; readonly pmf: string | null; readonly pay: string | null;
+  readonly plan: string | null; readonly price: number | null; readonly text: string | null;
   readonly email: string | null; readonly version: string; readonly country: string;
 }
 export interface Ranked { readonly name: string; readonly people: number }
@@ -63,14 +66,28 @@ export interface Stats {
   readonly budget: { rows: number; share: number };
   readonly thumbs: readonly { feature: string; up: number; down: number }[];
   readonly pmf: { very: number; somewhat: number; not: number; total: number; veryShare: number | null };
+  /** "What would you pay for" from feedback prompts; the Pro waitlist's picks are in `pro.features`. */
   readonly pay: Readonly<Record<PayOption, number>>;
   readonly emails: number;
+  /** Pro waitlist: people who opened it (of `reach.active`), entries by plan, fair price (dollars a month), features picked. */
+  readonly pro: {
+    readonly opened: number; readonly joined: number; readonly joinRate: number | null;
+    readonly plans: Readonly<Record<ProPlan, number>>;
+    readonly price: { readonly answered: number; readonly median: number | null; readonly bands: readonly { label: string; people: number }[] };
+    readonly features: Readonly<Record<PayOption, number>>;
+  };
   readonly comments: readonly { day: string; kind: string; feature: string | null; text: string }[];
   /** null when D1 lacks `feedback.read_at` (migration 0002 not applied). */
   readonly unread: { count: number; items: readonly FeedbackRow[] } | null;
 }
 
 const q = (sql: string, ...params: (string | number)[]): Query => ({ sql, params });
+/** Fair-price bands for the waitlist's slider answers: [label, from, below]. The top band is the slider's "or more". */
+const PRICE_BANDS: readonly (readonly [string, number, number])[] = [
+  ['Under $5', 0, 5], ['$5–9', 5, 10], ['$10–14', 10, 15], ['$15–19', 15, 20], ['$20–29', 20, 30], [`$30–${MAX_PRO_PRICE}+`, 30, MAX_PRO_PRICE + 1],
+];
+/** One count per PAY_OPTIONS entry over feedback.pay (a comma list). */
+const payColumns = PAY_OPTIONS.map((option) => `SUM(instr(',' || pay || ',', ',${option},') > 0) AS "${option}"`).join(', ');
 
 /** Weekly cohorts (first-seen week, Monday UTC): the six weeks before this one. */
 export function cohortStarts(today: string): string[] {
@@ -116,11 +133,17 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
     q(`SELECT feature, SUM(rating = 'up') AS up, SUM(rating = 'down') AS down FROM feedback
        WHERE created_at >= ? AND kind = 'feature' GROUP BY feature ORDER BY feature`, from),
     q('SELECT pmf, COUNT(*) AS n FROM feedback WHERE created_at >= ? AND pmf IS NOT NULL GROUP BY pmf', from),
-    q(`SELECT ${PAY_OPTIONS.map((option) => `SUM(instr(',' || pay || ',', ',${option},') > 0) AS "${option}"`).join(', ')}
-       FROM feedback WHERE created_at >= ? AND pay IS NOT NULL`, from),
+    q(`SELECT ${payColumns} FROM feedback WHERE created_at >= ? AND kind <> 'pro' AND pay IS NOT NULL`, from),
     q('SELECT COUNT(*) AS n FROM feedback WHERE created_at >= ? AND email IS NOT NULL', from),
     q(`SELECT substr(created_at, 1, 10) AS day, kind, feature, text FROM feedback
        WHERE created_at >= ? AND text IS NOT NULL ORDER BY created_at DESC LIMIT 10`, from),
+    q('SELECT COUNT(DISTINCT user) AS n FROM sessions WHERE day >= ? AND pro_opened > 0', from),
+    // ponytail: one row per entry; someone who joins twice counts twice. Dedupe by email if that shows up.
+    q(`SELECT ${PRO_PLANS.map((plan) => `SUM(plan = '${plan}') AS "${plan}"`).join(', ')},
+       ${PRICE_BANDS.map(([, low, high], i) => `SUM(price >= ${low} AND price < ${high}) AS "band${i}"`).join(', ')}, ${payColumns}
+       FROM feedback WHERE created_at >= ? AND kind = 'pro'`, from),
+    q(`WITH p AS (SELECT price FROM feedback WHERE created_at >= ? AND kind = 'pro' AND price IS NOT NULL)
+       SELECT price FROM p ORDER BY price LIMIT 1 OFFSET (SELECT MAX(COUNT(*) - 1, 0) / 2 FROM p)`, from),
     ...cohorts.map((start) => q(`SELECT COUNT(*) AS size,
        SUM(EXISTS(SELECT 1 FROM sessions s WHERE s.user = c.user AND s.day >= ? AND s.day < ?)) AS w1,
        SUM(EXISTS(SELECT 1 FROM sessions s WHERE s.user = c.user AND s.day >= ? AND s.day < ?)) AS w4
@@ -128,7 +151,7 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
     shiftDay(start, 7), shiftDay(start, 14), shiftDay(start, 28), shiftDay(start, 35), start, shiftDay(start, 7))),
   ]);
   const [daily, fresh, [reachRow = {}], [totalsRow = {}], [adoptionRow = {}], [activationRow = {}], median, sources, countries,
-    [todayRow = {}], thumbs, pmfRows, [payRow = {}], [emailRow = {}], comments, ...cohortRows] = results;
+    [todayRow = {}], thumbs, pmfRows, [payRow = {}], [emailRow = {}], comments, [proOpenedRow = {}], [proRow = {}], proMedian, ...cohortRows] = results;
   const unread = await loadUnread(run, unreadFrom);
 
   const byDay = new Map(daily.map((row) => [String(row.day), row]));
@@ -143,6 +166,9 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
   const pmf = { very: num(answers.very), somewhat: num(answers.somewhat), not: num(answers.not) };
   const pmfTotal = pmf.very + pmf.somewhat + pmf.not;
   const rows = num(todayRow.n);
+  const plans = Object.fromEntries(PRO_PLANS.map((plan) => [plan, num(proRow[plan])])) as Record<ProPlan, number>;
+  const joined = PRO_PLANS.reduce((total, plan) => total + plans[plan], 0);
+  const proOpened = num(proOpenedRow.n);
   const ranked = (list: Row[]): Ranked[] => list.map((row) => ({ name: String(row.name), people: num(row.people) }));
 
   return {
@@ -175,6 +201,15 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
     pmf: { ...pmf, total: pmfTotal, veryShare: ratio(pmf.very, pmfTotal) },
     pay: Object.fromEntries(PAY_OPTIONS.map((option) => [option, num(payRow[option])])) as Record<PayOption, number>,
     emails: num(emailRow.n),
+    pro: {
+      opened: proOpened, joined, joinRate: ratio(joined, proOpened), plans,
+      price: {
+        answered: PRICE_BANDS.reduce((total, _, i) => total + num(proRow[`band${i}`]), 0),
+        median: proMedian[0] ? num(proMedian[0].price) : null,
+        bands: PRICE_BANDS.map(([label], i) => ({ label, people: num(proRow[`band${i}`]) })),
+      },
+      features: Object.fromEntries(PAY_OPTIONS.map((option) => [option, num(proRow[option])])) as Record<PayOption, number>,
+    },
     comments: comments.map((row) => ({ day: String(row.day), kind: String(row.kind), feature: (row.feature as string | null) ?? null, text: String(row.text) })),
     unread,
   };
@@ -185,7 +220,7 @@ async function loadUnread(run: Run, from: string): Promise<Stats['unread']> {
   try {
     const [[countRow = {}], items] = await run([
       q('SELECT COUNT(*) AS n FROM feedback WHERE created_at >= ? AND read_at IS NULL', from),
-      q(`SELECT id, created_at, kind, feature, rating, pmf, pay, text, email, version, country FROM feedback
+      q(`SELECT id, created_at, kind, feature, rating, pmf, pay, plan, price, text, email, version, country FROM feedback
          WHERE created_at >= ? AND read_at IS NULL ORDER BY created_at DESC LIMIT 100`, from),
     ]);
     return { count: num(countRow.n), items: items as unknown as FeedbackRow[] };
