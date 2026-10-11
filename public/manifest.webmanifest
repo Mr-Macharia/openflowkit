@@ -1,7 +1,7 @@
 {
   "name": "OpenFlowKit",
   "short_name": "OpenFlowKit",
-  "description": "Local-first diagramming for developers and technical builders.",
+  "description": "Free, open-source architecture diagrams you draw, write as code, or hand to your AI agent.",
   "start_url": "/index.html#/home",
   "display": "standalone",
   "background_color": "#f7f7f5",
