@@ -30,6 +30,7 @@
   "include": [
     "src",
     "worker",
+    "stats",
     "vitest.setup.ts"
   ],
 }

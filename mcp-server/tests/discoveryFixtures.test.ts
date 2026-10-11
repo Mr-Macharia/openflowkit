@@ -242,9 +242,9 @@ describe('discovery invents nothing', () => {
 describe('discovery on this repository', () => {
   // On 2026-10-07 it reported 12 invented services (Stripe, BigQuery…) from tests, evals,
   // icon data and its own rule source. A real new dependency belongs in this list.
-  it('reports the app, the docs site and the MCP server, and nothing it made up', async () => {
+  it('reports the app, the docs site, the MCP server and the Workers, and nothing it made up', async () => {
     const discovery = await runArchitectureDiscovery(fileURLToPath(new URL('../..', import.meta.url)));
-    expect(discovery.units.map((unit) => unit.name).sort()).toEqual(['openflowkit', 'openflowkit-data', 'openflowkit-docs', 'openflowkit-mcp', 'openflowkit-share', 'openflowkit-shares', 'quota']);
+    expect(discovery.units.map((unit) => unit.name).sort()).toEqual(['openflowkit', 'openflowkit-data', 'openflowkit-docs', 'openflowkit-mcp', 'openflowkit-share', 'openflowkit-shares', 'openflowkit-stats', 'quota']);
   });
 });
 

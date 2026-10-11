@@ -1,0 +1,19 @@
+# Private stats page. Deploy from this folder: `npx wrangler deploy`. Setup in README.md.
+name = "openflowkit-stats"
+main = "index.ts"
+compatibility_date = "2026-03-18"
+
+routes = [{ pattern = "stats.openflowkit.com", custom_domain = true }]
+
+# Both empty = every request is 403. The owner fills them from the Access application (README.md):
+# TEAM_DOMAIN = "<team>.cloudflareaccess.com", POLICY_AUD = the application's Audience (AUD) tag.
+[vars]
+TEAM_DOMAIN = ""
+POLICY_AUD = ""
+
+# The share Worker's database: reads usage and feedback; writes only feedback.read_at ("Mark all read").
+[[d1_databases]]
+binding = "DB"
+database_name = "openflowkit-data"
+database_id = "9798b7a3-5d7d-4196-8bcc-d80c1d291581"
+migrations_dir = "../worker/migrations"
