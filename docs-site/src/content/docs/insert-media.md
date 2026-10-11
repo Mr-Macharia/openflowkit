@@ -3,8 +3,9 @@ title: Insert media
 description: Icons, emoji, images, frames and wireframe controls — everything the toolbar inserts besides shapes.
 ---
 
-Besides shapes, four kinds of content go onto the canvas: icons, emoji, images and charts.
-All of them are single nodes with one undo step per insert.
+Besides shapes, the toolbar places icons, emoji, images, charts, sticky notes, frames (plain,
+phone, tablet and browser) and wireframe controls. Each is a single node, one undo step per
+insert.
 
 ## Icons
 
@@ -13,8 +14,8 @@ packs the app ships, then pick: the icon lands as an icon node whose label you c
 immediately. `E` opens the same library on the emoji tab.
 
 The DSL can declare the same icons with an icon id — `Lambda [aws/lambda]`,
-`React [tech/react]`. The id resolves against the same packs. In exported SVG and PNG the
-icon draws as a labelled card; the icon art itself is part of the app's rendering.
+`React [tech/react]`. The id resolves against the same packs. Exports (SVG, PNG, PDF and the
+animated formats) inline the icon art, so the file looks the same anywhere.
 
 ## Emoji
 

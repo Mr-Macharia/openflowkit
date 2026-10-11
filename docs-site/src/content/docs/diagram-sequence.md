@@ -26,14 +26,14 @@ can mention.
 
 | Statement | Example | Notes |
 | --- | --- | --- |
-| Message | `A -> B : request` | solid, arrow head |
-| Reply | `A --> B : response` | dashed |
+| Message | `A -> B : request` | solid line, filled triangle head |
+| Reply | `A --> B : response` | dashed line, open head |
 | Async | `A ->> B : fire` | open head; `-->>` is the dashed form |
 | Self call | `A -> A : retry` | draws a loop |
 | Participant | `participant DB [db]` | `actor`, `person`, `db`, `queue`, `icon` |
 | Alias | `gw = API Gateway` | the label no longer has to slug to the id |
 | Activation | `activate A` / `deactivate A` | bars sized between the two |
-| Fragment | `loop every 5s { … }`, `alt ok { … } else fail { … }` | also `opt`, `par` (`} and {`), `break` |
+| Fragment | `loop every 5s { … }`, `alt ok { … } else fail { … }` | also `opt`, `par` (`} and {`), `break`, `critical` |
 | Note | `note over A, B : text` | also `note left of A`, `note right of A` |
 | Numbering | `autonumber` | numbered message labels |
 

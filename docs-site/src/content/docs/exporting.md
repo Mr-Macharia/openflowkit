@@ -11,9 +11,9 @@ to that element. Everything is produced in the browser from the same exported SV
 
 | Format | What you get | Options |
 | --- | --- | --- |
-| **PNG** | A raster image of the current view | 1× or 2× resolution; light/dark/print theme; transparent background; **Copy 2×** to the clipboard |
-| **SVG** | Vector markup that opens in Figma, Illustrator and browsers | Light/dark/print theme |
-| **PDF** | The browser's print dialog over the exported SVG — choose "Save as PDF" | — |
+| **PNG** | A raster image of the selection, page or pages | 1× or 2× resolution; light/dark/print theme; **Canvas** or **Transparent** background; **Copy 2×** to the clipboard |
+| **SVG** | Vector markup that opens in Figma, Illustrator and browsers | Light/dark/print theme; **Canvas** or **Transparent** background |
+| **PDF** | The browser's print dialog over the exported SVG — choose "Save as PDF" | Light/dark/print theme; the button reads **Print / PDF** |
 | **JSON** | The whole document, every page, in the canonical format | — |
 
 ## Scope
@@ -22,14 +22,15 @@ to that element. Everything is produced in the browser from the same exported SV
   takes its whole subtree, connectors between those children come along, and a lone connection
   exports on its own. One element names the file after itself (`my-doc-login-frame.svg`).
 - **Page** — everything on the current page (the default).
-- **All pages** — one file per page for PNG and SVG; JSON is always the whole document.
+- **All pages** — one file per page for PNG and SVG; PDF prints one sheet per page. JSON is
+  always the whole document.
 
 Exporting an empty page is refused with a message rather than producing an empty file.
 
 ## Themes and transparency
 
-The export theme is independent of the app theme: **Light** matches the light canvas, **Dark**
-the dark one, and **Print** forces the white page background for paper. PNG and SVG can be
+The export theme is independent of the app theme. **Light** and **Print** export on white
+(`#ffffff`) and **Dark** on `#191b19`; the on-screen canvas tint is not exported. PNG and SVG can be
 transparent; a transparent PNG has no background rectangle at all, which is what you want for
 slides and dark READMEs.
 
@@ -48,7 +49,7 @@ reference — the file is the document, not a rendering of it.
 - **Mermaid only for flowchart and sequence.** **Copy as Mermaid** in the panel copies a
   flowchart or sequence diagram made from code as Mermaid text; other families have no Mermaid
   form. See [Mermaid import](/mermaid-import/).
-- **No embeds.** A read-only, end-to-end encrypted [share link](/share-links/) is the only
+- **No embeds.** A view-only, end-to-end encrypted [share link](/share-links/) is the only
   hosted form; everything else is a file.
 - **No format options beyond those above** — no JPEG, no WebP, no size presets for PNG.
 

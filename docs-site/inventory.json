@@ -111,7 +111,9 @@
       "page": "canvas-basics",
       "shortcuts": [
         "Select",
-        "Hand"
+        "Hand",
+        "Add to / remove from the selection",
+        "Select inside a group (Esc: back to the group)"
       ]
     },
     {
@@ -122,10 +124,9 @@
       "notes": "Zoom to cursor; wheel and pinch normalised. Keyboard zoom targets fit / selection / 100%.",
       "page": "canvas-basics",
       "shortcuts": [
-        "Pan",
+        "Pan (hold, then drag)",
         "Zoom to fit",
         "Zoom to selection",
-        "Zoom to fit (Shift)",
         "Zoom to 100%",
         "Zoom in / out"
       ]
@@ -155,7 +156,7 @@
       "status": "shipped",
       "evidence": "src/opencanvas/presentation/v2/useV2Find.ts",
       "notes": "⌘F searches the visible text on the current page; Enter / Shift+Enter step through matches, Escape restores the selection and view.",
-      "page": "keyboard-shortcuts",
+      "page": "canvas-basics",
       "shortcuts": [
         "Find on canvas"
       ]
@@ -282,10 +283,11 @@
       "name": "Resize",
       "status": "shipped",
       "evidence": "src/opencanvas/domain/transforms/transformSelection.ts",
-      "notes": "Eight handles; Shift locks aspect; Alt resizes from the centre.",
+      "notes": "Eight handles; Shift locks aspect; Alt resizes from the centre, held before the press or mid-drag.",
       "page": "canvas-basics",
       "shortcuts": [
-        "Resize from the centre"
+        "Keep proportions, one axis, 45° lines, 15° turns (hold while dragging)",
+        "From the centre (resize, draw); a copy (move) — hold while dragging"
       ]
     },
     {
@@ -304,7 +306,7 @@
       "notes": "Object and grid snapping with guides; ⌘/Ctrl while dragging bypasses snapping.",
       "page": "canvas-basics",
       "shortcuts": [
-        "Snap bypass while dragging"
+        "Snap bypass (hold while dragging)"
       ]
     },
     {
@@ -378,12 +380,11 @@
       "name": "Z-order",
       "status": "shipped",
       "evidence": "src/opencanvas/domain/commands/sceneEdits.ts",
-      "notes": "Forward/backward (⌘]) and front/back (]); group variant moves the whole selection.",
+      "notes": "Forward/backward (⌘]) and front/back (] or ⌥⌘]).",
       "page": "canvas-basics",
       "shortcuts": [
         "Bring forward / send backward",
-        "Bring to front / send to back",
-        "Bring to front / back (group)"
+        "Bring to front / send to back"
       ]
     },
     {
@@ -391,7 +392,7 @@
       "name": "Lock and unlock",
       "status": "shipped",
       "evidence": "src/opencanvas/domain/commands/sceneEdits.ts",
-      "notes": "Locked nodes ignore move, resize and the agent move op.",
+      "notes": "Locked nodes ignore move, resize, style, align, shape, icon, chart, widget and ink edits and the agent move op; they stay selectable (to unlock) and can still be deleted.",
       "page": "canvas-basics",
       "shortcuts": [
         "Lock / unlock"
@@ -425,11 +426,11 @@
       "name": "Edit label",
       "status": "shipped",
       "evidence": "src/opencanvas/presentation/v2/useV2LabelEditing.ts",
-      "notes": "Enter or F2 opens the in-place label editor; double-click does the same.",
+      "notes": "Enter or F2 opens the in-place label editor; double-click does the same. Typing on one selected shape that has no label yet starts its label; a named shape takes tool shortcuts instead.",
       "page": "canvas-basics",
       "shortcuts": [
         "Edit label",
-        "With one shape selected, typing edits its label"
+        "Name a blank selected shape by typing"
       ]
     },
     {
@@ -583,6 +584,14 @@
       "evidence": "src/services/share/shareClient.ts",
       "notes": "The editor encrypts the document, the Worker stores only ciphertext (1 MiB cap, delete token, no expiry); the key stays in the link's # fragment.",
       "page": "share-links"
+    },
+    {
+      "id": "self-hosting",
+      "name": "Self-hosting",
+      "status": "shipped",
+      "evidence": "src/services/share/turnstile.ts",
+      "notes": "npm run build writes a static dist/ (hash routes, no backend); the Dockerfile serves it with nginx on 3045 under the same CSP as public/_headers. Share links appear only when the build has VITE_TURNSTILE_SITE_KEY; VITE_SHARE_ORIGIN points them at your own worker/.",
+      "page": "self-hosting"
     },
     {
       "id": "structurizr-migration",
@@ -782,7 +791,15 @@
       "status": "shipped",
       "evidence": "src/opencanvas/presentation/v2/V2HomePage.tsx",
       "notes": "Recents, Starred, Templates and Archive; search (/), ⌘K to find any diagram, template or action, N for a new diagram; import or drop a .json, Mermaid, D2, Structurizr or DSL file.",
-      "page": "quick-start"
+      "page": "templates"
+    },
+    {
+      "id": "starter-templates",
+      "name": "Starter templates",
+      "status": "shipped",
+      "evidence": "src/agent/starterTemplates.ts",
+      "notes": "Seven canonical DSL starters shown on Home (Templates view and first run) with checked-in previews; picking one opens a new document generated from it. The MCP server lists the same seven.",
+      "page": "templates"
     },
     {
       "id": "cli",
@@ -790,7 +807,7 @@
       "status": "partial",
       "evidence": "mcp-server/src/cli.ts",
       "notes": "render, convert, validate, op, ops, discover, drift, build, map; ships in MCP server 0.2.0, which npm does not serve yet (it serves 0.1.2).",
-      "page": "coming-from-structurizr"
+      "page": "cli"
     },
     {
       "id": "pr-action",
@@ -798,7 +815,7 @@
       "status": "partial",
       "evidence": "action/action.yml",
       "notes": "Comments on a PR with node/connector counts, the DSL diff and drift; refreshes stale SVGs. Usable from other repos only once a release tag on main contains action/, and its default CLI needs MCP 0.2.0 on npm.",
-      "page": "coming-from-structurizr"
+      "page": "github-action"
     },
     {
       "id": "mcp-apps-remote",
@@ -807,6 +824,14 @@
       "evidence": "mcp-server/src/http.ts",
       "notes": "npm run start:http serves render_diagram and get_syntax over Streamable HTTP and stores nothing. Not deployed; Claude, ChatGPT and VS Code hosts are unverified.",
       "page": "mcp-server"
+    },
+    {
+      "id": "webmcp",
+      "name": "WebMCP tools (experimental)",
+      "status": "partial",
+      "evidence": "src/agent/webMcpTools.ts",
+      "notes": "When the browser has document.modelContext, the editor registers every agent op plus get_view and select; reads only on a read-only document. Tested against a spec-shaped stand-in; no browser turns WebMCP on by default yet (Chrome: behind a flag), and no real browser agent has been run against it.",
+      "page": "webmcp"
     },
     {
       "id": "copy-as-mermaid",
@@ -993,7 +1018,7 @@
       "name": "MCP starter templates",
       "status": "shipped",
       "evidence": "mcp-server/src/tools/listTemplates.ts",
-      "notes": "Five DSL starting points (auth-flow, three-tier-architecture, request-sequence, order-state, event-pipeline).",
+      "notes": "The same seven starters Home shows (src/agent/starterTemplates.ts): c4-workspace, auth-flow, three-tier-architecture, request-sequence, order-state, event-pipeline, simple-process.",
       "page": "mcp-server"
     },
     {

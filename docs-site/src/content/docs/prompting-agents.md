@@ -18,8 +18,15 @@ branch. Validate the DSL before creating it, and screenshot the result.
 ```
 
 In live mode the tools act on the document you see, so ask for changes in terms of what exists
-(`the frame on the active page`, `the selection`) and the client will call `get_diagram` or
-`list_diagrams` first.
+(`the frame on the active page`, `the boxes I selected`) and the client will call
+`get_document`, `get_diagram` or `list_diagrams` first.
+`get_document` also returns the ids of the shapes you have selected on the page you are
+looking at, in its `selection` field, so "restyle the boxes I selected" or "explain what I
+selected" needs no ids from you.
+
+If you moved, restyled or renamed things on the canvas and then ask for a change in text,
+say "keep my canvas edits". `get_diagram` lists them (`canvasEdits`) with the text that
+keeps each one, and `update_diagram` reports anything it had to drop (`discarded`).
 
 ## Give the agent the skill
 
@@ -50,11 +57,10 @@ what the diagram *means*, not what syntax to use:
 
 ## What not to ask for
 
-- Manual coordinates. Layout is computed; use `pin` and `rank` only when you truly need to
-  nudge the result.
+- Manual coordinates. Layout is computed; use `pin: x,y` only when one node truly has to sit
+  in a fixed place.
 - Features that do not exist: real-time collaboration, embedded viewers, slide decks,
-  camera paths. Ask for what is in the [feature inventory](/introduction/) — or better, in the
-  pages of this site.
+  camera paths. Ask for what the pages of this site describe.
 
 ## Where to go next
 

@@ -1,6 +1,6 @@
 ---
 title: Wireframes
-description: The wireframe family — phone, tablet, browser and window screens of buttons, inputs, toggles and 30-odd other controls.
+description: The wireframe family — phone, tablet, browser and window screens of buttons, inputs, toggles and 32 other controls.
 ---
 
 A wireframe is a row of screens, each a device frame holding controls stacked down its
@@ -37,7 +37,7 @@ A control is `kind` or `kind: label`, then optional attributes in `[…]`:
 | Choice | `checkbox: Remember me [checked]`, `radio: Weekly`, `toggle: Dark mode [on]`, `segmented: Day \| Week [active: 0]` |
 | Value | `slider [60%]`, `progress [0.8]`, `rating [80%]` |
 | Navigation | `navbar`, `tabs`, `tabbar`, `breadcrumbs`, `pagination`, `stepper`, `sidebar`, `menu`, `accordion`, `list` — items as `A \| B \| C` |
-| Content | `heading`, `paragraph`, `link`, `image`, `avatar`, `card`, `badge`, `divider`, `tooltip`, `datepicker` |
+| Content | `heading`, `paragraph`, `link`, `image`, `avatar`, `card`, `badge`, `alert: Saved [success]`, `divider`, `tooltip`, `datepicker` |
 | Chrome | `statusbar: 9:41`, `fab` |
 
 An unknown control warns W141 and is skipped; the rest of the screen still draws.

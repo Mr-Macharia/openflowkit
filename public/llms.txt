@@ -3,40 +3,43 @@
 > Diagrams agents write, kept valid, editable and saved next to the code.
 > Install as a skill: skills/openflowkit/SKILL.md in https://github.com/Vrun-design/openflowkit
 
-Write Mermaid or OpenFlow DSL, hand it to the `openflowkit` MCP server, and save the
-result as a `.openflow.json` file beside the code it explains. The file opens on a real
-canvas (app.openflowkit.com → Open file) and you can read it back and change it later.
+Write Mermaid or OpenFlow DSL, hand it to the `openflowkit` MCP server, and save the result as a
+`.openflow.json` beside the code it explains: it opens at app.openflowkit.com (Open file) and reads back.
 
-## When to draw
-
-- A flow with branches, a system with more than three moving parts, a protocol between
-  services, a data model, a state machine — when the user would otherwise read a wall of text.
-- Not for a list, a single call, or something one sentence explains.
+**When to draw:** a flow with branches, a system with more than three moving parts, a protocol,
+a data model, a state machine. Not a list, a single call, or what one sentence explains.
 
 ## Setup (once)
 
-`claude mcp add openflowkit -- npx -y @vrun-design/openflowkit-mcp` (any MCP client works:
+`claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp` (any MCP client works:
 the command is `npx -y @vrun-design/openflowkit-mcp`). Nothing leaves the machine.
 
 ## Draw and save
 
 1. Write the diagram in Mermaid (what you already know) or OpenFlow DSL (below).
-2. `validate_openflow_dsl` with `{ dsl }`. Fix every `error`; warnings are fine. For Mermaid (or
-   Structurizr DSL, D2), `converted.losses` name what did not carry over and `converted.dsl` is what it became.
+2. `validate_openflow_dsl` with `{ dsl }` until `ok`. Fix every `error`: a line the parser dropped is one,
+   with its line and a hint. Warnings are guesses; read them. For Mermaid (or Structurizr DSL, D2),
+   `converted.losses` name what did not carry over and `converted.dsl` is what it became.
 3. With the editor open and paired ("Connect agent"), `create_diagram` with `{ dsl }` draws it
    where the user is looking. Otherwise use file mode: `openflow_create`, then
    `create_diagram` with `{ dsl, documentId }`.
-4. `openflow_save` with `{ path }` (plus `documentId` in file mode). Put it beside the code:
-   `docs/architecture.openflow.json`, `src/payments/checkout-flow.openflow.json`.
-   Add `svg: true` only when the user wants a picture file too (a README embed): it writes the `.svg` beside the JSON.
+4. `openflow_save` with `{ path }` (plus `documentId` in file mode) beside the code, e.g.
+   `src/payments/checkout-flow.openflow.json`; `svg: true` also writes a `.svg` (for a README).
 5. Tell the user the path, and what you left out.
 
-## Change a saved diagram
+## Change a diagram
 
-`openflow_open` with `{ path }` → `get_diagram` with `{ documentId }` returns the DSL and
-`frameId` → edit the text → `update_diagram` with `{ documentId, frameId, dsl }` →
-`openflow_save`. If `edited` is true the user moved things on the canvas; keep their
-changes in mind before you regenerate.
+`get_diagram` returns the DSL and `frameId` (file mode: `openflow_open` first, then pass
+`documentId`) → edit the text → `update_diagram` with `{ frameId, dsl }` → `openflow_save`.
+Not `create_diagram` again: that draws a second diagram. `update_diagram` redraws from the text, so
+`canvasEdits` (the user's recolours, moves, renames) are lost unless you merge each `carry` into that
+node's one `[ … ]` list; `discarded` lists any lost. "The box I selected" is `selection` in `get_document`.
+
+## Draw this repo's architecture
+
+`discover_architecture` with `{ path }` proposes a C4 workspace (`dsl`) from the code. Review its
+names, `create_diagram` with it, and write the text to `architecture.ofk` at the repo root; later,
+`drift_report` with `{ path }` says what the code gained or lost since.
 
 ## OpenFlow DSL in one screen
 
@@ -63,7 +66,7 @@ Pay -> Stripe : charge [thick]
 - Colours: `blue green red orange violet teal pink yellow gray` or `#hex`.
 - Icons: `icon: aws/lambda`, `gcp/pubsub`, `tech/react`, `tabler/user`. A node whose label names a
   technology (`Postgres`, `Redis`, `S3 bucket`) gets its icon by itself; `icon: none` stops it.
-  `search_icons` finds exact ids.
+  `iconpos: left` draws an icon card as a row, the icon beside its name. `search_icons` finds exact ids.
 - `group Name { … }` boxes the nodes first mentioned inside it, so open groups before edges.
   An edge to `Name` ends on the group itself.
   `note Name : text` pins a sticky to a node.
@@ -104,14 +107,11 @@ flowchart LR
   B --> C[(Postgres)]
 ```
 
-Converts: flowchart, sequenceDiagram, stateDiagram, classDiagram, erDiagram, mindmap,
-architecture-beta, gitGraph. Not: gantt, pie, journey and the other chart types — write
-those as DSL (`chart bar`, see `get_syntax`) or say they are out of scope. A Structurizr
-workspace or a D2 file converts the same way: pass the file's text as `dsl`.
+Converts: flowchart, sequenceDiagram, stateDiagram, classDiagram, erDiagram, mindmap, architecture-beta,
+gitGraph; not gantt, pie, journey (write `chart bar` DSL, see `get_syntax`). Structurizr and D2 text convert too.
 
 ## Rules
 
-- One diagram per idea. Twenty nodes is a lot; split before forty.
-- Name nodes the way the code does (`OrderService`, `orders` table), so a reader can grep.
-- Do not place coordinates; layout is computed. Re-run `create_diagram` rather than nudging.
+- One diagram per idea; split before forty nodes. Name nodes as the code does (`OrderService`).
+- Do not place coordinates; layout is computed. Change the text and `update_diagram`.
 - Check before you claim: `validate_openflow_dsl` passes, then save, then report the path.

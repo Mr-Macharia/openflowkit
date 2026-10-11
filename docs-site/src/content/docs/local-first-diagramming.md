@@ -3,13 +3,15 @@ title: Local-first diagramming
 description: Where documents live, how saving and recovery work, and what opening a file actually does.
 ---
 
-Local-first means the document is yours and the app is a tool: storage is in your browser,
-there is no account, and nothing is uploaded unless you make a [share link](/share-links/).
+Local-first means the document is yours and the app is a tool: storage is in your browser and
+there is no account. Your diagrams stay in your browser. Something leaves it only when you
+choose: AI with your own key goes to that provider, a [share link](/share-links/) uploads an
+encrypted copy, a [repo map](/map-mode/) reads from GitHub.
 
 ## Where a document lives
 
 A document is an IndexedDB record on the origin you opened the app from, addressed by the
-`/d/<document-id>` URL. That is the only copy — there is no server-side backup. Clearing site
+`#/d/<document-id>` URL. That is the only copy — there is no server-side backup. Clearing site
 data for the app's origin deletes your documents; export the JSON first if you care about it.
 
 ## Saving
@@ -37,7 +39,10 @@ report**, rather than pretending the diagram is empty.
 
 ## Opening and importing files
 
-**Open file…** accepts a `.json` file:
+Home → **Import** (or dropping files on Home) takes `.json`, plus diagram text in `.mmd`,
+`.mermaid`, `.d2`, `.dsl`, `.ofk` and `.txt` files. A text file (one at a time) opens as a new
+diagram; Mermaid, D2 and Structurizr are converted first. In the editor,
+the canvas menu's **Open file…** accepts a `.json` file:
 
 - our own export, any schema version the app still supports — it is migrated on open;
 - a V1 OpenFlowKit file (`{ nodes, edges }`), projected onto the 2.0 document model one time.
@@ -56,8 +61,9 @@ page, the selection, or every page (one file per page).
 
 There is no sign-in, no license check and no analytics in the app. Nothing about your diagrams
 leaves the machine unless you export it, share it (encrypted; the server never sees the key),
-send it to the AI provider you picked, or connect an agent — and the connected agent talks to a
-local bridge on `127.0.0.1` — see [MCP Server](/mcp-server/).
+send it to the AI provider you picked, or connect an agent, which talks to a local bridge on
+`127.0.0.1` (see [MCP Server](/mcp-server/)). The [FAQ](/faq/#what-leaves-my-browser) lists
+every request the app makes.
 
 ## What it cannot do
 

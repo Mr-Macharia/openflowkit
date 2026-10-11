@@ -11,16 +11,22 @@ value, and commits one undo step when you let go.
 
 | Panel | What it edits |
 | --- | --- |
-| **Fill** | Palette swatch (pastel or solid mode), transparent, or a custom colour; corner radius, opacity, shadow |
+| **Fill** | **Pastel** or **Solid** mode, then one of ten colours (White, Gray, Blue, Green, Red, Orange, Violet, Pink, Yellow, Teal), no fill, or a custom colour; corner radius, opacity, shadow. Titled **Background** on text nodes |
 | **Outline** | Stroke colour (or no outline), width, dash (solid, dashed, dotted) |
 | **Text** | Colour (or auto), font family, size, weight/italic/underline/strikethrough, alignment, vertical alignment, padding, line height, letter spacing; containers get a header shown/hidden toggle instead of vertical alignment |
-| **Icon** | Pick an icon for a shape, turning it into an icon card |
+| **Shape** | Swap a basic shape for another outline, keeping its label and style |
+| **Icon** | Pick an icon for a shape, turning it into an icon card. On icon cards, **Layout** puts the icon above the name (a tile) or to its left (a row card) |
 | **Ink** | Pen and highlighter colour and width; stroke nodes keep their ink in `content`, not appearance |
-| **Chart** | The chart kind, for chart nodes |
+| **Chart** | **Chart type**, for chart nodes; the **Data** button beside it opens the numbers |
+| **State** | A wireframe control's state: on/off, value, selected item or style |
 
-The fill palette is the document's diagram palette (`pastel`, `paper`, `builder`, `mono`);
-**solid** switches a swatch to its stronger mode. A custom colour is kept verbatim — the
-palette does not have to approve it.
+**Solid** switches the ten swatches from pastel to solid fills. The four diagram palettes
+(Pastel, Paper, Builder, Mono) are a different thing: they are chosen in the code panel and
+apply when a diagram is generated. A custom colour is kept verbatim.
+
+Besides **Appearance**, the context bar has **Data** (charts), **Arrange** (**Align** and
+**Arrange**) and **Actions**: **Open …** on a model element with its own view, **Inspect**
+(`⌥I`) and **More options**, which opens the [context menu](/context-menu/).
 
 ## Connector panels
 

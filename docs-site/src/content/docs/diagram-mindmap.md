@@ -19,19 +19,20 @@ central: Product strategy
 - Platform
 ```
 
-`mindmap` has no direction; the layout is radial. The root is `central: Label` (or `root:`, or
-the first bare line). `-` or `*` bullets are optional on input; canonical output is `- ` with
-two spaces per level below the first.
+`mindmap` has no direction; the layout is radial. The first content line is the root, whether
+it is written `central: Label`, `root: Label`, a bare line or even a `- ` bullet. `-` or `*`
+bullets are optional on input; canonical output is `- ` with two spaces per level below the
+first.
 
 ## Statements
 
 | Statement | Example | Notes |
 | --- | --- | --- |
-| Root | `central: Product strategy` | also `root:`, or the first bare line |
+| Root | `central: Product strategy` | also `root:`; whatever the first line is, it is the root |
 | Branch | `- Growth` | depth follows indentation |
-| Nested branch | `  - SEO` | two or four spaces per level; tabs count as four |
+| Nested branch | `  - SEO` | any indent deeper than the line above makes a child; a tab counts as four spaces |
 | Colour | `- Referrals [blue]` | cascades to descendants until it changes |
-| Shape | `- Growth [ellipse]` | `circle`, `ellipse`, `rect`, `component`, `hexagon` |
+| Shape | `- Growth [ellipse]` | `circle`, `ellipse`, `rect`, `rounded`, `component`, `hexagon` |
 
 Depth is capped at six levels; a deeper line flattens to the cap with warning W140.
 
@@ -42,7 +43,8 @@ Depth is capped at six levels; a deeper line flattens to the cap with warning W1
   not draw the icon yet.
 - **No layout control.** Branches are placed radially by depth and order; `pin`, `rank` and
   `align` do not apply.
-- A branch that appears before the root is an ordinary node; only the declared root is central.
+- **One root.** A `central:` or `root:` line after the first line is dropped with warning W101
+  ("Only one central topic").
 
 ## Where to go next
 

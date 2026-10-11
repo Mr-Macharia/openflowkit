@@ -9,8 +9,8 @@ and written down in full in the [DSL reference](/openflow-dsl-reference/).
 
 ## The code panel
 
-Press `⌥C` to open **Diagram as code**. Type or paste DSL and press `⌘↵` (or **Generate
-diagram**). Diagnostics appear under the editor as you type; **the diagram is the compiled
+Press `⌥C` to open **Diagram as code**. It opens with the text selected, so typing or pasting
+replaces it. Press `⌘↵` anywhere in the panel (or click **Generate diagram**). Diagnostics appear under the editor as you type; **the diagram is the compiled
 result of the text you see**, not a parallel copy of the canvas.
 
 - **Generate** compiles the draft into a frame. The frame is placed after the existing
@@ -43,7 +43,8 @@ Two laws hold for the whole grammar, and the test suite checks them over a fixtu
 
 The canvas is a view of the text, not its owner. Drag a node and the text is untouched — the
 canvas keeps the position in the document. **Generate** compiles the text again and re-lays
-the frame out from it; manual moves are discarded, and one undo brings them back. The
+the frame out from it; manual moves are discarded (except for a node pinned with
+`pin: x,y`), and one undo brings them back. The
 exceptions are deliberate and small: chart data and the `animate` block are written back from
 their panels, because there they *are* the data.
 
@@ -59,17 +60,19 @@ parse as a flowchart with warning W105; they are not rendered as their own famil
 
 ## Foreign syntax
 
-Paste Mermaid and the panel offers to [convert it](/mermaid-import/). Structurizr DSL pasted
-into the panel converts to an architecture workspace the same way. Both report what they could
-not represent instead of dropping it silently.
+Paste Mermaid, D2 or Structurizr DSL and the panel offers to [convert it](/mermaid-import/).
+Structurizr becomes an architecture workspace. Every converter reports what it could not
+represent instead of dropping it silently.
 
 ## What it cannot do
 
 - **One frame per generate.** Generating replaces the bound frame; to keep a variant, duplicate
   it as a new document or edit the copy by hand.
-- **No layout coordinates in the text.** `pin` and `rank` are hints; ELK decides the layout,
-  and canvas drag positions do not survive a regenerate — only a C4 workspace's
-  `views/*.snap` overrides do (see [Architecture workspace](/architecture-workspace/)).
+- **Few layout controls in the text.** ELK decides the layout. `pin: x,y` fixes a node at that
+  position in the frame after layout, and survives Generate. `rank` is kept in the text but does
+  not change the layout yet. Canvas drags are not written back, so they are lost on regenerate
+  unless the node is pinned; a C4 workspace also keeps `views/*.snap` overrides (see
+  [Architecture workspace](/architecture-workspace/)).
 - **No silent fixes.** A line the parser cannot read is dropped with a warning naming its
   number; it is never guessed at.
 

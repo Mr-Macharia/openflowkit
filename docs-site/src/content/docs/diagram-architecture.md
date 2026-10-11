@@ -21,8 +21,8 @@ API -> Lambda : invoke
 Lambda -> Store : write
 ```
 
-`architecture` defaults to `right` (left-to-right reading). `down` is often better for a
-portrait page.
+`architecture` defaults to `right` (left-to-right reading). `down` stacks the diagram top to
+bottom.
 
 ## Elements
 
@@ -31,9 +31,28 @@ An icon id (`aws/lambda`, `gcp/pubsub`, `tech/react`) makes the node an icon car
 label below. Icon ids resolve against the packs the app ships; an unknown id is a warning and
 a plain node.
 
+An icon card has two layouts. The default is the tile, the icon on a plate with its caption
+underneath; the tile is as tall as its caption, and an arrow into its bottom ends under the
+caption. `iconpos: left` makes it a row card, a rounded card with a small icon at the left, the
+name beside it and the `desc:` on a second line, the way cloud architecture docs draw their
+products:
+
+```
+architecture right
+
+Events [gcp/core-pubsub, iconpos: left, desc: "Order events"]
+Pipeline [gcp/core-dataflow, iconpos: left, desc: "Streaming, us-central1"]
+Lake [gcp/core-cloud-storage, iconpos: left, desc: "Raw and curated"]
+Events -> Pipeline -> Lake
+```
+
+`iconpos: top` is the default and is never written back. In the editor, select an icon card,
+open **Icon** in the style bar and choose **Icon above** or **Icon left**.
+
 | Statement | Example | Notes |
 | --- | --- | --- |
 | Icon node | `Lambda [aws/lambda]` | resolved against the bundled packs |
+| Row card | `Lambda [aws/lambda, iconpos: left]` | icon at the left, name and `desc:` beside it |
 | Element metadata | `API [tech: Node.js, desc: "public edge"]` | read by the model panel |
 | Typed kind | `model { web = container Web app }` | the kind word comes before the name: `person`, `system`, `container`, `component`, `store`, `queue`, `external`, `node`, `instance` |
 | Boundary | `group Cloud [blue] { … }` | a group box |
@@ -78,8 +97,8 @@ renamed `Ledger` goes back to a plain shape. A chosen icon never moves, and a pl
 not turned into a card by a rename; the next Generate does that.
 
 Exports carry the icon art (SVG, PNG, PDF, animated SVG, GIF and video), inlined so the
-file opens anywhere. An agent working through the MCP server gets icons from labels too;
-its own SVG export, with no editor open, draws the plates without the art.
+file opens anywhere. An agent working through the MCP server gets icons from labels too, and
+its exports inline the art as well, with or without an editor open.
 
 ## The C4 workspace
 
@@ -93,7 +112,6 @@ own — [Architecture (C4)](/architecture-c4/).
   unless a view or group says otherwise.
 - **Reserved families are not here.** `bpmn`, `org`, `gantt`, `sankey`,
   `journey` and `timeline` parse as a flowchart with warning W105.
-- Icons do not affect layout size beyond the icon-card default.
 
 ## Where to go next
 

@@ -3,14 +3,21 @@ title: MCP Server
 description: Drive the live editor or edit .openflow.json files from any MCP client — the full tool surface, generated from the manifest.
 ---
 
-:::note[Generated]
-This page is generated from `src/agent/manifest.ts`, `src/agent/ops/` and the tool registrations under `mcp-server/src` by `npm run generate:refs`. Edit the source, not this page.
+:::note[Always current]
+Built from the app's own source (`src/agent/manifest.ts`, `src/agent/ops/` and the tool registrations under `mcp-server/src`) on every docs build, so it can't drift. To change it, edit the source.
 :::
 
-OpenFlowKit ships a local MCP server: a stdio process that gives Claude Desktop, Claude
-Code, Cursor, Windsurf and anything else that speaks MCP a set of diagram tools. It runs on
-your machine, needs no API key of its own, and returns deterministic results — your MCP
-client's model does the thinking.
+OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
+
+| Your agent runs… | How to connect | What it can do |
+| --- | --- | --- |
+| **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | This MCP server | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files, maps a codebase, takes screenshots |
+| **In your browser** (experimental) | Nothing to install: [WebMCP](/webmcp/) | Reads and edits the diagram you have open |
+
+The server is a stdio process on your machine. It needs no API key of its own and returns
+deterministic results: your MCP client's model does the thinking. A chat-app endpoint
+(`render_diagram`, drawn inline in the chat) is in the package too; to run it yourself, see
+[the server README](https://github.com/Vrun-design/openflowkit/tree/main/mcp-server#readme).
 
 ## Run it
 
@@ -23,7 +30,10 @@ Point your client at that command. In Claude Desktop's `claude_desktop_config.js
 ```json
 {
   "mcpServers": {
-    "openflowkit": { "command": "npx", "args": ["-y", "@vrun-design/openflowkit-mcp"] }
+    "openflowkit": {
+      "command": "npx",
+      "args": ["-y", "@vrun-design/openflowkit-mcp"]
+    }
   }
 }
 ```
@@ -166,6 +176,7 @@ Style shapes — mirrors **Fill / stroke / width / dash / opacity** in the conte
 | `strokeStyle` | `solid` \| `dashed` \| `dotted` *(optional)* |
 | `opacity` | number *(optional)* |
 | `textColor` | string *(optional)* |
+| `iconPlacement` | `top` \| `left` *(optional)* |
 | `pageId` | string (MCP tool; the CLI says `--page`) |
 
 ### `delete`
@@ -236,7 +247,7 @@ Fit the view — mirrors **Zoom to fit / zoom to selection** in a keyboard actio
 
 ### `get_document`
 
-Read the page — mirrors **Read document and page** in a canvas gesture; read-only.
+Read the page — mirrors **Read document, page and selection** in a canvas gesture; read-only.
 
 | Argument | Type |
 | --- | --- |
@@ -250,7 +261,7 @@ Takes no arguments.
 
 ## What it does not do
 
-- **No cloud, no telemetry.** The server is stdio and local; there is no hosted service.
+- **No cloud, no telemetry.** The server is stdio and local; OpenFlowKit hosts no MCP endpoint.
 - **No account or key.** Your MCP client's model is the only AI involved.
 - **No raster in file mode.** PNG, GIF, MP4 and WebM need the live editor's canvas.
 - **No collaboration.** One editor pairs with the bridge at a time.

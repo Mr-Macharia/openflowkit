@@ -4,17 +4,11 @@
   "description": "Local-first diagramming for developers and technical builders.",
   "start_url": "/index.html#/home",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563eb",
+  "background_color": "#f7f7f5",
+  "theme_color": "#e95420",
   "icons": [
     {
       "src": "/Logo_openflowkit.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

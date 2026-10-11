@@ -21,7 +21,7 @@ Example for a staging app: `ALLOWED_ORIGINS = "https://app.openflowkit.com,https
 ## Takedown
 
 Remove a link by id: `npx wrangler r2 object delete openflowkit-shares/<id>`. The Worker can't read content,
-so reports go by link: publish an abuse address (owner: put yours here: `abuse@<your-domain>`) next to the share feature.
+so reports go by link: publish an abuse address (for example `abuse@<your-domain>`) next to the share feature.
 
 ## Owner setup (one time)
 

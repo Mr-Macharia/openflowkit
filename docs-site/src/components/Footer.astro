@@ -1,0 +1,17 @@
+---
+// Starlight's footer (edit link, last updated, prev / next), then the site's
+// own link footer, so a reader at the end of a page always has somewhere to go.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import SiteFooter from './SiteFooter.astro';
+---
+
+<Default><slot /></Default>
+<div class="site-footer-wrap">
+  <SiteFooter />
+</div>
+
+<style>
+  .site-footer-wrap {
+    margin-top: 4rem;
+  }
+</style>

@@ -13,17 +13,17 @@ default background follow it; the default canvas colour is `#f7f7f5` in light an
 dark, and the camera controls override it per browser.
 
 Exports have their own theme control, independent of the app theme: **Light**, **Dark** and
-**Print**. Print forces the white page background used for paper; light and dark match the
-canvas's colour scheme.
+**Print**. Light and Print export on white (`#ffffff`) and Dark on `#191b19`. The canvas tint
+you see on screen (`#f7f7f5`) is not exported.
 
 ## Diagram palettes
 
 | Palette | Character |
 | --- | --- |
-| `pastel` | The default soft fills |
-| `paper` | Muted, print-leaning fills |
-| `builder` | Stronger, higher-contrast fills |
-| `mono` | Greyscale, for monochrome documents |
+| `pastel` | Soft fills, slate ink (the default) |
+| `paper` | Warm paper with dark ink |
+| `builder` | Neutral cards, orange accent |
+| `mono` | Greyscale for print |
 
 The palette is a property of the compiled content, not just the frame: nodes and connectors
 carry their appearance, so a palette survives export, copy/paste between documents, and

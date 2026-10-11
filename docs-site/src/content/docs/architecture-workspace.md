@@ -8,7 +8,8 @@ source, and MCP tools that read the repository the model describes.
 
 ## The workspace folder
 
-Open a folder from the canvas menu (**Open workspace folder…**). The folder layout is fixed:
+Open a folder from the canvas menu (**Open workspace folder…**; once a folder is open the item
+reads **Open another folder (*name*)**). The folder layout is fixed:
 
 | Path | What it holds |
 | --- | --- |

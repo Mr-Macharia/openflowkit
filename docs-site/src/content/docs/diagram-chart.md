@@ -32,7 +32,8 @@ Automate billing [0.35, 0.75]
 Rewrite docs [0.3, 0.25]
 ```
 
-Points are `Label [x, y]` with both axes in `0`–`1`. `x:` and `y:` name each axis's low and
+Points are `Label [x, y]` with both axes in `0`–`1`; a value outside that range is clamped to
+the edge without a warning. `x:` and `y:` name each axis's low and
 high end; `quadrants:` names the four regions. Leave any of them out for the defaults.
 
 ## Statements

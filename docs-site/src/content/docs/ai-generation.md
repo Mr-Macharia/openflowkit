@@ -38,8 +38,8 @@ Attach images with the photo button, by pasting, or by dropping them on the prom
 whiteboard photo, a screenshot, a sketch to redraw. Up to four per message; they are
 downscaled before they are sent. The model you pick must accept images.
 
-**Think** asks the model to reason first (Claude, Gemini, and OpenAI-wire models that share
-their reasoning); the reasoning shows as a collapsible "Thought for …" line.
+**Think** asks the model to reason first. It is available for every provider except Ollama;
+the reasoning shows as a collapsible "Thought for …" line when the model shares it.
 
 ## Review, then apply
 
@@ -52,7 +52,7 @@ you were reviewing is marked stale — retry the message for a fresh one.
 
 Chats are kept in this browser, per document. **New chat** starts fresh and keeps the old one
 under **Chat history**, where you can reopen or delete it. Edit a sent message (or press ↑ in an
-empty prompt) to ask again; **Retry**, **Copy**, and **Report on GitHub** sit under each reply.
+empty prompt) to ask again; **Copy reply**, **Retry** and **Report on GitHub** sit under each reply.
 The report opens a prefilled issue with the prompt, reply and model — never your key.
 
 ## What it cannot do

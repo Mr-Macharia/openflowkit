@@ -6,7 +6,10 @@ description: Paste Mermaid, Structurizr DSL or D2 into the code panel, or hand i
 Mermaid, Structurizr DSL and D2 come in through the code panel (⌥C). Paste the source; when
 the panel recognises the language it offers **Convert** (`⌘⇧M`), which rewrites the draft in
 place as OpenFlow DSL. Mermaid pasted straight onto the canvas (`⌘V`) is converted and drawn
-in place, with the code panel open on the converted text. Agents skip the panel: `create_diagram`, `update_diagram` and
+in place, with the code panel open on the converted text. On Home, **Import** takes the same
+languages as files (`.mmd`, `.mermaid`, `.d2`, `.dsl`), one at a time, and draws the file as a
+new diagram; the
+editor's **Open file…** reads only `.json`. Agents skip the panel: `create_diagram`, `update_diagram` and
 `validate_openflow_dsl` take the same text and answer with `converted.dsl` and
 `converted.losses` ([MCP Server](/mcp-server/)).
 
@@ -21,6 +24,7 @@ in place, with the code panel open on the converted text. Agents skip the panel:
 | `classDiagram` | `class` |
 | `mindmap` | `mindmap` |
 | `architecture` | `architecture` |
+| `gitGraph` | `gitgraph` |
 
 Structurizr DSL becomes an `architecture` workspace — model, views and deployment
 environments ([C4 architecture](/architecture-c4/)).

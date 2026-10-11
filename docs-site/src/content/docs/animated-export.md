@@ -3,8 +3,8 @@ title: Animated export
 description: Export a page as an animated SVG, GIF, MP4 or WebM — sequenced in the browser, driven by the animate block in the DSL.
 ---
 
-Every page can leave as a short animation, not just a still. **Export… → Animate this page**
-opens the panel: pick a preset and an order, watch the exact result play, scrub it, drag the
+Every page can leave as a short animation, not just a still. **Export** → **Animate this
+page…** opens the panel: pick a preset and an order, watch the exact result play, scrub it, drag the
 step chips to reorder them, then download a file or copy it to the clipboard.
 
 Sequencing, rasterising and encoding all run in your browser. Nothing is rendered on a server.
@@ -13,13 +13,14 @@ Sequencing, rasterising and encoding all run in your browser. Nothing is rendere
 
 | Format | Built by | Notes |
 | --- | --- | --- |
-| **Animated SVG** | The SVG exporter plus one `<style>` block of CSS keyframes | The only format that is vector and loops; the download is an `.svg` |
+| **SVG** | The SVG exporter plus one `<style>` block of CSS keyframes | Animated and vector; the button reads **Download SVG** and the file is an `.svg` |
 | **GIF** | Frames encoded with `gifenc`, palette drawn from the finished diagram | 256 colours, capped at 20 fps |
 | **MP4** | Frames through WebCodecs `VideoEncoder`, muxed with `mediabunny` | Hidden when the browser has no WebCodecs, instead of offered and broken |
 | **WebM** | The same path, or `MediaRecorder` when WebCodecs is missing | The fallback records in real time, so the clip takes as long as it plays |
 
 GIF, MP4 and WebM can be copied to the clipboard where the browser allows it; the animated SVG
-is download-only. Sizes are 720p, 1080p or 1440p, at 12, 24 or 30 fps, in light or dark.
+is download-only. Width is 720, 1080 or 1440 px (the height follows the diagram), at 12, 24
+or 30 fps, in light or dark.
 
 ## Presets
 

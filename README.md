@@ -1,138 +1,172 @@
-# OpenFlowKit
+<p align="center">
+  <a href="https://app.openflowkit.com"><img src="public/Logo_openflowkit.svg" width="72" height="72" alt="OpenFlowKit logo"></a>
+</p>
 
-A free, local-first, agent-native infinite canvas for technical diagrams. It **feels**
-like FigJam and **thinks** in text: every diagram is plain DSL you can diff and regenerate,
-and agents (MCP or your own key) edit the same document you do.
+<h1 align="center">OpenFlowKit</h1>
 
-[![quality](https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml/badge.svg)](https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![version](https://img.shields.io/badge/version-2.0.0-6d28d9.svg)](CHANGELOG.md)
+<p align="center">
+  <b>Architecture diagrams you draw, write as code, or hand to your agent.</b><br>
+  Free, open source and local-first. Paste a GitHub repo and get its map, every arrow cited to a line of code.
+</p>
 
-**2.0 is a rebuild, not an upgrade** — new canvas, new document model, new language,
-new agent surface. What changed and why: [CHANGELOG.md](CHANGELOG.md).
+<p align="center">
+  <a href="https://app.openflowkit.com"><b>Open the app</b></a> &nbsp;·&nbsp;
+  <a href="https://docs.openflowkit.com/">Docs</a> &nbsp;·&nbsp;
+  <a href="#connect-your-agent">MCP setup</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Vrun-design/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Vrun-design/openflowkit/issues">Issues</a>
+</p>
 
-- **Canvas that keeps up.** Pixi/WebGL renderer, zoom-to-cursor, connectors that bind to
-  sides and never leave a stale route, one undo step per intent.
-- **Diagram as code.** Eight diagram families — flowchart, architecture, sequence, state,
-  ERD, class, gitgraph, mindmap — plus charts and wireframes, behind one forgiving
-  line-oriented DSL, with a deterministic serializer and one canonical form:
-  `format(format(x)) == format(x)`.
-- **Agents are first-class.** An MCP server drives the *live* editor through a local
-  bridge, or works on `.openflow.json` files. Bring your own key for generation inside
-  the app. No account, no telemetry; share links are opt-in and end-to-end encrypted.
+<p align="center">
+  <a href="https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml"><img src="https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+  <a href="https://www.npmjs.com/package/@vrun-design/openflowkit-mcp"><img src="https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?label=mcp%20server" alt="MCP server version on npm"></a>
+</p>
 
-## The 30 seconds that explain it
+<p align="center">
+  <a href="https://app.openflowkit.com"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.gif">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.gif">
+    <img src="assets/readme/hero-light.gif" width="900" alt="An agent draws an architecture diagram on the OpenFlowKit canvas, live; the user drags a box, edits one line of text and regenerates">
+  </picture></a>
+</p>
+
+## Why OpenFlowKit
+
+### 1. Your agent draws on your canvas, live
+
+Connect Claude Code, Cursor or any MCP client and ask for a diagram. The agent reads the page,
+draws, restyles and takes a screenshot to check its own work while you watch. Every change it
+makes is one undo step, like your own. [Connect your agent ↓](#connect-your-agent)
+
+### 2. Text and canvas are the same diagram
 
 ```
-flowchart
+flowchart right
   Client [blue] -> "API Gateway" [emerald] : HTTPS
   "API Gateway" -> Queue [queue, amber]
   Queue -> Worker
   Worker -> Store [cylinder, red, bold]
 ```
 
-1. Press <kbd>⌥C</kbd>, paste that, press <kbd>⌘↵</kbd> — a real diagram lands as one frame.
-2. Drag a node: the code does not change, and the panel says *Canvas edited*.
-3. Press <kbd>⌘↵</kbd> again: the frame is replaced from the text, one undo step.
-4. Click **Connect agent**, ask your MCP client for `create_diagram` — the same thing
-   happens while you watch.
-5. Export PNG (2×), SVG, JSON, print-to-PDF, or an animation (animated SVG, GIF, MP4, WebM),
-   or **Copy as Mermaid**; switch the palette to `paper`, `builder` or `mono` and regenerate.
+Open the code panel (<kbd>⌥C</kbd>), paste this into it and press <kbd>⌘↵</kbd>. Drag things
+around on the canvas or edit the text; <kbd>⌘↵</kbd> regenerates the frame from the text as
+one undo step. Paste Mermaid, Structurizr or D2 and it converts.
 
-## Run it
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/code-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/code-light.png">
+    <img src="assets/readme/code-light.png" width="800" alt="The code panel beside the canvas: the same diagram as text and as shapes">
+  </picture>
+</p>
 
-```bash
-npm install
-npm run dev              # http://localhost:3000/  → the canvas
-npm run typecheck        # tsc -b
-npm run lint             # eslint
-npm run test -- --run    # vitest (unit + goldens)
-npm run verify           # the merge gate: all of the above, MCP tests, headed @gate browser set
-```
+### 3. Paste a GitHub repo, get its map
 
-Requires Node 22.22+. The app is local-first: documents live in your browser (IndexedDB)
-with the last-known-good copy kept for crash recovery.
+Type `owner/repo` into the box on an empty canvas and press **Map repo**, or open
+`app.openflowkit.com/#/map/github/<owner>/<repo>`
+([try a sample](https://app.openflowkit.com/#/map/github/dockersamples/example-voting-app)).
+Your browser reads the public repo from GitHub and draws its parts. Boxes open in place, and every
+arrow lists the `file:line` behind it, linked to the code. No key and no install. For a private
+repo, map a checkout: `npx -p @vrun-design/openflowkit-mcp openflowkit map . --html map.html`.
 
-### Self-host
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/map-dark.gif">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/map-light.gif">
+    <img src="assets/readme/map-light.gif" width="900" alt="The map of GoogleCloudPlatform/microservices-demo: a click on checkoutservice opens it in place, showing the files inside, while the side panel lists what it talks to">
+  </picture>
+</p>
 
-```bash
-docker build -t openflowkit .
-docker run --rm -p 3045:3045 openflowkit      # http://localhost:3045/
-```
+### 4. Export it, including the animation
 
-The image is the static build behind nginx on port 3045 ([`nginx/nginx.conf`](nginx/nginx.conf),
-the same headers as the hosted app). Its CSP decides what the browser may reach:
-
-- `connect-src` allows `https:` (any provider for bring-your-own-key), plus `http://localhost`
-  and `http://127.0.0.1` on any port (Ollama, LM Studio, the agent bridge). A plain-`http`
-  gateway on another host, such as `http://10.0.0.5:11434`, is blocked: put it behind HTTPS or
-  edit the CSP.
-- Share links need a Turnstile site key at build time (`VITE_TURNSTILE_SITE_KEY`, plus
-  `VITE_SHARE_ORIGIN` for your own share Worker; see [`worker/README.md`](worker/README.md)).
-  The Dockerfile passes no build variables and copies no `.env` files, so the image hides Share
-  unless you add the key (an `ENV` line before `npm run build`).
-
-## Diagram as code
-
-The language is versioned and written down: **[src/dsl/grammar.md](src/dsl/grammar.md)**.
-The same text powers the panel, the AI and the MCP tools.
+PNG, SVG, PDF, JSON, or **Copy as Mermaid** for a README. Add an `animate` block to the text
+above to name the steps, and the export renders animated SVG, GIF, MP4 or WebM in your browser.
 
 ```
-%% ofk 1
-architecture right
-title: Image upload
-
-  Mobile [mobile] -> Gateway [icon: aws/networking-content-delivery-api-gateway]
-  Gateway -> Resize [icon: aws/compute-lambda, green]
-  Resize -> Bucket [icon: aws/storage-simple-storage-service, cylinder]
-```
-
-- Paste Mermaid, Structurizr DSL or D2 into the code panel and press <kbd>⌘⇧M</kbd>: it
-  converts, with an honest loss list. Mermaid pasted straight onto the canvas converts and
-  draws in place.
-- **Copy as Mermaid** (Export panel) writes a flowchart or sequence diagram back out as Mermaid,
-  for a README or a wiki that renders it.
-- Right-click a frame → **Edit as code** to reopen its source; the serializer only
-  rewrites the frame, never the rest of the page.
-- Motion is part of the text too: an `animate` block names the steps an export plays, and
-  the export writes animated SVG, GIF, MP4 or WebM in your browser.
-
-```openflow
-animate build 10s loop {
-  step a, b            // reveal these nodes together
-  step a -> c : POST   // a step about the edge a -> c
-  step c hold 2s
+animate build 6s loop {
+  step Client
+  step Client -> "API Gateway" : HTTPS
+  step Queue, Worker
+  step Store hold 2s
 }
 ```
 
-<img src="assets/motion/flow-walkthrough.svg" alt="A flowchart walking through its steps: the walkthrough preset spotlights each node in turn" width="420">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/motion/flow-build-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/motion/flow-build-light.svg">
+    <img src="assets/motion/flow-build-light.svg" width="900" alt="The diagram above building step by step, exported as an animated SVG">
+  </picture>
+</p>
 
-## Map a repo
+<sub>That animation is the two snippets above, exported by the app as an animated SVG. GitHub plays it like an image.</sub>
 
-Press <kbd>M</kbd> (or the **Canvas | Map** switch in the document bar) to browse a document's
-architecture model as boxes that open in place: **Top level**, **One level in** or **All levels**,
-click or <kbd>Enter</kbd> to open a box, arrows to walk, <kbd>Esc</kbd> to back out.
+## Ten diagram types, one language
 
-Paste a GitHub address into **Map a GitHub repo** on the empty canvas, or open
-`#/map/github/<owner>/<repo>`. `owner/repo`, `github.com/owner/repo` (with or without `https://`
-or `www.`), `/tree/` and `/blob/` links, `.git` and `git@github.com:` remotes all work. Your
-browser reads the public repo straight from GitHub and draws its parts; every arrow lists the
-`file:line` evidence behind it, linked to GitHub. **Edit as drawing** (<kbd>⇧M</kbd>) turns the
-map into an ordinary page. `#/from/github/<owner>/<repo>` opens the same repo as an editable C4
-model instead, its evidence links pinned to the commit it read.
+Every type is the same short, forgiving text, with per-line errors that say how to fix them.
+Each picture below is the first example on its docs page, rendered by the `openflowkit` CLI.
 
-It reads best on repos with Dockerfiles, compose, Kubernetes, Terraform or Workers configs.
-Without a token GitHub allows 60 reads an hour per network; when that runs out the page asks for
-an optional token (kept in the tab's sessionStorage, sent to `api.github.com` only). For a private repo, map a
-checkout: `npx -p @vrun-design/openflowkit-mcp openflowkit map . --html map.html`. More:
-[Map mode and repo maps](docs-site/src/content/docs/map-mode.md).
+<table>
+  <tr>
+    <td width="50%"><a href="https://docs.openflowkit.com/diagram-architecture/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/architecture-dark.png"><img src="assets/readme/types/architecture-light.png" alt="Architecture diagram with Node.js and AWS Lambda icons"></picture></a><br><b>Architecture</b> · cloud icons, groups, a C4 model with views</td>
+    <td width="50%"><a href="https://docs.openflowkit.com/diagram-sequence/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/sequence-dark.png"><img src="assets/readme/types/sequence-light.png" alt="Sequence diagram of a login"></picture></a><br><b>Sequence</b> · alt / opt / loop, notes, activations</td>
+  </tr>
+  <tr>
+    <td><a href="https://docs.openflowkit.com/diagram-flowchart/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/flowchart-dark.png"><img src="assets/readme/types/flowchart-light.png" alt="Flowchart"></picture></a><br><b>Flowchart</b> · shapes, decisions, groups</td>
+    <td><a href="https://docs.openflowkit.com/diagram-erd/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/erd-dark.png"><img src="assets/readme/types/erd-light.png" alt="Entity-relationship diagram"></picture></a><br><b>ERD</b> · columns, keys, crow's-foot cardinality</td>
+  </tr>
+  <tr>
+    <td><a href="https://docs.openflowkit.com/diagram-state/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/state-dark.png"><img src="assets/readme/types/state-light.png" alt="State machine"></picture></a><br><b>State</b> · start and end, composite states</td>
+    <td><a href="https://docs.openflowkit.com/diagram-class/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/class-dark.png"><img src="assets/readme/types/class-light.png" alt="Class diagram"></picture></a><br><b>Class</b> · members, stereotypes, relations</td>
+  </tr>
+  <tr>
+    <td><a href="https://docs.openflowkit.com/diagram-mindmap/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/mindmap-dark.png"><img src="assets/readme/types/mindmap-light.png" alt="Mind map"></picture></a><br><b>Mind map</b> · indentation is the tree</td>
+    <td><a href="https://docs.openflowkit.com/diagram-gitgraph/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/gitgraph-dark.png"><img src="assets/readme/types/gitgraph-light.png" alt="Git graph"></picture></a><br><b>Git graph</b> · branches, merges, tags</td>
+  </tr>
+  <tr>
+    <td><a href="https://docs.openflowkit.com/diagram-chart/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/chart-dark.png"><img src="assets/readme/types/chart-light.png" alt="Bar chart"></picture></a><br><b>Chart</b> · data written as text, editable in a table</td>
+    <td><a href="https://docs.openflowkit.com/diagram-wireframe/"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/types/wireframe-dark.png"><img src="assets/readme/types/wireframe-light.png" alt="Phone wireframe"></picture></a><br><b>Wireframe</b> · 35 controls on phone, tablet or desktop screens</td>
+  </tr>
+</table>
 
-## Agents
+The language is versioned and written down in one file: **[src/dsl/grammar.md](src/dsl/grammar.md)**
+([docs](https://docs.openflowkit.com/openflow-dsl/)). The same text powers the code panel, the
+assistant, the MCP tools and the CLI.
 
-### MCP server
+## Quick start
 
-```jsonc
-// Claude Code, Claude Desktop, Cursor, Windsurf… — no key, no cloud
+**In the browser:** [app.openflowkit.com](https://app.openflowkit.com). Nothing to install, no account.
+
+**Run it locally** (Node 22.22+):
+
+```bash
+git clone https://github.com/Vrun-design/openflowkit.git
+cd openflowkit
+npm install && npm run dev      # http://localhost:3000
+```
+
+### Connect your agent
+
+OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
+
+| Your agent runs… | How to connect | What it can do |
+| --- | --- | --- |
+| **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | The MCP server, below | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files in your repo, maps a codebase, takes screenshots |
+| **In your browser** (experimental) | Nothing to install: open a diagram in a browser whose agent supports [WebMCP](https://docs.openflowkit.com/webmcp/) | Reads and edits the diagram you have open |
+
+<a href="https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkB2cnVuLWRlc2lnbi9vcGVuZmxvd2tpdC1tY3AiXX0%3D"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" height="32" alt="Add OpenFlowKit to Cursor"></a>
+<a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522%2540vrun-design%252Fopenflowkit-mcp%2522%255D%257D"><img src="https://img.shields.io/badge/VS_Code-Install_OpenFlowKit-0098FF?logo=visualstudiocode&logoColor=white" height="32" alt="Install OpenFlowKit in VS Code"></a>
+
+For Claude Code, one line:
+
+```bash
+claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp
+```
+
+For Claude Desktop, Windsurf and any other MCP client:
+
+```json
 {
   "mcpServers": {
     "openflowkit": { "command": "npx", "args": ["-y", "@vrun-design/openflowkit-mcp"] }
@@ -140,82 +174,228 @@ checkout: `npx -p @vrun-design/openflowkit-mcp openflowkit map . --html map.html
 }
 ```
 
-Two modes, one tool surface:
+Restart the agent, then click **Connect agent** in the app. That panel copies the same config with
+a pairing token. With no app open, the same tools edit `.openflow.json` files in your repo. The
+live connection, the CLI and the full tool set need version 0.2.0 or later of the package.
 
-- **Live** — click **Connect agent** in the app; the MCP server pairs with the open
-  editor over `127.0.0.1:43119` (Host- and origin-checked; the panel's copied config carries a
-  pairing token as `OPENFLOWKIT_BRIDGE_TOKEN`). Tools act on the document you are looking at,
-  and `screenshot` returns a real PNG.
-- **File** — `openflow_open` a `.openflow.json`, edit it, `openflow_save` it back.
-
-29 tools. Sixteen are editor ops: `create_diagram`, `update_diagram`, `get_diagram`
-(text + drift + losses), `list_diagrams`, `get_syntax`, `search_icons`, `find_icons_for`,
-`move`, `style`, `delete`, `add_shape`, `export`, `screenshot`, `fit_view`, `get_document`,
-`list_pages` (page-scoped ones take a `pageId`). Thirteen work on files and repos:
-`openflow_create`, `openflow_open`, `openflow_save`, `whoami`, `server_info`,
-`validate_openflow_dsl`, `list_diagram_node_types`, `list_starter_templates`,
-`get_starter_template`, `analyze_codebase`, `discover_architecture`, `drift_report`,
-`explain_element`. The op manifest lives in [`src/agent/manifest.ts`](src/agent/manifest.ts);
-every op is one reversible command, so an agent's edit is one <kbd>⌘Z</kbd>. Node 20.11+.
-
-The same package ships an `openflowkit` CLI for CI and scripts — `render`, `convert`, `validate`,
-`op <name>` (any op on a `.openflow.json`), `discover`, `drift`, `build`, `map`:
+<details>
+<summary><b>Plugins: Claude Code and Codex</b> (server and skill in one install)</summary>
 
 ```bash
-npx -p @vrun-design/openflowkit-mcp openflowkit validate diagram.ofk --strict
-npx -p @vrun-design/openflowkit-mcp openflowkit drift . --model architecture.ofk
+# Claude Code
+claude plugin marketplace add Vrun-design/openflowkit
+claude plugin install openflowkit@openflowkit
+
+# Codex: add the marketplace, then install OpenFlowKit from the Plugins Directory
+codex plugin marketplace add Vrun-design/openflowkit
 ```
 
-### Diagrams in pull requests
+The skill ([`skills/openflowkit/SKILL.md`](skills/openflowkit/SKILL.md)) tells an agent when a
+diagram helps, how to write it, and to save it beside the code. Agents that read the web get the
+same text at `https://app.openflowkit.com/llms.txt`.
+</details>
 
-The PR diagrams Action comments on a pull request with how its diagrams changed: node and
-connector counts before and after, the DSL diff, drift for `.ofk` models, and a refresh of a
-stale committed `.svg`.
+## Working with agents
 
-```yaml
-- uses: actions/checkout@v4
-  with: { fetch-depth: 0 }
-- uses: Vrun-design/openflowkit/action@<tag>
+The MCP server gives your agent the operations you have, on the live canvas or on files.
+
+| It can | With |
+|---|---|
+| **Draw** a diagram from text or Mermaid, then change it | `create_diagram`, `update_diagram`, `add_shape` |
+| **Read** every page, the text behind a diagram, and what you selected | `get_document`, `get_diagram`, `list_pages` |
+| **Restyle and move** what is already there | `style`, `move`, `delete` |
+| **See** its own result | `screenshot` returns a real image the model can look at |
+| **Hand you files** | `export`: SVG, PNG, PDF, JSON or an animated SVG |
+| **Read your repo** | `discover_architecture`, `drift_report`, `explain_element` |
+
+Things to ask for:
+
+- *"Draw the architecture of this repository."*
+- *"Make the boxes I selected red and add a cache in front of the API."*
+- *"Turn the Mermaid in our README into a diagram I can edit."*
+- *"Compare architecture.ofk with the code and tell me what drifted."*
+
+Your canvas edits are safe: if you moved, restyled or renamed something and the agent regenerates
+from text, `get_diagram` hands it the text that keeps each edit, and `update_diagram` reports
+anything it had to drop. Every agent change is one undo step, and the Connect panel shows the
+last one with an **Undo** button.
+
+<details>
+<summary><b>All 29 tools</b></summary>
+
+Sixteen editor operations, which also work on files: `create_diagram`, `update_diagram`,
+`get_diagram`, `list_diagrams`, `get_syntax`, `search_icons`, `find_icons_for`, `move`, `style`,
+`delete`, `add_shape`, `export`, `screenshot`, `fit_view`, `get_document`, `list_pages`.
+
+Thirteen for files and repositories: `openflow_create`, `openflow_open`, `openflow_save`, `whoami`,
+`server_info`, `validate_openflow_dsl`, `list_diagram_node_types`, `list_starter_templates`,
+`get_starter_template`, `analyze_codebase`, `discover_architecture`, `drift_report`,
+`explain_element`.
+
+Arguments and examples: [MCP server docs](https://docs.openflowkit.com/mcp-server/). The op
+manifest is [`src/agent/manifest.ts`](src/agent/manifest.ts). Requires Node 20.11+.
+</details>
+
+**Bring your own key instead:** <kbd>⌘J</kbd> opens the assistant. Pick Claude, OpenAI, Gemini,
+Groq, Mistral, Cerebras, NVIDIA, OpenRouter, Ollama or any OpenAI-compatible endpoint (LM Studio…)
+and paste a key. The key stays in this browser, and the reply arrives as a proposal you apply or
+dismiss.
+
+## Bring the diagrams you already have
+
+Paste into the code panel and it converts, with an honest list of anything it couldn't carry.
+Mermaid pasted straight onto the canvas draws in place.
+
+| From | What converts |
+|---|---|
+| **Mermaid** | flowchart / graph, sequenceDiagram, stateDiagram, erDiagram, classDiagram, mindmap, architecture, gitGraph |
+| **Structurizr DSL** | the model, views and styles, as a C4 workspace with one page per view |
+| **D2** | shapes, connections and containers |
+
+Going back out, **Copy as Mermaid** writes a flowchart or sequence diagram as Mermaid text for a
+README or wiki. [Mermaid](https://docs.openflowkit.com/mermaid-import/) ·
+[coming from Structurizr](https://docs.openflowkit.com/coming-from-structurizr/)
+
+## In your repo and CI
+
+The npm package also ships an `openflowkit` CLI:
+
+```bash
+npx -p @vrun-design/openflowkit-mcp openflowkit render diagram.ofk -o diagram.svg   # text → SVG
+npx -p @vrun-design/openflowkit-mcp openflowkit validate diagram.ofk --strict       # exit 1 on an error
+npx -p @vrun-design/openflowkit-mcp openflowkit convert flow.mmd -o flow.openflow.json
+npx -p @vrun-design/openflowkit-mcp openflowkit discover . --out architecture.ofk   # draft a C4 model of this repo
+npx -p @vrun-design/openflowkit-mcp openflowkit drift .                             # exit 1 when the code moved on
 ```
 
-`<tag>` must be a release tag on `main` that contains `action/`. Inputs, permissions, forks and
-branch protection: [action/README.md](action/README.md).
+Commit `architecture.ofk` next to the code and `drift` keeps it honest in CI. The **PR diagrams
+Action** comments on a pull request with how its diagrams changed: node and connector counts, the
+text diff, and drift for `.ofk` models. It's usable once a release tag contains `action/`.
+[CLI](https://docs.openflowkit.com/cli/) · [GitHub Action](https://docs.openflowkit.com/github-action/)
 
-### Bring your own key
+## Exports and sharing
 
-AI assistant (<kbd>⌘J</kbd>) → pick a provider and paste its key: Claude, OpenAI, Gemini, Groq,
-Mistral, Cerebras, NVIDIA, OpenRouter, Ollama, or any OpenAI-compatible endpoint (LM Studio…).
-The key stays in this browser; the
-grammar cheat-sheet and the current frame's text go to the provider you chose, and the
-reply arrives as a **proposal** you review before it lands.
+| Format | Notes |
+|---|---|
+| PNG | 1× or 2×; light, dark or print theme; transparent background optional |
+| SVG, PDF | vector, with icons and the Inter font embedded |
+| JSON | the whole document, every page; opens in any browser |
+| Animated SVG, GIF, MP4, WebM | made in your browser from the `animate` block or the connector order |
+| Copy as Mermaid | flowchart and sequence |
+| Share links | a view-only link, encrypted in your browser; or an editable copy, the code inside the link, nothing uploaded |
 
 ## Keyboard
 
-Every action has a key, and <kbd>?</kbd> lists them all in the app (kept honest by
-`v2Shortcuts.test.ts`). The ones you will use first: <kbd>V</kbd>/<kbd>R</kbd>/<kbd>O</kbd>/<kbd>T</kbd>
-tools · <kbd>⌘↵</kbd> generate · <kbd>⌥C</kbd> code panel · <kbd>⌘J</kbd> assistant ·
-<kbd>M</kbd> Canvas / Map · <kbd>⌘F</kbd> find ·
-<kbd>⌘0</kbd> fit · <kbd>⇧2</kbd> zoom to selection · <kbd>⌘G</kbd> group ·
-<kbd>⌘D</kbd> duplicate · <kbd>Enter</kbd> edit label.
+Every action has a key, and <kbd>?</kbd> lists them all in the app.
 
-## Repository
+<details>
+<summary><b>The ones you'll use first</b></summary>
+
+| Key | Action |
+|---|---|
+| <kbd>V</kbd> <kbd>R</kbd> <kbd>O</kbd> <kbd>T</kbd> <kbd>A</kbd> | select, rectangle, ellipse, text, connector |
+| <kbd>⌥C</kbd> · <kbd>⌘↵</kbd> | code panel · generate from text |
+| <kbd>⌘J</kbd> | AI assistant |
+| <kbd>M</kbd> | switch Canvas and Map |
+| <kbd>⌘F</kbd> | find on the canvas |
+| <kbd>⇧1</kbd> · <kbd>⇧2</kbd> | fit everything · zoom to selection |
+| <kbd>⌘G</kbd> · <kbd>⌘D</kbd> | group · duplicate |
+| <kbd>Enter</kbd> | edit the selected shape's label |
+
+On Windows and Linux, <kbd>Ctrl</kbd> and <kbd>Alt</kbd> replace <kbd>⌘</kbd> and <kbd>⌥</kbd>.
+</details>
+
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/how-it-works-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/how-it-works-light.svg">
+    <img src="assets/readme/how-it-works-light.svg" width="900" alt="You, your agent and imported Mermaid, Structurizr or D2 all become OpenFlow DSL; the compiler turns it into one undo step on the scene document, which feeds the canvas, the exports and browser storage">
+  </picture>
+</p>
+
+<sub>This diagram is OpenFlowKit text too: <a href="assets/readme/how-it-works.ofk">how-it-works.ofk</a>, exported as an animated SVG with the pulse preset.</sub>
+
+You and your agent can also draw straight on the canvas; every edit, from text or by hand, is a
+command on the same document.
+
+Any frame on the canvas writes back out as canonical text, and `format(format(x)) == format(x)`
+holds in the tests. The language and document code is plain TypeScript with no React, Pixi or
+DOM, which is why the same compiler runs in the browser, the MCP server and the CLI. The full
+tour: **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 | Path | What |
 |---|---|
-| `src/opencanvas/` | the kernel: pure domain, sessions, Pixi renderer, export/import |
-| `src/dsl/` | grammar, parser, families, compile/serialize, fixtures |
-| `src/agent/` | op registry, MCP bridge protocol, file host, manifest |
-| `mcp-server/` | the published MCP server and `openflowkit` CLI (`@vrun-design/openflowkit-mcp`) |
+| `src/dsl/` | the language: grammar, parser, diagram families, compile and serialize, repo discovery |
+| `src/opencanvas/` | the editor: document model and commands, Pixi renderer, exporters, React UI |
+| `src/agent/` | the operations agents call, the bridge protocol, the op manifest |
+| `mcp-server/` | the published MCP server and `openflowkit` CLI |
 | `action/` | the PR diagrams GitHub Action |
 | `worker/` | the share-link Worker (stores ciphertext only) |
-| `docs-site/` | the docs site (Astro Starlight) |
-| `STATE.md` | what is done, what is next, what is deliberately deferred |
-| `CHANGELOG.md` | what shipped in each version |
+| `docs-site/` | the docs site |
+</details>
 
-Built in slices with one rule: **the app must boot after every merge.** Methodology and
-code rules live in [AGENTS.md](AGENTS.md).
+## Self-host
 
-## Contributing & license
+```bash
+docker build -t openflowkit . && docker run --rm -p 3045:3045 openflowkit   # http://localhost:3045
+```
 
-Issues and PRs welcome — start with [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed;
-see [LICENSE](LICENSE). Security notes: [SECURITY.md](SECURITY.md).
+The image is the static build behind nginx, with the same headers as the hosted app. Content
+security policy, AI providers on your own network, and share links:
+[self-hosting](https://docs.openflowkit.com/self-hosting/).
+
+## Privacy
+
+Your diagrams stay in your browser. Something leaves it only when you choose: AI with your own key
+goes to that provider, a share link uploads an encrypted copy, a repo map reads from GitHub.
+No account, no telemetry. Back up any time with **Export → JSON**.
+
+<details>
+<summary><b>FAQ</b></summary>
+
+**Is it free?** Yes. MIT licensed, with no paid tier.
+
+**Does it work offline?** Once the page is open, drawing, the code panel and exports run in the
+page. AI, share links and repo maps need the network. For no internet at all, self-host it.
+
+**Which browsers?** A current desktop browser with WebGL. The automated tests run in Chromium.
+
+**Can my team edit together?** Not in real time. A view-only link is a snapshot, an editable
+link hands each person their own copy, and `.openflow.json` and `.ofk` files live happily in git.
+
+More: [FAQ](https://docs.openflowkit.com/faq/).
+</details>
+
+## Contributing
+
+Issues, ideas and PRs are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
+the checks, and [ARCHITECTURE.md](ARCHITECTURE.md) for how the code fits together. Questions go to
+[Discussions](https://github.com/Vrun-design/openflowkit/discussions). What changed in each
+version: [CHANGELOG.md](CHANGELOG.md).
+
+Report security issues privately, as [SECURITY.md](SECURITY.md) describes. MIT licensed, see
+[LICENSE](LICENSE).
+
+<a href="https://github.com/Vrun-design/openflowkit/graphs/contributors"><img src="https://contrib.rocks/image?repo=Vrun-design/openflowkit" alt="Contributors"></a>
+
+---
+
+<p align="center">
+  <a href="https://app.openflowkit.com"><img src="public/Logo_openflowkit.svg" width="40" height="40" alt="OpenFlowKit logo"></a>
+</p>
+<p align="center">
+  <b>If OpenFlowKit saved you a diagram, <a href="https://github.com/Vrun-design/openflowkit">give it a ⭐ on GitHub</a>.</b><br>
+  <sub>It's how other people find it.</sub>
+</p>
+<p align="center">
+  <a href="https://app.openflowkit.com">Open the app</a> &nbsp;·&nbsp;
+  <a href="https://docs.openflowkit.com/">Docs</a> &nbsp;·&nbsp;
+  <a href="CONTRIBUTING.md">Contribute</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Vrun-design/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
+  <a href="https://github.com/Vrun-design/openflowkit/issues/new/choose">Report a bug</a>
+</p>

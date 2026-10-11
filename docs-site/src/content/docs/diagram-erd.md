@@ -33,7 +33,7 @@ is quoted.
 | --- | --- | --- |
 | Entity | `users { … }` | the block is the table; the header row is the name |
 | Column | `email text unique` | `name [type] [flags]` |
-| Column flags | `pk`, `fk`, `unique`, `null`, `not-null` | canonical flag order |
+| Column flags | `pk`, `fk`, `unique`, `not-null`, `nullable` | canonical order; also `primary`/`key`, `foreign`, `uq`, `nn`, and SQL's `null` / `not null`. Any other word after the type is ignored |
 | Uncarded relation | `users -> orders : has` | canonicalises to `--` |
 | Word cardinality | `users 1:N orders` | accepted, canonicalised to crow's-foot glyphs |
 

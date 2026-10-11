@@ -24,10 +24,13 @@ This page is generated from \`src/dsl/grammar.md\` in the repository by
 
 async function main() {
   const grammar = await readFile(SOURCE, 'utf8');
-  // Drop the "this file is the language" status paragraph; the page is public.
+  // Drop the "this file is the language" status paragraph; the page is public. A §0 design
+  // record, if one ever returns, is not reference: strip it as the MCP copy does.
   const body = grammar
     .replace(/^# OFK grammar — version 1\n/, '')
     .replace(/^Status:.*\n(?:.*\n)*?\n/m, '')
+    .replace(/^## 0\. [^\n]*\n[\s\S]*?(?=^## )/m, '')
+    .replace('§0 prior art · ', '')
     .replace(/^## /gm, '## ');
   await mkdir(dirname(OUT_FILE), { recursive: true });
   await writeFile(OUT_FILE, FRONTMATTER + body, 'utf8');

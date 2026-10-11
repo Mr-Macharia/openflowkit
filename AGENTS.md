@@ -1,10 +1,11 @@
 # Agents: read this, then build
 
-The plan lives in `docs/` and is deliberately untracked — it is the owner's
-working copy, not part of the repository. Ask the owner for it if your checkout
-has no `docs/plan/`. [STATE.md](STATE.md) is tracked and says what is done and
-what is next; read it first, then the phase file for the slice you are taking.
-Anything under `docs/frozen/` or `docs/archive/` is history — never instructions.
+Contributors start from [CONTRIBUTING.md](CONTRIBUTING.md) and open an issue to propose
+work; the rules below apply to every change. The plan lives in an untracked `docs/`
+folder — it is the maintainer's working copy, not part of the repository.
+[STATE.md](STATE.md) says what is done and what is next; maintainers read it first, then
+the phase file for the slice they are taking. Anything under `docs/frozen/` or
+`docs/archive/` is history — never instructions.
 
 ## How to work here
 

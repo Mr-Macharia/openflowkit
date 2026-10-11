@@ -44,7 +44,7 @@ Click the Connector button to open its three kinds; `A` arms the last one picked
 
 A connector binds to a node's side or to a free point. Orthogonal routes recompute while
 either end or any bound node moves; drag a segment to add a bend; manual waypoints survive that recomputation.
-Set the end to None in the style bar for a link with no head.
+For a link with no head, open **Ends** in the context bar and set **End** to **None**.
 Hovering a shape shows four side handles — drag from one to draw, release on empty canvas to
 create a connected shape of the same kind with its label open.
 

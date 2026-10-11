@@ -36,10 +36,10 @@ has both.
 | Statement | Example | Notes |
 | --- | --- | --- |
 | Class | `Order { … }` | block body holds the members |
-| Stereotype | `Order [interface]` | also `abstract`, `enum` |
+| Stereotype | `Order [interface]` | also `abstract`, `enum`, `class`, `entity` |
 | Attribute | `+id: int` | visibility prefix is text, not validated |
 | Method | `+total(): Money` | `(` makes it a method |
-| Static / abstract | `+save()$`, `+reset()*` | `$` static, `*` abstract |
+| Member suffix | `+save()$`, `+reset()*` | kept as written; `$` and `*` are text, not parsed as static or abstract |
 | Inheritance | `Order --|> Base` | solid triangle |
 | Realisation | `Order ..|> Serializable` | dashed triangle |
 | Composition | `Order *-- Item` | filled diamond |
@@ -54,7 +54,10 @@ serializer can round-trip either spelling to the same canonical line.
 ## What it does not do
 
 - **No type checking.** `Item[]`, `Money` and `int` are text; nothing resolves them.
-- **No generics or stereotypes beyond the three words.** An unknown attribute is warning W131.
+- **No stereotypes beyond the five words** (`interface`, `abstract`, `enum`, `class`, `entity`).
+  Any other bracket word is warning W131.
+- **No static or abstract styling.** `$` and `*` stay in the member text; nothing is underlined
+  or italicised.
 - **No special self-relations.** `Node --> Node : next` is kept as an ordinary relation from the
   class to itself; nothing about it is checked.
 - Members are one per line; there is no multi-line signature syntax.

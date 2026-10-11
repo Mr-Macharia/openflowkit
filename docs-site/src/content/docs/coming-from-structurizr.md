@@ -13,7 +13,8 @@ is reported, never dropped silently.
 
 Pick one way.
 
-- **In the app.** On the home page choose **Import a file…** and pick the `.dsl` file. Text
+- **In the app.** On the home page click **Import** (or `⌘K` → **Import a file…**) and pick
+  the `.dsl` file. Text
   files open one at a time, in the editor. Or paste the text into the code panel (⌥C).
   The panel says "Structurizr DSL detected". Choose **Convert** (⌘⇧M). The draft is
   rewritten as OpenFlow DSL and the losses show up as warnings in the panel.
@@ -26,8 +27,8 @@ Pick one way.
   The CLI prints one line per loss to stderr. Add `--strict` to exit 1 when anything was
   lost. Add `--json` for a machine-readable report. `--svg` needs `-o`.
 
-The `openflowkit` CLI ships in the MCP server package (`npx -p @vrun-design/openflowkit-mcp
-openflowkit convert …`). See [MCP Server](/mcp-server/).
+The `openflowkit` CLI ships in the MCP server package, version 0.2.0 or newer
+(`npx -p @vrun-design/openflowkit-mcp openflowkit convert …`). See [the CLI](/cli/).
 
 ## A worked example
 
@@ -184,8 +185,8 @@ is `<dir>/architecture.ofk`.
 The OpenFlowKit PR diagrams GitHub Action comments on a pull request with how its diagrams
 changed: node and connector counts before and after, the DSL diff, and drift for `.ofk` models.
 It runs in your CI, with the CLI, `git` and `gh`. It can also refresh a stale committed `.svg`
-beside a diagram. See `action/README.md` in the repository for the inputs, fork behavior and
-branch-protection notes.
+beside a diagram. See [GitHub Action](/github-action/) for the setup, the inputs, fork behavior
+and branch-protection notes.
 
 ## What is different from Structurizr DSL
 

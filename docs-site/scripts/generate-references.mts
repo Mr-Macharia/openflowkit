@@ -15,8 +15,8 @@ const REPO_ROOT = resolve(HERE, '..', '..');
 const OUT_DIR = resolve(HERE, '..', 'src', 'content', 'docs');
 const MCP_SRC = resolve(REPO_ROOT, 'mcp-server', 'src');
 
-const GENERATED = (sources: string): string => `:::note[Generated]
-This page is generated from ${sources} by \`npm run generate:refs\`. Edit the source, not this page.
+const GENERATED = (sources: string): string => `:::note[Always current]
+Built from the app's own source (${sources}) on every docs build, so it can't drift. To change it, edit the source.
 :::
 
 `;
@@ -75,7 +75,7 @@ function argumentRows(schema: ZodLike): string {
 // --- the pages ---------------------------------------------------------------
 
 function keyboardPage(): string {
-  const groups = shortcutGroups('⌘');
+  const groups = shortcutGroups(true);
   const sections = groups.map(({ title, rows }) =>
     `## ${title}\n\n| Action | Keys |\n| --- | --- |\n${rows.map(({ label, keys }) =>
       `| ${label} | ${keys === '' ? '—' : `\`${keys}\``} |`).join('\n')}\n`,
@@ -149,7 +149,7 @@ async function mcpPage(): Promise<string> {
     'Drive the live editor or edit .openflow.json files from any MCP client — the full tool surface, generated from the manifest.',
   )
     + GENERATED('`src/agent/manifest.ts`, `src/agent/ops/` and the tool registrations under `mcp-server/src`')
-    + `OpenFlowKit ships a local MCP server: a stdio process that gives Claude Desktop, Claude\nCode, Cursor, Windsurf and anything else that speaks MCP a set of diagram tools. It runs on\nyour machine, needs no API key of its own, and returns deterministic results — your MCP\nclient's model does the thinking.\n\n## Run it\n\n\`\`\`bash\nnpx -y @vrun-design/openflowkit-mcp\n\`\`\`\n\nPoint your client at that command. In Claude Desktop's \`claude_desktop_config.json\`:\n\n\`\`\`json\n{\n  "mcpServers": {\n    "openflowkit": { "command": "npx", "args": ["-y", "@vrun-design/openflowkit-mcp"] }\n  }\n}\n\`\`\`\n\nNode 20.11 or newer is required.\n\n`
+    + `OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:\n\n| Your agent runs… | How to connect | What it can do |\n| --- | --- | --- |\n| **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | This MCP server | Everything: draws on your open canvas (one undo step per change), edits \`.openflow.json\` files, maps a codebase, takes screenshots |\n| **In your browser** (experimental) | Nothing to install: [WebMCP](/webmcp/) | Reads and edits the diagram you have open |\n\nThe server is a stdio process on your machine. It needs no API key of its own and returns\ndeterministic results: your MCP client's model does the thinking. A chat-app endpoint\n(\`render_diagram\`, drawn inline in the chat) is in the package too; to run it yourself, see\n[the server README](https://github.com/Vrun-design/openflowkit/tree/main/mcp-server#readme).\n\n## Run it\n\n\`\`\`bash\nnpx -y @vrun-design/openflowkit-mcp\n\`\`\`\n\nPoint your client at that command. In Claude Desktop's \`claude_desktop_config.json\`:\n\n\`\`\`json\n{\n  "mcpServers": {\n    "openflowkit": {\n      "command": "npx",\n      "args": ["-y", "@vrun-design/openflowkit-mcp"]\n    }\n  }\n}\n\`\`\`\n\nNode 20.11 or newer is required.\n\n`
     + `## Two modes\n\n`
     + `- **Live** — open the app, click **Connect agent**, and every op runs against the document\nyou see. The bridge listens on \`127.0.0.1:43119\` by default (change it in the Connect agent panel;\nthe server reads \`OPENFLOWKIT_BRIDGE_PORT\`), checks the request's host and origin, and can be gated\nwith a shared token (\`OPENFLOWKIT_BRIDGE_TOKEN\` on the server, the same token in the panel). Edits land as one undo step per\ncall; \`screenshot\` returns a real PNG; \`fit_view\` moves your view.\n`
     + `- **File** — \`openflow_open\` a \`.openflow.json\` path and the same ops run headlessly on\nthat document, with \`openflow_save\` writing it back. There is no canvas here, so PNG/GIF/\nMP4/WebM export and \`screenshot\` ask you to connect the live editor; SVG, animated SVG,\nJSON and PDF (a print-ready HTML page) export work.\n\n`
@@ -183,7 +183,7 @@ created last. Page-scoped ops take a \`pageId\` from \`list_pages\`.\n\n`
     + `One MCP tool per operation; every mutating op has an inverse, and the live editor applies it\nas a single undo step. The manifest names the human operation each one mirrors.\n\n`
     + opSections()
     + `\n## What it does not do\n\n`
-    + `- **No cloud, no telemetry.** The server is stdio and local; there is no hosted service.\n`
+    + `- **No cloud, no telemetry.** The server is stdio and local; OpenFlowKit hosts no MCP endpoint.\n`
     + `- **No account or key.** Your MCP client's model is the only AI involved.\n`
     + `- **No raster in file mode.** PNG, GIF, MP4 and WebM need the live editor's canvas.\n`
     + `- **No collaboration.** One editor pairs with the bridge at a time.\n`;

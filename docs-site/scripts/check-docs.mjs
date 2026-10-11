@@ -20,7 +20,7 @@ const CONTENT = resolve(DOCS_SITE, 'src', 'content', 'docs');
 const PAGES = resolve(DOCS_SITE, 'src', 'pages');
 
 /** Pages that exist to orient, not to describe a feature. Keep this tiny. */
-const EDITORIAL = new Set(['introduction', 'prompting-agents']);
+const EDITORIAL = new Set(['introduction', 'prompting-agents', 'faq']);
 
 const problems = [];
 

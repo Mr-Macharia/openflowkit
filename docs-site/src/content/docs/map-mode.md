@@ -106,4 +106,4 @@ repo moves on. The CLI equivalent is `openflowkit discover .`.
 
 - [Architecture (C4)](/architecture-c4/) — the model Map draws.
 - [Architecture workspace](/architecture-workspace/) — discovery and drift against a repo.
-- [MCP Server](/mcp-server/) — the package the CLI ships in.
+- [The openflowkit CLI](/cli/) — `map`, `discover` and `drift` on a checkout.

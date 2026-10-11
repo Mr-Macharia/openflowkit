@@ -13,8 +13,8 @@ Open the canvas menu → **Settings**.
 
 | Setting | Options | Effect |
 | --- | --- | --- |
-| Appearance | Light, Dark, System | The app's theme; System follows the OS |
-| Density | Comfortable, Compact | Control sizes throughout the chrome |
+| Theme (under Appearance) | Light, Dark, System | The app's theme; System follows the OS |
+| Interface density | Comfortable, Compact | Control sizes throughout the chrome |
 | Dot grid | On, Off | The canvas grid |
 | Snap to grid | On, Off | Whether drags snap to the grid (hold `⌘`/`Ctrl` to bypass) |
 | Icons from labels | On (default), Off | Generated diagrams put a logo on nodes that name a technology; a diagram's `icons:` line wins — see [Architecture](/diagram-architecture/#icons-from-labels) |
@@ -33,16 +33,17 @@ Some preferences live with the thing they affect:
 
 ## The diagram palette
 
-The palette is a document-level default: compiled frames carry the palette that generated
-them, and a frame's own `appearance:` line wins over the panel. Paper and mono exist for
+The diagram palette is a browser preference (Pastel by default), not part of the document.
+Every Generate uses it unless the source has its own `appearance:` line, which wins. The
+compiled shapes keep the colours they were generated with. Paper and Mono exist for
 print-friendly and greyscale output; see [Theming](/theming/).
 
 ## What it cannot do
 
 - **No account or profile.** Preferences are per browser, not per person.
 - **No preference import/export.** Copy them by hand if you move machines.
-- **No per-document theme.** The theme is an app preference; a document's diagram palette is
-  the per-document part.
+- **No per-document theme.** The theme is an app preference. The only per-document palette
+  is an `appearance:` line in a diagram's source.
 
 ## Where to go next
 

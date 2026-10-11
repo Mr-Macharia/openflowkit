@@ -3,21 +3,29 @@ title: Quick start
 description: From an empty canvas to an exported diagram in five minutes — shapes, connectors, code, export.
 ---
 
-Open the app at [app.openflowkit.com](https://app.openflowkit.com), or run it yourself:
-`npm install` then `npm run dev` in the repository and open the URL Vite prints.
+Open [app.openflowkit.com](https://app.openflowkit.com). There is nothing to install and no
+account. To run your own copy instead, see [Self-hosting](/self-hosting/).
 
 ## 1. Draw something
 
-Press `R` and click to place a rectangle. Press `O` and place an ellipse next to it. Hover the
-rectangle: four side handles appear — drag from the right one to the ellipse to connect them.
-The canvas is infinite: `Space + drag` to pan, `⌘`/`Ctrl + scroll` to zoom at the pointer.
+1. Press `R` and click the canvas. A rectangle appears, selected, with no label yet.
+2. Type `Client`. Typing on a selected shape that has no label starts its label. Press `Enter`
+   to finish.
+3. Press `O` and click to the right of the rectangle. Once a shape has a label, letters are
+   tool shortcuts again, so `O` picks the ellipse. Type `API`, then `Enter`.
+4. Hover the rectangle and four side handles appear. Drag from the right one onto the ellipse
+   to connect them.
 
-Everything is autosaved to your browser; the cloud icon in the document bar shows the save
-state. Press `?` any time for the shortcut cheatsheet.
+To rename a shape that already has a label, select it and press `Enter` (or double-click it).
+The canvas is infinite: `Space + drag` pans and `⌘`/`Ctrl + scroll` zooms at the pointer.
+
+Every edit is autosaved in your browser. The cloud icon in the document bar shows the save
+state. Press `?` at any time for the shortcut cheatsheet.
 
 ## 2. Or write it
 
-Press `⌥C` for the code panel, paste this, then press `⌘↵` or click **Generate diagram**:
+Press `⌥C`. The code panel opens with its text already selected, so pasting replaces it. Paste
+this, then press `⌘↵` (or click **Generate diagram**):
 
 ```openflow
 flowchart
@@ -30,27 +38,28 @@ Check -> Ship : yes
 Check -> Start : no
 ```
 
-The text compiles into one frame. Edit the text and generate again: the frame is replaced in
-place, and one undo restores what was there before. Right-click a generated frame and choose
-**Edit as code** to get its source back at any time.
+`⌘↵` works anywhere in the panel. The text compiles into one frame. Edit the text and
+generate again: the frame is replaced in place, and one undo brings back what was there.
+Right-click a generated frame and choose **Edit as code** to get its source back.
 
 ## 3. Export
 
-Open the canvas menu → **Export…**, or the document bar's export item. Pick a format (PNG, SVG,
-PDF or JSON), a scope (selection, page or all pages), and for PNG an image scale. The export
-carries the theme you pick — light, dark or print — and transparency is free for PNG and SVG.
+Click **Export** at the top right. Pick a format (PNG, SVG, PDF or JSON) and a scope
+(selection, page or all pages). PNG has a 1× or 2× resolution. Images and PDF take a theme
+(light, dark or print), and PNG and SVG can drop the background with **Transparent**.
 
 ## 4. Put an agent on it
 
-- **MCP** — open the **Connect agent** panel, enable the bridge, and point an MCP client at
-  `npx -y @vrun-design/openflowkit-mcp`. Every tool then acts on the document you see.
-  See [MCP Server](/mcp-server/).
-- **Bring your own key** — press `⌘J`, add a provider key in the assistant panel, and describe
-  the diagram you want. The proposal is shown before it lands and accepts as one undo step.
-  See [AI generation](/ai-generation/).
+- **MCP**: click **Connect agent** in the right-hand rail, copy the MCP configuration (or the
+  one-line Claude Code command) into your client, restart it, then click **Connect**. Every tool
+  then acts on the document you see. See [MCP Server](/mcp-server/).
+- **Bring your own key**: press `⌘J`, add a provider key in the assistant panel and describe
+  the diagram you want. You review the proposal before it lands, and it applies as one undo
+  step. See [AI generation](/ai-generation/).
 
 ## Where to go next
 
-- [OpenFlow DSL](/openflow-dsl/) — the language behind **Generate**.
-- [Keyboard shortcuts](/keyboard-shortcuts/) — the full map.
-- [Exporting](/exporting/) — every format and option.
+- [Home and templates](/templates/): seven starter diagrams, and every way to begin.
+- [OpenFlow DSL](/openflow-dsl/): the language behind **Generate**.
+- [Keyboard shortcuts](/keyboard-shortcuts/): the full map.
+- [Exporting](/exporting/): every format and option.

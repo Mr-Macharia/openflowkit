@@ -22,7 +22,7 @@ Fix [note] -> Check : rework
 ```
 
 `flowchart` may be followed by a direction: `down` (default), `up`, `right` or `left`. The
-direction is the layout's main axis; a group can override it with `group X [right] { … }`.
+direction is the layout's main axis for the whole diagram, groups included.
 
 ## Statements
 
@@ -37,9 +37,9 @@ use most:
 | Edge attributes | `API -> DB [thick, head: circle]` | heads, dash, ports |
 | Chain (input) | `A -> B -> C` | the serializer writes one edge per line |
 | Fan (input) | `A -> B, C` | fan out; `A, B -> C` fans in |
-| Group | `group Edge { CDN, WAF }` | a boundary box; membership follows first mention |
+| Group | `group Edge { CDN; WAF }` | a boundary box; `;` separates members (a comma makes one node named `CDN, WAF`) |
 | Note | `note API : retries twice` | a sticky attached to the node |
-| Layout hint | `API [rank: 0]`, `DB [pin: 120,40]`, `align row A, B` | survives round-trip; drags do not write it |
+| Layout hint | `DB [pin: 120,40]`, `align row A, B` | survives round-trip; drags do not write it. `rank:` is kept but has no layout effect yet |
 
 Shape words include `rect`, `rounded`, `circle`, `ellipse`, `diamond`, `cylinder`, `hexagon`,
 `cloud`, `doc`, `note`, `parallelogram`, `person`, `queue`, `component`, `browser` and
@@ -47,8 +47,9 @@ Shape words include `rect`, `rounded`, `circle`, `ellipse`, `diamond`, `cylinder
 
 ## What it does not do
 
-- **No manual positioning in the text.** ELK lays the graph out; `pin` and `rank` are hints,
-  not coordinates. Move shapes on the canvas instead.
+- **Little manual positioning in the text.** ELK lays the graph out. `pin: x,y` sets an exact
+  position inside the frame, applied after layout; `rank` has no layout effect yet. Canvas drags
+  are not written back to the text.
 - **Chains and fans are input-only.** They are expanded when compiled and never written back.
 - **`browser` and `mobile` are frame nodes, not full wireframes.** They render as frames in
   the app; the SVG export draws them as plain cards.

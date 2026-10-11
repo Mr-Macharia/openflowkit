@@ -3,9 +3,10 @@ title: Context menu
 description: Right-click on a shape, a connector, a generated frame or empty canvas for the actions that apply to it.
 ---
 
-Right-click (or long-press on touch) opens a menu scoped to what is under the pointer. Menu
-items that cannot apply are disabled rather than hidden, so the shape of the menu tells you
-what is possible.
+Right-click (or long-press on touch) opens a menu scoped to what is under the pointer. Cut,
+Paste, Delete, Lock and the other edits are disabled when they can't apply (in a read-only
+document, say). Group, Align, Distribute, Ungroup, Edit as code, Icons from labels, Remove
+icon and the model items only appear when they apply.
 
 ## On empty canvas
 
@@ -27,14 +28,15 @@ things you reach for mid-drag.
 | --- | --- |
 | Cut / Copy / Duplicate | Clipboard and duplication |
 | Edit label | Open the in-place label editor |
+| Inspect (`⌥I`) | Read-only facts about the selection: layout, style, source line, model element |
 | Edit as code | Appears on a generated frame; reopens its DSL source |
 | Icons from labels | Appears on a generated flowchart or architecture frame; ticks on or off [icons from labels](/diagram-architecture/#icons-from-labels) for that diagram |
 | Remove icon | Appears when the selection has icons; one undo step for all of them |
-| Open … view / Unplace / Remove from model | Appears when the shape is a [C4 model](/architecture-c4/) placement |
+| Edit in model / Open *name* view / Unplace from this view / Remove from model | Appear when the shape is a [C4 model](/architecture-c4/) placement; Open *name* view only when the element has its own view |
 | Style → Copy style / Paste style | Copy the appearance between shapes |
-| Reorder → Front / Forward / Backward / Back | Z-order, or the whole selection's order |
-| Transform → Flip, Align, Distribute | The arrange actions, with Align and Distribute enabled for multi-selections |
-| Group / Wrap in section / Ungroup | Container actions; Ungroup appears when the selection can be unwrapped |
+| Reorder → Bring to front / Bring forward / Send backward / Send to back | Z-order |
+| Transform → Flip horizontal / Flip vertical | Mirror the selection; with two or more selected, Align left, centre, right, top, middle and bottom follow, and with three or more, Distribute horizontally and vertically |
+| Group / Wrap in section / Ungroup | Group appears with two or more selected; Ungroup when the selection can be unwrapped |
 | Export… | Open the [export panel](/exporting/) scoped to this element — a container brings its whole subtree |
 | Zoom to selection | Frame the selection |
 | Lock / Unlock | Toggle the lock |
@@ -45,6 +47,7 @@ things you reach for mid-drag.
 | Item | What it does |
 | --- | --- |
 | Edit label | Edit the connector's label |
+| Inspect (`⌥I`) | Read-only facts about the connector |
 | Path → Elbow / Straight / Curve | Change the routing |
 | Reverse direction | Swap the endpoints and the arrow head |
 | Style → Copy / Paste style | Appearance between connectors |
