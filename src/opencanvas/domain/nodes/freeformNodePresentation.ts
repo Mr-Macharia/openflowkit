@@ -6,9 +6,6 @@ import {
 } from './nodePresentationValues';
 import { normalizeStrokeInput, type StrokeInput } from './strokeInput';
 
-export type FreeformNodeKind = 'text' | 'image' | 'mermaid_svg' | 'annotation' | 'sticky' | 'callout'
-  | 'pen' | 'highlighter' | 'line' | 'arrow';
-
 export interface TextNodePresentation {
   readonly kind: 'text';
   readonly label: string;

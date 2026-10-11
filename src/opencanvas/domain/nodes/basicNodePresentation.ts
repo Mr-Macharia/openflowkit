@@ -13,9 +13,9 @@ export type BasicNodeShape =
   | 'callout-stack' | 'layer-stack' | 'folder' | 'panel' | 'brace'
   | 'numbered-circle' | 'list-card' | 'pin' | 'bracket'
   | 'arrow-up' | 'arrow-down' | 'arrow-left' | 'arrow-right' | 'plus';
-export type BasicNodeColorMode = 'subtle' | 'filled';
+type BasicNodeColorMode = 'subtle' | 'filled';
 
-export interface BasicNodePresentation {
+interface BasicNodePresentation {
   readonly kind: BasicNodeKind;
   readonly shape: BasicNodeShape;
   readonly colorKey: string;

@@ -7,8 +7,7 @@ import {
   type ScenePage,
 } from '../../domain/document/types';
 
-// ponytail: one page, one layer. Multi-page arrives in V2-12; the repository
-// and session already operate per document id, so nothing here needs to change.
+// A new document starts with one page holding one layer; the pages menu adds more.
 export function createEmptyV2Page(pageId = 'page-1'): ScenePage {
   return {
     id: pageId,
@@ -44,12 +43,23 @@ export function firstV2Page(document: SceneDocumentV1): ScenePage {
 }
 
 let v2IdCounter = 0;
+const documentsMintedHere = new Set<string>();
 
 // Session-unique node/connector ids. Undo/redo restore identical ids from
 // the stored command, so the counter only needs process-wide uniqueness.
 export function mintV2Id(prefix: string): string {
   v2IdCounter += 1;
-  return `${prefix}-${Date.now().toString(36)}-${v2IdCounter}`;
+  const id = `${prefix}-${Date.now().toString(36)}-${v2IdCounter}`;
+  if (prefix === 'doc') documentsMintedHere.add(id);
+  return id;
+}
+
+/**
+ * A missing document starts empty only when this tab minted its id (New diagram, `/`) or it was the
+ * one open last (a reload before the first edit). Any other id is someone else's link (U1-08).
+ */
+export function mayCreateDocument(id: string, lastOpen: string | null): boolean {
+  return documentsMintedHere.has(id) || id === lastOpen;
 }
 
 // `/` reopens the document you had open last (Excalidraw's "refresh, same
@@ -58,6 +68,25 @@ const LAST_DOCUMENT_KEY = 'ofk:last-document';
 
 export function rememberLastDocument(id: string): void {
   try { localStorage.setItem(LAST_DOCUMENT_KEY, id); } catch { /* private mode: every visit is new */ }
+}
+
+// The page a document was left on, so a reload (and the next export) opens there: this browser only, never the document or undo.
+const pageKey = (documentId: string): string => `ofk.page:${documentId}`;
+
+export function savedPageId(documentId: string): string | null {
+  try { return localStorage.getItem(pageKey(documentId)); } catch { return null; }
+}
+
+/** Null (the first page, where a document opens anyway) stores nothing. */
+export function savePageId(documentId: string, pageId: string | null): void {
+  try {
+    if (pageId === null) localStorage.removeItem(pageKey(documentId)); else localStorage.setItem(pageKey(documentId), pageId);
+  } catch { /* storage blocked: this visit only */ }
+}
+
+/** A deleted document leaves no page key behind. */
+export function forgetPageId(documentId: string): void {
+  savePageId(documentId, null);
 }
 
 export function lastDocumentId(): string | null {

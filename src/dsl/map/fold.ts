@@ -7,7 +7,7 @@ import { compare } from './tree';
 // Words shared by half the folder (a namespace: `pixi`, `v2`) say nothing about which files belong
 // together, so they are dropped before anything else looks at a name.
 
-export interface Folded {
+interface Folded {
   groups: { key: string; name: string; files: string[] }[];
   loose: string[];
   more: string[];

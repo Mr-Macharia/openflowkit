@@ -150,7 +150,7 @@ test('step chips write the animate block and read it back', async ({ page }) => 
   await expect(hold).toBeVisible();
   await hold.getByRole('spinbutton', { name: 'Hold' }).fill('3');
   await hold.getByRole('spinbutton', { name: 'Hold' }).blur();
-  await hold.getByRole('button', { name: 'Done' }).click();
+  await hold.getByRole('button', { name: 'Close panel' }).click();
 
   // Custom: the block just written is a valid order, and it round-trips.
   const before = await chips.allTextContents();

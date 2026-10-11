@@ -106,7 +106,7 @@ export const FLOW_STEP_KINDS = [
 ] as const;
 export type FlowStepKind = (typeof FLOW_STEP_KINDS)[number];
 
-export interface FlowBranch {
+interface FlowBranch {
   readonly label?: string;
   readonly steps: readonly FlowStep[];
 }
@@ -142,12 +142,6 @@ export interface ArchModel {
   readonly relations: readonly ArchRelation[];
   readonly views: readonly ArchView[];
   readonly flows: readonly ArchFlow[];
-}
-
-/** One view compiled to a scene: the frame plus its placed elements and edges. */
-export interface ArchViewScene {
-  readonly view: ArchView;
-  readonly scene: import('../families/types').FamilyScene;
 }
 
 /** A relation projected onto a view: endpoints resolved to shown elements. */

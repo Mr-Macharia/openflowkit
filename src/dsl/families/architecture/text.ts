@@ -25,7 +25,7 @@ export function architectureText(scene: DslFrameScene): string[] {
 }
 
 /** The workspace body: model, deployment, views and flows. */
-export function workspaceBody(model: ArchModel): string[] {
+function workspaceBody(model: ArchModel): string[] {
   return [
     ...modelText(model),
     ...deploymentText(model),

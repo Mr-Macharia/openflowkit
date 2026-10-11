@@ -58,6 +58,41 @@
                     }
                 ]
             }
+        },
+        {
+            "files": [
+                "src/opencanvas/domain/**/*.ts",
+                "src/dsl/**/*.ts"
+            ],
+            "excludedFiles": [
+                "**/*.test.ts"
+            ],
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "patterns": [
+                            {
+                                "group": [
+                                    "react",
+                                    "react-dom",
+                                    "react-dom/*",
+                                    "react-router-dom",
+                                    "pixi.js",
+                                    "pixi.js/*",
+                                    "zustand",
+                                    "zustand/*",
+                                    "@tabler/*",
+                                    "**/presentation/**",
+                                    "**/infrastructure/**",
+                                    "**/application/**"
+                                ],
+                                "message": "Domain and DSL code is pure TypeScript (AGENTS.md): no React, Pixi, Zustand, or presentation/infrastructure/application imports."
+                            }
+                        ]
+                    }
+                ]
+            }
         }
     ]
 }

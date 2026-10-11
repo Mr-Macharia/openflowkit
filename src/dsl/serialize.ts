@@ -9,12 +9,6 @@ import { dslFamilyDirection } from './vocabulary';
 export { quote, slugifyDslId } from './text';
 export type { DslFrameScene } from './sceneMeta';
 
-export interface SerializeResult {
-  readonly dsl: string;
-  /** Constructs the scene holds that the language cannot write back. */
-  readonly losses: readonly string[];
-}
-
 /**
  * scene → canonical text. The pragma, family line and title are shared; each
  * family writes its own body and the trailing comments close the file.

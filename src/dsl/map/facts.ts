@@ -78,7 +78,7 @@ export function deployablesFrom(files: readonly SourceFile[], repoName: string, 
   return { parts, links, externals: [...externals.values()] };
 }
 
-export interface FactsOptions {
+interface FactsOptions {
   /** Every selected path in the repo, read or not: imports may point at files this call was not given. */
   paths?: readonly string[];
   /** The map's file list when it is wider than what was read (oversize files, sampled-out ones): listed with 0 lines. */

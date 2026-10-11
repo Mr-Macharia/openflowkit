@@ -31,9 +31,9 @@ describe('animate block', () => {
       durationMs: 6000,
       loop: true,
       steps: [
-        { refs: ['a', 'b'] },
-        { refs: [], edges: [['b', 'c']], label: 'POST' },
-        { refs: ['c'], holdMs: 2000 },
+        { refs: ['a', 'b'], line: 8 },
+        { refs: [], edges: [['b', 'c']], label: 'POST', line: 9 },
+        { refs: ['c'], holdMs: 2000, line: 10 },
       ],
     });
     // The block never reaches the family parser.
@@ -67,7 +67,7 @@ describe('animate block', () => {
     const diagnostics: import('./ast').DslDiagnostic[] = [];
     const document = parseDocument('flowchart\nanimate build {\n  step a\n');
     const { block } = extractAnimateBlock(document.segments, diagnostics);
-    expect(block?.steps).toEqual([{ refs: ['a'] }]);
+    expect(block?.steps).toEqual([{ refs: ['a'], line: 3 }]);
     expect(diagnostics.some((item) => item.code === 'W103')).toBe(true);
   });
 
@@ -113,6 +113,20 @@ describe('animate block', () => {
     expect(timeline.durationMs).toBe(2 * 1700 + 2600);
   });
 
+  // README animation, 2026-10-11: arrows no step named were drawn from frame 0, floating before their boxes.
+  it('reveals an unnamed connector with the later of its two endpoints', () => {
+    const page = animPage(
+      [animNode('a', 0, 0), animNode('b', 0, 100), animNode('c', 0, 200), animNode('d', 0, 300)],
+      [animEdge('ab', 'a', 'b'), animEdge('bc', 'b', 'c'), animEdge('cd', 'c', 'd')],
+    );
+    const timeline = timelineFromAnimate(page, {
+      preset: 'build', loop: false,
+      steps: [{ refs: ['a'] }, { refs: ['b'], edges: [['a', 'b']] as [string, string][] }, { refs: ['c'] }],
+    });
+    // `d` is never named, so it is on screen throughout; `cd` appears with `c`, its later end.
+    expect(timeline.steps.map((step) => step.connectorIds)).toEqual([[], ['ab'], ['bc', 'cd']]);
+  });
+
   it('honours a header duration by scaling the clip', () => {
     const page = animPage([animNode('a', 0, 0), animNode('b', 0, 100)]);
     const timeline = timelineFromAnimate(page, {
@@ -141,6 +155,29 @@ describe('animate block', () => {
       '  step c hold 2s',
       '}',
     ]);
+  });
+
+  // Orchestrator 2026-10-11: `step Browser` animated nothing (the id is `browser`), `step "API Gateway"`
+  // needed `api-gateway`, and the W122 that should have said so never reached validate.
+  it('resolves a step ref the way an edge does — as written, by label or by slug — and warns at compile on the rest', async () => {
+    const compiled = await compile('flowchart\nBrowser -> API Gateway\nLedger DB = Aurora\nAPI Gateway -> Ledger DB\n\nanimate build {\n'
+      + '  step Browser\n  step "API Gateway", Aurora\n  step Browser -> API Gateway\n  step api-gateway -> Ledger DB\n  step Ghost\n}\n');
+    const page = { id: 'p', name: 'P', layers: [], nodes: [compiled.frame, ...compiled.nodes], connectors: compiled.connectors, metadata: {}, extensions: {} } as unknown as Parameters<typeof timelineFromAnimate>[0];
+    const block = animateFromJson((compiled.frame.metadata.dsl as { animate: unknown }).animate)!;
+    const timeline = timelineFromAnimate(page, block);
+    expect(timeline.steps.map((step) => step.nodeIds)).toEqual([['browser'], ['api-gateway', 'ledger-db'], ['browser', 'api-gateway'], ['api-gateway', 'ledger-db'], []]);
+    expect(timeline.steps.map((step) => step.connectorIds.length)).toEqual([0, 0, 1, 1, 0]);
+    expect(compiled.diagnostics.filter((item) => item.code === 'W122').map((item) => [item.line, item.message])).toEqual([[11, 'animate: unknown node "Ghost"']]);
+  });
+
+  it('never reveals the frame for a step that names the title, nor a CJK node for an unknown CJK ref', async () => {
+    const titled = await compile('flowchart\ntitle: Checkout\nco = Checkout\nco -> Pay\n\nanimate build {\n  step Checkout\n}\n');
+    const page = (scene: typeof titled) => ({ id: 'p', name: 'P', layers: [], nodes: [scene.frame, ...scene.nodes], connectors: scene.connectors, metadata: {}, extensions: {} }) as unknown as Parameters<typeof timelineFromAnimate>[0];
+    const blockOf = (scene: typeof titled) => animateFromJson((scene.frame.metadata.dsl as { animate: unknown }).animate)!;
+    expect(timelineFromAnimate(page(titled), blockOf(titled)).steps[0]!.nodeIds).toEqual(['co']);
+    const cjk = await compile('flowchart\n数据库 -> 服务\n\nanimate build {\n  step 缓存\n}\n');
+    expect(timelineFromAnimate(page(cjk), blockOf(cjk)).steps[0]!.nodeIds).toEqual([]);
+    expect(cjk.diagnostics.filter((item) => item.code === 'W122').map((item) => item.message)).toEqual(['animate: unknown node "缓存"']);
   });
 
   it('works in a non-graph family too', async () => {

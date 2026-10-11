@@ -3,6 +3,7 @@ import { compile } from '../compile';
 import { resolveConnectorPresentation } from '../../opencanvas/domain/connectors/presentation';
 import { connectorLabelPlate, resolveConnectorLabelStyle } from '../../opencanvas/domain/connectors/labelStyle';
 import { format, serialize } from '../serialize';
+import { resolveSequenceNodePresentation } from '../../opencanvas/domain/nodes/sequenceNodePresentation';
 
 describe('sequence family', () => {
   it('`id = Label` names exactly that participant, as sender, receiver or note target', async () => {
@@ -50,7 +51,7 @@ describe('sequence family', () => {
   it('records activations against the message order', async () => {
     const result = await compile('sequence\nA -> B : one\nactivate B\nB -> B : two\ndeactivate B');
     const bob = result.nodes.find((node) => node.id === 'b')!;
-    expect(bob.content.seqActivations).toEqual([{ order: 1, activate: true }, { order: 2, activate: false }]);
+    expect(bob.content.seqActivations).toMatchObject([{ order: 1, activate: true }, { order: 2, activate: false }]);
   });
 
   it('nests fragments and keeps branch order', async () => {
@@ -135,6 +136,142 @@ describe('sequence family', () => {
       expect(result.diagnostics.filter((item) => item.severity !== 'info').map((item) => item.code)).toEqual(['W112']);
       expect(result.connectors).toHaveLength(0);
     }
+  });
+
+  // Persona U2 (2026-10-11), a payment-authorization review: alt and else drew as two boxes, the
+  // else ran on under the opt below it, its note straddled the else/opt border, the Gateway bar
+  // ran into the opt past its `deactivate`, and the actor's figure struck through the title.
+  describe('payment authorization (persona U2)', () => {
+    const payment = 'sequence\ntitle: Card payment authorization\nparticipant Shopper [actor]\nparticipant Checkout\nparticipant Gateway = Payments API\n'
+      + 'participant Risk = Fraud service\nparticipant Issuer = Card network / Issuer [queue]\nparticipant Ledger [db]\n'
+      + 'Shopper -> Checkout : Pay $42.00\nCheckout -> Gateway : POST /authorize (idempotency-key)\nactivate Gateway\n'
+      + 'Gateway -> Gateway : validate + dedupe\nGateway -> Risk : score(txn)\nRisk --> Gateway : score 0.12\n'
+      + 'alt score < 0.8 {\n  Gateway -> Issuer : ISO 8583 auth request\n  Issuer --> Gateway : approved (auth code)\n'
+      + '  Gateway -> Ledger : write PENDING hold\n  Gateway --> Checkout : 201 authorized\n} else declined by risk {\n'
+      + '  Gateway --> Checkout : 402 declined\n  note right of Risk : decision logged for model retraining\n}\ndeactivate Gateway\n'
+      + 'opt 3-D Secure required {\n  Checkout -> Shopper : challenge\n  Shopper --> Checkout : OTP\n}\n'
+      + 'note over Checkout, Gateway : retries reuse the same idempotency key\nGateway -->> Risk : AuthorizationCompleted (async)';
+    const span = (node: { transform: { translation: { y: number } }; size: { height: number } }) => (
+      { top: node.transform.translation.y, bottom: node.transform.translation.y + node.size.height });
+
+    it('draws alt … else as one frame with a divider, and stacks the opt below it', async () => {
+      const result = await compile(payment);
+      const [alt, otherwise, opt] = result.nodes.filter((node) => node.kind === 'annotation');
+      expect([alt, otherwise, opt].map((node) => node!.content.label)).toEqual(['ALT', 'ELSE', 'OPT']);
+      // The else continues the alt's frame: a divider where the alt branch ends, not a second box.
+      expect(alt!.content).toMatchObject({ seqFragmentContinued: true });
+      expect(otherwise!.content).toMatchObject({ seqFragmentDivider: true });
+      expect(opt!.content.seqFragmentDivider).toBeUndefined();
+      expect(span(otherwise!).top).toBe(span(alt!).bottom);
+      expect(span(otherwise!).bottom).toBeLessThan(span(opt!).top);
+    });
+
+    it('keeps a note written in the else inside the else', async () => {
+      const result = await compile(payment);
+      const [, otherwise, opt] = result.nodes.filter((node) => node.kind === 'annotation');
+      const note = result.nodes.find((node) => node.content.label === 'decision logged for model retraining')!;
+      expect(span(note).top).toBeGreaterThanOrEqual(span(otherwise!).top + 24);
+      expect(span(note).bottom).toBeLessThan(span(otherwise!).bottom);
+      expect(span(note).bottom).toBeLessThan(span(opt!).top);
+    });
+
+    it('ends an activation where its `deactivate` is written, not at the next message', async () => {
+      const result = await compile(payment);
+      const gateway = result.nodes.find((node) => node.id === 'Gateway')!;
+      const opt = result.nodes.filter((node) => node.kind === 'annotation')[2]!;
+      const [bar] = (resolveSequenceNodePresentation(gateway) as unknown as { activations: Array<{ startOrder: number; endOrder: number }> }).activations;
+      // A row's line: the lane's header bottom, then the message offset, then 52 px a row.
+      const lineY = (row: number) => gateway.transform.translation.y + 48 + 44 + row * 52;
+      expect(lineY(bar!.endOrder)).toBeLessThanOrEqual(span(opt).top);
+      const declined = result.connectors.find((connector) => connector.labels[0]?.text === '402 declined')!;
+      expect(bar!.endOrder).toBeGreaterThan(Number(declined.semantics.seqMessageRow));
+    });
+
+    it('keeps the actor figure below the title and every header bottom level', async () => {
+      const result = await compile(payment);
+      const lanes = result.nodes.filter((node) => node.kind === 'sequence_participant');
+      const shopper = lanes.find((node) => node.content.label === 'Shopper')!;
+      // The frame's title band is the top 40 px; the figure starts under it.
+      expect(shopper.transform.translation.y).toBeGreaterThanOrEqual(40);
+      const headerBottom = (node: typeof shopper) => node.transform.translation.y + (node.content.seqParticipantKind === 'actor' ? 40 : 0) + 48;
+      expect(new Set(lanes.map(headerBottom)).size).toBe(1);
+    });
+
+    it('gives [db] and [queue] participants their head shape', async () => {
+      const result = await compile(payment);
+      const head = (id: string) => (resolveSequenceNodePresentation(result.nodes.find((node) => node.id === id)!) as unknown as { head?: string }).head;
+      expect([head('ledger'), head('Issuer'), head('checkout')]).toEqual(['cylinder', 'queue', 'box']);
+      expect(serialize(result)).toContain('participant Ledger [db]');
+    });
+
+    it('round-trips the text with every block, note and activation', async () => {
+      const text = await format(payment);
+      expect(await format(text)).toBe(text);
+      expect(text).toContain('} else declined by risk {');
+      expect(text).toContain('activate Gateway');
+      expect(text).toContain('deactivate Gateway');
+      // The note written in the else stays there; it does not move into the opt that follows.
+      expect(text).toMatch(/402 declined\n {2}note right of Risk[^\n]*\n\}\ndeactivate Gateway[^\n]*\nopt/);
+    });
+  });
+
+  // Review of the U2 lane, 2026-10-11.
+  describe('blocks, bars and names (review)', () => {
+    const span = (node: { transform: { translation: { y: number } }; size: { height: number } }) => (
+      { top: node.transform.translation.y, bottom: node.transform.translation.y + node.size.height });
+
+    it('keeps an else inside another block: one frame, inside its parent, holding its messages', async () => {
+      const text = 'sequence\nA -> B : one\nloop l {\n  alt a {\n    A -> B : x\n  } else {\n    B -> A : y\n    note over A, B : end of else\n  }\n}\nA -> B : after';
+      const result = await compile(text);
+      expect(result.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+      const [loop, alt, otherwise] = result.nodes.filter((node) => node.kind === 'annotation');
+      expect([loop, alt, otherwise].map((node) => node!.content.label)).toEqual(['LOOP', 'ALT', 'ELSE']);
+      expect((otherwise!.metadata.dsl as { seqFragmentParent?: string }).seqFragmentParent).toBe(loop!.id);
+      expect(span(otherwise!).top).toBe(span(alt!).bottom);
+      expect(span(alt!).top).toBeGreaterThanOrEqual(span(loop!).top + 24);
+      expect(span(otherwise!).bottom).toBeLessThan(span(loop!).bottom);
+      const lineY = (label: string) => {
+        const connector = result.connectors.find((item) => item.labels[0]?.text === label)!;
+        return 132 + Number(connector.semantics.seqMessageRow ?? connector.semantics.seqMessageOrder) * 52;
+      };
+      expect(lineY('y')).toBeGreaterThan(span(otherwise!).top + 24);
+      expect(lineY('y')).toBeLessThan(span(otherwise!).bottom);
+      const note = result.nodes.find((node) => node.kind === 'sequence_note')!;
+      expect(span(note).top).toBeGreaterThan(span(otherwise!).top);
+      expect(span(note).bottom).toBeLessThan(span(otherwise!).bottom);
+      expect(lineY('after')).toBeGreaterThan(span(loop!).bottom);
+      const once = await format(text);
+      expect(once).toContain('  } else {\n    B -> A : y\n    note over A, B : end of else\n  }\n}');
+      expect(await format(once)).toBe(once);
+    });
+
+    it('ends a bar where `deactivate` is written, even after one message', async () => {
+      const result = await compile('sequence\nA -> B : x\nloop l {\n  activate B\n  B -> C : y\n  deactivate B\n}\nopt o {\n  C -> B : z\n}');
+      const b = result.nodes.find((node) => node.id === 'b')!;
+      const opt = result.nodes.find((node) => node.content.label === 'OPT')!;
+      const [bar] = (resolveSequenceNodePresentation(b) as unknown as { activations: Array<{ endOrder: number }> }).activations;
+      expect(b.transform.translation.y + 48 + 44 + bar!.endOrder * 52).toBeLessThanOrEqual(span(opt).top);
+    });
+
+    it('reads a quoted name holding `=` as that participant in activate and note', async () => {
+      const result = await compile('sequence\n"a=b" -> B : x\nactivate "a=b"\nnote over "a=b", B : n\nB -> "a=b" : y\ndeactivate "a=b"');
+      expect(result.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+      const participant = result.nodes.find((node) => node.content.label === 'a=b')!;
+      expect(participant.content.seqActivations).toHaveLength(2);
+      expect(result.nodes.find((node) => node.kind === 'sequence_note')!.content.seqNoteTargets).toEqual([participant.id, 'b']);
+    });
+
+    it('writes a saved bar with no source line before the message it was written above', async () => {
+      const result = await compile('sequence\nA -> B : one\nactivate B\nB -> C : two\nC --> B : three\ndeactivate B\nB --> A : four');
+      const scene = { frame: result.frame, nodes: result.nodes, groups: result.groups, connectors: result.connectors };
+      const saved = {
+        ...scene,
+        nodes: result.nodes.map((node) => (Array.isArray(node.content.seqActivations) ? {
+          ...node, content: { ...node.content, seqActivations: (node.content.seqActivations as Array<Record<string, unknown>>).map(({ line: _line, ...rest }) => rest) },
+        } : node)) as typeof result.nodes,
+      };
+      expect(serialize(saved as never)).toBe(serialize(scene));
+    });
   });
 
   describe('readable layout', () => {

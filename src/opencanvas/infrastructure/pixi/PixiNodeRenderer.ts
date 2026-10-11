@@ -22,7 +22,8 @@ import { PixiWidgetNodeRenderer } from './PixiWidgetNodeRenderer';
 import { PixiChartNodeRenderer } from './PixiChartNodeRenderer';
 import { drawPixiNodeOutline } from './pixiNodeOutline';
 import type { PixiNodeDebugRecord } from './pixiNodeDebug';
-import { isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
+import { isBackdropNode, isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
+import { isSequenceParticipant } from './sequenceNodeVisual';
 import { resolveNodeSizingPolicy } from '../../domain/node-sizing/model';
 import { measurePortableText, SUBLABEL_FONT } from '../../domain/text/measurement';
 import { decoratePixiText } from './pixiText';
@@ -58,6 +59,8 @@ function subLabelStyle(style: NodeStyle): NodeStyle {
 }
 
 export class PixiNodeRenderer {
+  /** Under the connectors, as the SVG export paints them: a sequence's fragment bands, then its participants. */
+  readonly backdrop = new Graphics();
   readonly graphics = new Graphics();
   readonly media = new Container();
   readonly labels = new Container();
@@ -122,6 +125,7 @@ export class PixiNodeRenderer {
     textWidths?: ReadonlyMap<string, number>
   ): void {
     this.graphics.clear();
+    this.backdrop.clear();
     for (const content of this.labels.removeChildren()) this.texts.recycle(content);
     const freeformMediaGeneration = this.freeformRenderer.beginDraw();
     const architectureMediaGeneration = this.architectureRenderer.beginDraw();
@@ -131,24 +135,29 @@ export class PixiNodeRenderer {
     this.labelFontByNodeId.clear();
     const debugRecords: PixiNodeDebugRecord[] = [];
     const nodeStates = buildNodeStateMap(page);
-    for (const node of page.nodes) {
+    const bands = page.nodes.filter((node) => !isContainerNodeKind(node.kind) && isBackdropNode(node));
+    const participants = page.nodes.filter(isSequenceParticipant);
+    const ordered = bands.length + participants.length === 0 ? page.nodes
+      : [...bands, ...participants, ...page.nodes.filter((node) => !isBackdropNode(node) && !isSequenceParticipant(node))];
+    for (const node of ordered) {
       if (!nodeStates.get(node.id)?.visible) continue;
       if (renderedNodeIds && !renderedNodeIds.has(node.id)) continue;
       if (isContainerNodeKind(node.kind)) continue;
       const matrix = index.worldMatricesByNodeId.get(node.id);
       if (!matrix) continue;
       const canvasHex = numericColorToHex(canvasColor);
+      const target = isBackdropNode(node) || isSequenceParticipant(node) ? this.backdrop : this.graphics;
       // Family renderers take the node in order; the first one that claims it wins.
       const family = detailLevel === 'overview' ? null
-        : this.chartRenderer.drawNode(node, matrix, this.graphics, canvasHex)
-          ?? this.widgetRenderer.drawNode(node, matrix, this.graphics, canvasHex, (id) => index.nodesById.get(id))
-          ?? this.architectureRenderer.drawNode(node, matrix, this.graphics, architectureMediaGeneration, canvasHex, textWidths?.get(node.id))
-          ?? this.classEntityRenderer.drawNode(node, matrix, this.graphics)
-          ?? this.mindmapRenderer.drawNode(node, matrix, this.graphics)
-          ?? this.journeyRenderer.drawNode(node, matrix, this.graphics)
-          ?? this.sequenceRenderer.drawNode(node, matrix, this.graphics, canvasHex)
-          ?? this.wireframeRenderer.drawNode(node, matrix, this.graphics, wireframeMediaGeneration)
-          ?? this.freeformRenderer.drawNode(node, matrix, this.graphics, freeformMediaGeneration, canvasHex);
+        : this.chartRenderer.drawNode(node, matrix, target, canvasHex)
+          ?? this.widgetRenderer.drawNode(node, matrix, target, canvasHex, (id) => index.nodesById.get(id))
+          ?? this.architectureRenderer.drawNode(node, matrix, target, architectureMediaGeneration, canvasHex, textWidths?.get(node.id))
+          ?? this.classEntityRenderer.drawNode(node, matrix, target)
+          ?? this.mindmapRenderer.drawNode(node, matrix, target)
+          ?? this.journeyRenderer.drawNode(node, matrix, target)
+          ?? this.sequenceRenderer.drawNode(node, matrix, target, canvasHex)
+          ?? this.wireframeRenderer.drawNode(node, matrix, target, wireframeMediaGeneration)
+          ?? this.freeformRenderer.drawNode(node, matrix, target, freeformMediaGeneration, canvasHex);
       if (family) {
         this.labels.addChild(family.label);
         this.labelByNodeId.set(node.id, family.label);

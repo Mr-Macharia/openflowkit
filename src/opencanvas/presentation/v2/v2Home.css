@@ -97,7 +97,7 @@
 .ofk-home-chip:focus-visible { outline: var(--ofk-focus-width) solid var(--ofk-focus); outline-offset: 2px; }
 
 /* Ways to start: four cards, each with its own small loop. */
-.ofk-home-starts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.ofk-home-starts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .ofk-home-start-button { display: grid; width: 100%; height: 100%; align-content: start; gap: 4px; padding: 8px 8px 16px; border: 1px solid color-mix(in srgb, var(--ofk-border) 85%, transparent); border-radius: 12px; background: var(--ofk-surface); color: var(--ofk-text); font: inherit; text-align: start; cursor: pointer; transition: transform 150ms var(--ofk-home-ease), box-shadow 150ms var(--ofk-home-ease), border-color 150ms ease; }
 .ofk-home-start-art { display: grid; place-items: center; height: 96px; margin-bottom: 10px; border-radius: 8px; background: color-mix(in srgb, var(--ofk-raised) 55%, var(--ofk-surface)); color: var(--ofk-secondary); }
 .ofk-home-start-title { padding-inline: 6px; font-size: 14px; font-weight: 600; letter-spacing: -.1px; }
@@ -142,7 +142,8 @@
 /* Sections and the card grid. */
 .ofk-home-section { display: grid; gap: 16px; }
 .ofk-home-section-title { margin: 0; font-size: 13px; font-weight: 600; }
-.ofk-home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 24px 20px; margin: 0; padding: 0; list-style: none; }
+/* The same four columns and 12px gutter as the start row above, so card edges line up down the page (U4-21). */
+.ofk-home-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 12px; margin: 0; padding: 0; list-style: none; }
 
 /* A card is a framed preview with its caption beneath, like a file in a folder. */
 .ofk-home-card { position: relative; display: grid; grid-template-rows: auto 1fr; min-width: 0; }
@@ -150,6 +151,9 @@
 .ofk-home-preview .ofk-skeleton { position: absolute; inset: 0; }
 /* Absolutely placed: an image's own height can never stretch the 16:10 box. */
 .ofk-home-preview-image { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; transition: transform 300ms var(--ofk-home-ease); }
+/* A template is cropped, not shrunk: it fills the card from its start (top left) at a zoom you can read (U4-20).
+   Every checked-in picture lands at 40–110%; a fitted strip was a 10px sliver. */
+.ofk-home-templates .ofk-home-preview-image { inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left top; transform-origin: left top; }
 .ofk-home-placeholder { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--ofk-surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ofk-border) 85%, transparent); color: var(--ofk-muted); }
 .ofk-home-placeholder svg { width: 18px; height: 18px; }
 .ofk-home-card-body { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 10px 2px 0; }
@@ -254,7 +258,7 @@
 @keyframes ofk-home-rise { from { opacity: 0; transform: translateY(4px); } }
 
 @media (max-width: 1100px) {
-  .ofk-home-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ofk-home-chips, .ofk-home-grid:not([data-layout='list']) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* Narrow: the sidebar folds into a top bar; views become a row of tabs. */
 @media (max-width: 860px) {

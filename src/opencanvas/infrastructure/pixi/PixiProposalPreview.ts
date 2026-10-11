@@ -31,7 +31,7 @@ export class PixiProposalPreview {
 
   constructor() {
     this.ghosts.alpha = GHOST_ALPHA;
-    this.ghosts.addChild(this.containers.graphics, this.connectors.container, this.nodes.graphics,
+    this.ghosts.addChild(this.containers.graphics, this.nodes.backdrop, this.connectors.container, this.nodes.graphics,
       this.nodes.media, this.nodes.labels, this.containers.labels);
     this.container.addChild(this.ghosts, this.marks);
     this.container.visible = false;

@@ -28,6 +28,8 @@ export interface DslAttribute extends SourceLocation {
 
 export interface DslReference extends SourceLocation {
   id?: string;
+  /** The id as written when W120 slugified it (`Ledger DB`): a later bare `Ledger DB` names this node. */
+  writtenId?: string;
   label: string;
   attributes: DslAttribute[];
 }
@@ -36,7 +38,7 @@ interface LocatedStatement extends SourceLocation {
   raw: string;
 }
 
-export interface DslNode extends LocatedStatement {
+interface DslNode extends LocatedStatement {
   kind: 'node';
   node: DslReference;
   reservedKind?: string;
@@ -51,20 +53,20 @@ export interface DslEdge extends LocatedStatement {
   attributes: DslAttribute[];
 }
 
-export interface DslGroup extends LocatedStatement {
+interface DslGroup extends LocatedStatement {
   kind: 'group';
   group: DslReference;
   reservedKind?: string;
   statements: DslStatement[];
 }
 
-export interface DslDirective extends LocatedStatement {
+interface DslDirective extends LocatedStatement {
   kind: 'directive';
   name: 'title' | 'direction' | 'autonumber' | 'align' | 'note' | 'legend';
   value: string;
 }
 
-export interface DslReserved extends LocatedStatement {
+interface DslReserved extends LocatedStatement {
   kind: 'reserved';
   keyword: string;
   value: string;

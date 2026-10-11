@@ -7,7 +7,7 @@ import type { SwatchResolver } from '../../opencanvas/domain/nodes/nodePalette';
 import type { DslFrameScene } from '../sceneMeta';
 import type { DslSegment } from '../segments';
 
-export type LayoutRunner = (request: LayoutRequest, signal?: AbortSignal) => Promise<LayoutOutcome>;
+type LayoutRunner = (request: LayoutRequest, signal?: AbortSignal) => Promise<LayoutOutcome>;
 
 export interface FamilyContext {
   /** The exact source text, for `metadata.dsl.source`. */

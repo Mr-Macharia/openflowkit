@@ -65,7 +65,7 @@ function joinTagValue(tokens: readonly DslToken[]): string {
 }
 
 /** `@core` is two tokens (`@` + word); fold them into tags and hand back the rest. */
-export function extractTags(tokens: readonly DslToken[]): { tokens: DslToken[]; tags: string[] } {
+function extractTags(tokens: readonly DslToken[]): { tokens: DslToken[]; tags: string[] } {
   const out: DslToken[] = [];
   const tags: string[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
@@ -84,7 +84,7 @@ export function extractTags(tokens: readonly DslToken[]): { tokens: DslToken[]; 
  * Canonical attribute list with model semantics: a `tags:` value may carry a
  * comma-separated list, so bare entries after it are tags, not attributes.
  */
-export function canonicalAttributesWithTags(
+function canonicalAttributesWithTags(
   attributes: readonly DslAttribute[],
   sugar: readonly string[] = [],
 ): { attributes: CanonicalAttribute[]; tags: string[] } {
@@ -182,14 +182,14 @@ const FLOW_KEYWORDS: Readonly<Record<string, FlowStepKind | 'step'>> = {
   step: 'step', alt: 'alternate', par: 'parallel', note: 'info',
 };
 
-export interface ArchitectureWorkspace {
+interface ArchitectureWorkspace {
   readonly model: ArchModel;
   /** Lines the parser could not honour, kept for the serializer's `reserved` tail. */
   readonly reserved: readonly string[];
 }
 
 /** True when the text uses at least one C4 construct. */
-export function isArchitectureWorkspace(segments: readonly DslSegment[]): boolean {
+function isArchitectureWorkspace(segments: readonly DslSegment[]): boolean {
   return blockTree(segments).some((root) => {
     const first = root.tokens[0]?.value;
     if (first === 'model' || first === 'views' || first === 'deployment' || first === 'workspace') return true;
@@ -231,6 +231,9 @@ export function parseArchitectureWorkspace(
       diagnostics.push(tokenDiagnostic('W130', 'warning', declaration.first, 'Two color attributes; `color:` wins'));
     } else if (bareColor) typed.values.set('color', bareColor.value);
     const kept = typed.attrs.filter((entry) => entry !== bareColor);
+    if (kept.some((entry) => entry.key === 'iconpos')) {
+      diagnostics.push(tokenDiagnostic('W131', 'warning', declaration.first, 'iconpos applies to icon cards, not model elements; kept, no effect'));
+    }
     // `store` implies `cylinder` (§14.17 says it is emitted) so v1 renderers agree.
     const attrs = declaration.kind === 'store' && !kept.some((entry) => entry.value === 'cylinder')
       ? [{ value: 'cylinder' } as const, ...kept]

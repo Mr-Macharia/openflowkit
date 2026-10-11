@@ -12,7 +12,7 @@ page.on('console', (m) => { if (m.type() === 'error') console.log('console:', m.
 const cdp = await ctx.newCDPSession(page);
 const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
 try {
-  await page.goto(`${base}/#/d/touch-${Date.now()}`);
+  await page.goto(`${base}/`); // a fresh diagram: a made-up #/d/ id is not found
   await page.waitForFunction(() => window.__V2__?.getState());
   await page.locator('canvas').waitFor();
   // Top lane: document bar and workspace rail must not overlap.

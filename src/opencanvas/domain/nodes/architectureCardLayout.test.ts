@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTestNode } from '../../testing/builders/documentBuilder';
 import { resolveNodeStyle } from './nodeStyle';
-import { architectureCardLayout } from './architectureCardLayout';
+import { architectureCardHeight, architectureCardLayout } from './architectureCardLayout';
 
 describe('architecture card text layout', () => {
   it('bounds long titles, technology and descriptions without overlap', () => {
@@ -47,5 +47,23 @@ describe('architecture card text layout', () => {
     expect(layout.resource.displayText).toBe('React, TypeScript');
     expect(layout.provider.displayText).toBe('Container');
     expect(layout.provider.width + layout.resource.width).toBeLessThanOrEqual(240 - 64);
+  });
+
+  it('sizes a card to what it says: the whole title and detail fit, and nothing is left below them', () => {
+    const card = (label: string, detail?: string) => createTestNode('card', {
+      kind: 'architecture', size: { width: 240, height: 152 },
+      content: { label, archProviderLabel: 'Module', archResourceType: 'Python', ...(detail ? { archEnvironment: detail } : {}) },
+    });
+    for (const node of [card('vote', '1 file'), card('kustomize/components/shopping-assistant/scripts/', '1 file'), card('worker'), card('3 more modules', 'Fewer connections; open to list them.')]) {
+      const style = resolveNodeStyle(node);
+      const height = architectureCardHeight(node, style);
+      expect(height, String(node.content.label)).toBeLessThan(152);
+      const fitted = architectureCardLayout({ ...node, size: { ...node.size, height } }, style);
+      const roomy = architectureCardLayout({ ...node, size: { ...node.size, height: 1000 } }, style);
+      expect(fitted.title.lines).toEqual(roomy.title.lines);
+      expect(fitted.detail.lines).toEqual(roomy.detail.lines);
+    }
+    expect(architectureCardHeight(card('vote', '1 file'), resolveNodeStyle(card('vote', '1 file'))))
+      .toBeLessThan(architectureCardHeight(card('kustomize/components/shopping-assistant/scripts/', '1 file'), resolveNodeStyle(card('x'))));
   });
 });

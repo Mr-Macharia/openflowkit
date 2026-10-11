@@ -5,7 +5,7 @@ const COMMAND = /^[MLHVZmlhvz]$/;
 const MAX_SOURCE_LENGTH = 4096;
 const MAX_POINTS = 256;
 
-export interface ValidatedCustomSvgPath {
+interface ValidatedCustomSvgPath {
   readonly source: string;
   readonly points: readonly Point2d[];
 }

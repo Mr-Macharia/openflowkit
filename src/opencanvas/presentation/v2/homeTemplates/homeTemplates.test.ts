@@ -13,16 +13,20 @@ import { createEmptyV2Document } from '../v2Document';
 import { buildV2Thumbnail } from '../v2Thumbnail';
 
 const DIR = __dirname;
-const PUBLIC = join(DIR, '../../../../../public');
+const ROOT = join(DIR, '../../../../..');
+const PUBLIC = join(ROOT, 'public');
 
 beforeAll(() => {
-  // Icon art is fetched from /public in the app; read the same files here.
+  // Icon art is fetched in the app: bundled packs from /public, third-party packs (AWS…) from their
+  // asset URLs under the repo's assets/. Read the same files here, or those icons draw as empty tiles.
   vi.stubGlobal('fetch', async (url: string) => {
-    try {
-      return new Response(readFileSync(join(PUBLIC, decodeURIComponent(new URL(url, 'http://x').pathname))), { status: 200 });
-    } catch {
-      return new Response('', { status: 404 });
+    const path = decodeURIComponent(new URL(url, 'http://x').pathname);
+    for (const base of [PUBLIC, ROOT]) {
+      try {
+        return new Response(readFileSync(join(base, path)), { status: 200 });
+      } catch { /* try the next root */ }
     }
+    return new Response('', { status: 404 });
   });
 });
 afterAll(() => vi.unstubAllGlobals());

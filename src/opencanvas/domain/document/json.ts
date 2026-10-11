@@ -1,10 +1,10 @@
-export type JsonPrimitive = boolean | number | string | null;
+type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 export interface JsonObject {
   readonly [key: string]: JsonValue;
 }
 
-export function isJsonValue(value: unknown): value is JsonValue {
+function isJsonValue(value: unknown): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
     return true;
   }

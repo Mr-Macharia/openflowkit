@@ -827,7 +827,8 @@ describe('import → generate → generate', () => {
     expect(generated).toContain('view container of payments right {');
     const [context] = (await compileWorkspace(generated)).views;
     const ops = context!.result.nodes.find((node) => node.id === 'opsEngineer')!;
-    expect(ops.appearance.fill).toBe('#08427b');
+    // A person is a user-icon card (2026-10-11), so the styled colour is the card's.
+    expect(ops.content).toMatchObject({ icon: 'tabler/user', color: 'custom', customColor: '#08427b' });
   });
 });
 

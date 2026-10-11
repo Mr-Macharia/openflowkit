@@ -84,7 +84,7 @@ function heartPoints(count: number): Normalised {
 }
 
 /** Convex hull of a face and the same face offset — the silhouette of an extrusion. */
-export function extrudedSilhouette(face: Normalised, offset: readonly [number, number]): Normalised {
+function extrudedSilhouette(face: Normalised, offset: readonly [number, number]): Normalised {
   const points: Normalised = [...face, ...face.map(([x, y]) => [x + offset[0], y + offset[1]] as const)];
   const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o: readonly [number, number], a: readonly [number, number], b: readonly [number, number]) =>
@@ -226,7 +226,7 @@ function arrowPoints(shape: BasicNodeShape, size: Size2d): Point2d[] {
 }
 
 /** A closed ribbon around a centreline: how the brace and bracket get a body. */
-export function ribbonPoints(
+function ribbonPoints(
   centreline: readonly Point2d[], halfWidth: number
 ): readonly Point2d[] {
   const left: Point2d[] = [];

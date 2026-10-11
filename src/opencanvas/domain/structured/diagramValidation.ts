@@ -1,7 +1,7 @@
 import type { DocumentCommand } from '../../domain/commands/types';
 import type { SceneConnector, SceneNode, ScenePage } from '../../domain/document/types';
 
-export interface DiagramLintIssue {
+interface DiagramLintIssue {
   readonly id: string;
   readonly severity: 'error' | 'warning';
   readonly message: string;

@@ -13,7 +13,7 @@ const MAX_CHIPS = 100;
 /** Below this, the chips are short enough to show without asking. */
 const OPEN_STEPS = 12;
 
-export interface V2MotionStepsProps {
+interface V2MotionStepsProps {
   readonly steps: readonly AnimationStep[];
   readonly page: ScenePage;
   readonly onReorder: (from: number, to: number) => void;
@@ -127,7 +127,7 @@ export function V2MotionSteps({ steps, page, onReorder, onMerge, onHold, onShowC
       </details>
       {holdStep ? (
         <Popover role="dialog" aria-label={`Step ${(holdIndex ?? 0) + 1} hold`} open anchorRef={holdAnchor} onClose={() => setHoldIndex(null)} placement="bottom-start">
-          <PopoverHeader title={`Step ${(holdIndex ?? 0) + 1} hold`} close={<Button variant="quiet" onClick={() => setHoldIndex(null)}>Done</Button>} />
+          <PopoverHeader title={`Step ${(holdIndex ?? 0) + 1} hold`} onClose={() => setHoldIndex(null)} />
           <div className="ofk-v2-properties ofk-motion-hold">
             <NumberField
               label="Hold"

@@ -9,7 +9,7 @@ export const MarkerType = {
 } as const;
 export type MarkerType = (typeof MarkerType)[keyof typeof MarkerType];
 
-export interface EdgeMarker {
+interface EdgeMarker {
   type: MarkerType;
   color?: string;
   width?: number;

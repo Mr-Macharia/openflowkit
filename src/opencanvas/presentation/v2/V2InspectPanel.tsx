@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Panel } from '../design-system';
 import type { InspectReport } from '../../domain/scene/inspect';
 
-export interface V2InspectPanelProps {
+interface V2InspectPanelProps {
   readonly report: InspectReport;
   readonly onClose: () => void;
   /** Selects the node at the other end of a connection. */

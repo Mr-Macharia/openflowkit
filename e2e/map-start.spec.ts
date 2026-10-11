@@ -25,6 +25,9 @@ test('Map on a plain document shows the start screen and leaves the drawing as i
   await expect(start(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'See how your system fits together' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start an architecture model' })).toBeFocused();
+  // A drawing is not what Map reads: the page says so, and the Canvas arrows (to drawing tools) stay off.
+  await expect(start(page).getByText('This page is a drawing. Map reads architecture models')).toBeVisible();
+  await expect(start(page).getByText('Start with a shape')).toBeHidden();
   await expect(page.getByRole('toolbar', { name: 'Map depth', exact: true })).toHaveCount(0);
   await expect(mapButton(page)).toHaveAttribute('aria-pressed', 'true');
   // Find and the keys Map has no use for do nothing here.
@@ -110,9 +113,11 @@ test('another document opens on Canvas, whatever mode the last one was in @gate'
   await openCanvas(page);
   await page.keyboard.press('m');
   await expect(start(page)).toBeVisible();
-  // In-app navigation, no reload: the editor stays mounted.
-  await page.evaluate(() => { window.location.hash = '#/d/lane-e-other-document'; });
-  await expect(page).toHaveURL(/lane-e-other-document/);
+  // In-app navigation, no reload. (A made-up #/d/ id is a link from another browser: not found, never created.)
+  const first = page.url();
+  await page.evaluate(() => { window.location.hash = '#/home'; });
+  await page.getByRole('button', { name: 'New diagram' }).first().click();
+  await expect.poll(() => page.url()).not.toBe(first);
   await expect(page.getByTestId('v2-welcome')).toBeVisible();
   await expect(start(page)).toHaveCount(0);
   await expect(canvasButton(page)).toHaveAttribute('aria-pressed', 'true');
@@ -135,8 +140,7 @@ test('the welcome and the Map start screen put the logo, title and buttons in th
   }
   expect(Math.abs(map.logo.left - canvas.logo.left)).toBeLessThanOrEqual(1);
   expect(Math.abs(map.logo.width - canvas.logo.width)).toBeLessThanOrEqual(1);
-  // The arrows have something to point at in both: the Create tools stay, and choosing one returns to Canvas with it armed.
-  await expect(page.locator('.ofk-v2-guide')).toHaveCount(4);
+  // Map leaves the drawing arrows off, but the Create tools stay: choosing one returns to Canvas with it armed.
   await page.getByRole('toolbar', { name: 'Create', exact: true }).getByRole('button', { name: 'Text', exact: true }).click();
   await expect(start(page)).toHaveCount(0);
   await expect(canvasButton(page)).toHaveAttribute('aria-pressed', 'true');

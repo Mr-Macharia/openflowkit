@@ -21,7 +21,7 @@ class Layer {
 
   constructor(onMediaReady: () => void, resolveAsset?: (assetId: string) => Promise<string | null>) {
     this.nodes = new PixiNodeRenderer(onMediaReady, resolveAsset);
-    this.container.addChild(this.containers.graphics, this.nodes.graphics, this.nodes.media, this.nodes.labels, this.containers.labels);
+    this.container.addChild(this.containers.graphics, this.nodes.backdrop, this.nodes.graphics, this.nodes.media, this.nodes.labels, this.containers.labels);
     this.container.visible = false;
   }
 

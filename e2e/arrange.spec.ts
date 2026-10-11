@@ -84,7 +84,7 @@ test('z-order shortcuts restack the page, front and back included', async ({ pag
 
 test('flip mirrors a multi-selection about its own bounds', async ({ page }) => {
   await openCanvas(page);
-  // Flip needs none or several selected: with one shape, Shift+H types a label
+  // Flip needs none or several selected: with one blank shape, Shift+H names it
   // instead (type-to-edit wins on purpose), so this check uses two.
   const a = await drawShape(page, 'r', 320, 300);
   const b = await drawShape(page, 'r', 760, 300);

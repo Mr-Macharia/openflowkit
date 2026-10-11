@@ -3,6 +3,8 @@ import type { SceneNode } from '../document/types';
 import { contrastRatio as contrast, mixHex } from '../../../lib/colorUtils';
 import { darkWashFill } from '../color/adaptiveColor';
 import { nodeStyleFont, resolveNodeStyle } from './nodeStyle';
+import { createShapeNode } from './shapeNode';
+import { createTestDocument } from '../../testing/builders/documentBuilder';
 import { PALETTE_KEYS, paletteResolver } from './nodePalette';
 
 function node(overrides: Partial<SceneNode>): SceneNode {
@@ -61,6 +63,16 @@ describe('resolveNodeStyle', () => {
       expect(resolveNodeStyle(each, '#191b19').fill, JSON.stringify(each.content)).toBe(resolveNodeStyle(each, '#f7f7f5').fill);
     }
   });
+  // Found 2026-10-11 (U4-12): a drawn rectangle stays paper-white on a dark canvas, a glaring block.
+  it('washes a drawn shape on its default paper fill in dark; a fill the author picked stays', () => {
+    const page = createTestDocument({ nodes: [] }).pages[0]!;
+    const drawn = createShapeNode(page, { kind: 'rectangle', id: 'r', at: { x: 0, y: 0 }, label: 'A' });
+    expect(resolveNodeStyle(drawn, '#191b19')).toMatchObject({ fill: 'rgba(255,255,255,0.08)', textColor: '#ffffff' });
+    expect(resolveNodeStyle(drawn, '#f7f7f5').fill).toBe('#fdfdfb');
+    const picked = createShapeNode(page, { kind: 'rectangle', id: 'p', at: { x: 0, y: 0 }, appearance: { fill: '#fde68a' } });
+    expect(resolveNodeStyle(picked, '#191b19').fill).toBe('#fde68a');
+  });
+
   it('washes a C4 card on its own kind hue in dark, but keeps an authored colour', () => {
     const card = (content: Record<string, unknown>) => node({ kind: 'architecture', content: { label: 'A', icon: 'tabler/user', ...content } });
     const kind = card({ color: 'violet', archKindColor: 'violet' });
@@ -147,5 +159,22 @@ describe('resolveNodeStyle', () => {
   it('builds a CSS font shorthand scaled by zoom', () => {
     const style = resolveNodeStyle(node({ appearance: { fontSize: 20, fontFamily: 'serif', fontStyle: 'italic' } }));
     expect(nodeStyleFont(style, 2)).toBe('italic 600 40px/1.2 Georgia, "Iowan Old Style", "Times New Roman", serif');
+  });
+});
+
+describe('icon card styles', () => {
+  const card = (iconPlacement: string) => node({
+    kind: 'architecture',
+    content: { label: 'API', assetPresentation: 'icon', contentLayout: { version: 1, iconPlacement } },
+  });
+
+  it('paints an icon tile\'s plate and leaves its caption on the canvas', () => {
+    expect(resolveNodeStyle(card('top'))).toMatchObject({ cornerRadius: 14, textAlign: 'center', textVerticalAlign: 'top', textPadding: 4 });
+  });
+
+  it('paints a row card as one rounded card with its text start-aligned and centred vertically', () => {
+    const style = resolveNodeStyle(card('left'));
+    expect(style).toMatchObject({ cornerRadius: 10, strokeWidth: 1, textAlign: 'start', textVerticalAlign: 'middle', textPadding: 12 });
+    expect(style.fill).toBe(paletteResolver()('white', 'pastel').fill);
   });
 });

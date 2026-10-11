@@ -9,13 +9,6 @@ interface SetNodeParentOptions {
   constrainToParent?: boolean;
 }
 
-export function getNodeParentId(node: NodeWithParent): string {
-  if (typeof node.parentId === 'string' && node.parentId.length > 0) {
-    return node.parentId;
-  }
-  return '';
-}
-
 export function setNodeParent<T extends Node>(
   node: T,
   parentId: string,

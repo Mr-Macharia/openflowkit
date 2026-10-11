@@ -381,7 +381,7 @@ export function defaultChildKind(parentKind: ElementKind | null): ElementKind | 
   return null;
 }
 
-export interface ArchElementAdd {
+interface ArchElementAdd {
   readonly parentId: string | null;
   readonly kind: ElementKind;
   readonly name: string;

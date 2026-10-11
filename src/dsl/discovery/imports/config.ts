@@ -5,7 +5,7 @@ import { isSkippedSource } from './skip';
 import { stripComments } from './strip';
 import { MAX_CONFIG, type SourceFile } from './types';
 
-export interface TsPaths {
+interface TsPaths {
   /** Repo-relative folder `baseUrl` points at. */
   baseUrl?: string;
   paths?: Record<string, string[]>;

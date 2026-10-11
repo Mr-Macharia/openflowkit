@@ -1,6 +1,6 @@
 import type { DslDiagnostic } from './ast';
 
-export type DslTokenKind = 'word' | 'string' | 'arrow' | 'punctuation' | 'comment';
+type DslTokenKind = 'word' | 'string' | 'arrow' | 'punctuation' | 'comment';
 
 export interface DslToken {
   kind: DslTokenKind;
@@ -10,7 +10,7 @@ export interface DslToken {
   endCol: number;
 }
 
-export interface TokenizeResult {
+interface TokenizeResult {
   tokens: DslToken[];
   diagnostics: DslDiagnostic[];
   lineCount: number;

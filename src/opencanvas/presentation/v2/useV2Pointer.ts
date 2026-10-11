@@ -2,21 +2,24 @@ import { buildNodeStateMap } from '../../domain/scene/nodeState';
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
 import type { Point2d } from '../../domain/geometry/types';
 import { panCamera } from '../../domain/camera/camera';
-import { clearSelection, replaceSelection } from '../../application/selection/selection';
+import { addToSelection, clearSelection, replaceSelection } from '../../application/selection/selection';
+import { snapToAngle } from '../../domain/geometry/point';
 import { beginTransformOperation, boundsBetween, updateTransformOperation, type TransformModifiers } from './pointerOperations';
 import { sideAnchor } from '../../domain/connectors/connectHandles';
 import { beginConnectorOperation, updateConnectorOperation } from './v2ConnectorOperations';
 import { defaultShapeSize } from '../../domain/nodes/shapeNode';
-import { buildInsertShapeCommand, type V2ShapeKind } from '../../domain/commands/sceneEdits';
+import { buildInsertShapeCommand } from '../../domain/commands/sceneEdits';
 import { strokeHitBySegment } from '../../domain/nodes/strokeGeometry';
 import { buildNodeWorldMatrices } from '../../domain/scene/worldGeometry';
 import {
-  CLICK_THRESHOLD_PX, OBJECT_SNAP_PX, MIN_CREATE_SIZE, HANDLE_CURSORS, modifiersOf, localPoint,
+  CLICK_THRESHOLD_PX, OBJECT_SNAP_PX, HANDLE_CURSORS, modifiersOf, localPoint,
   latestLocalPoint, textOrigin, nodeCenterWorld, pickHandleNear, connectorPreview, stickyAppearance,
   ERASE_RADIUS_PX, pickChartPoint, inkPreview, retargetSample, strokeWorldPoints,
-  finishGesture, keyboardGestures, type V2Operation, type V2PointerOptions, type PointerLike,
+  finishGesture, keyboardGestures, toolShape, dragBox, enteredGroup, SQUARE_SIZE, type V2Operation, type V2PointerOptions, type PointerLike,
 } from './v2PointerGestures';
 import { useV2Touch } from './useV2Touch';
+
+const MODIFIER_KEYS = new Set(['Shift', 'Alt', 'Meta', 'Control']);
 
 export function useV2Pointer(options: V2PointerOptions) {
   const operationRef = useRef<V2Operation | null>(null);
@@ -32,6 +35,8 @@ export function useV2Pointer(options: V2PointerOptions) {
   // (lostpointercapture ~2 ms early, pointerup lands uncaptured, move lost).
   // Capture is only an optimization; window listeners guarantee completion.
   const windowListenersRef = useRef<(() => void) | null>(null);
+  // The last move, so a modifier pressed or let go mid-drag re-runs it at once (Figma) instead of on the next move.
+  const lastMoveRef = useRef<PointerLike | null>(null);
   const optionsRef = useRef(options);
   const { gestureApiRef } = options;
   useEffect(() => {
@@ -92,7 +97,8 @@ export function useV2Pointer(options: V2PointerOptions) {
     const next = updateTransformOperation(operation, pending.world, Boolean(opts.snapToGrid),
       OBJECT_SNAP_PX / opts.cameraRef.current.zoom, pending.modifiers);
     operationRef.current = next;
-    host.setTransformPreview(next.result);
+    // ⌥ makes a move a copy: the preview leaves the originals drawn where they are.
+    host.setTransformPreview(next.result, next.transformKind === 'move' && pending.modifiers.altKey);
     host.setAlignmentGuides(
       next.result?.guideX != null || next.result?.guideY != null
         ? { x: next.result.guideX ?? null, y: next.result.guideY ?? null }
@@ -110,11 +116,10 @@ export function useV2Pointer(options: V2PointerOptions) {
       const point = latestLocalPoint(event);
       if (!operation) {
         const tool = opts.toolRef.current;
-        const shapeTool = tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'shape';
-        if (shapeTool && !opts.readOnlyRef.current && event.target instanceof HTMLCanvasElement) {
+        const shape = toolShape(tool, opts.toolConfigRef.current);
+        if (shape && !opts.readOnlyRef.current && event.target instanceof HTMLCanvasElement) {
           // The shape a click will drop, centred on the pointer like the click is.
-          const shape: V2ShapeKind = tool === 'shape' ? opts.toolConfigRef.current.shape : tool;
-          const size = defaultShapeSize(shape);
+          const size = tool === 'square' ? { width: SQUARE_SIZE, height: SQUARE_SIZE } : defaultShapeSize(shape);
           const world = host.screenToWorld(point);
           host.setPlacementGhost({ shape, bounds: {
             x: world.x - size.width / 2, y: world.y - size.height / 2, width: size.width, height: size.height,
@@ -129,7 +134,9 @@ export function useV2Pointer(options: V2PointerOptions) {
           // Handles sit outside their node, so a hover over one comes from
           // the neighbourhood search, not from the node under the pointer.
           const handleHit = readOnly ? null : pickHandleNear(host, opts, point);
-          const hoverNode = handleHit?.nodeId ?? host.pickNode(point);
+          const page = opts.pageRef.current;
+          const hoverNode = handleHit?.nodeId
+            ?? host.pickNode(point, page ? enteredGroup(page, opts.selectionRef.current.nodeIds) : null);
           const hoverSide = handleHit?.side ?? null;
           host.setHover(hoverNode, hoverSide);
           const connectorHandle = host.getSelectedConnectorId() ? host.pickConnectorHandle(point) : null;
@@ -148,6 +155,13 @@ export function useV2Pointer(options: V2PointerOptions) {
         return;
       }
       if (operation.pointerId !== event.pointerId) return;
+      const sample = event.nativeEvent?.getCoalescedEvents?.()?.at(-1);
+      lastMoveRef.current = {
+        currentTarget: event.currentTarget, target: event.target, pointerId: event.pointerId,
+        clientX: sample?.clientX ?? event.clientX, clientY: sample?.clientY ?? event.clientY,
+        shiftKey: event.shiftKey, altKey: event.altKey, metaKey: Boolean(event.metaKey), ctrlKey: Boolean(event.ctrlKey),
+        ...(event.pointerType ? { pointerType: event.pointerType } : {}),
+      };
       if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -183,12 +197,8 @@ export function useV2Pointer(options: V2PointerOptions) {
         if (moved >= CLICK_THRESHOLD_PX) {
           // Past the click threshold the ghost is the drag box: what release commits.
           const world = host.screenToWorld(point);
-          host.setPlacementGhost({ shape: operation.shape, bounds: {
-            x: Math.min(world.x, operation.startWorld.x),
-            y: Math.min(world.y, operation.startWorld.y),
-            width: Math.max(MIN_CREATE_SIZE, Math.abs(world.x - operation.startWorld.x)),
-            height: Math.max(MIN_CREATE_SIZE, Math.abs(world.y - operation.startWorld.y)),
-          } });
+          const { at, size } = dragBox(operation.startWorld, world, operation.square || event.shiftKey, event.altKey);
+          host.setPlacementGhost({ shape: operation.shape, bounds: { x: at.x, y: at.y, ...size } });
         }
       } else if (operation.kind === 'ink') {
         const world = host.screenToWorld(point);
@@ -198,9 +208,14 @@ export function useV2Pointer(options: V2PointerOptions) {
         const batch = native && native.length > 0
           ? native.map((sample) => host.screenToWorld(localPoint(retargetSample(event, sample))))
           : [world];
-        const last = operation.points.at(-1)!;
-        for (const sample of batch) {
-          if (Math.hypot(sample.x - last.x, sample.y - last.y) > 0.35) operation.points.push(sample);
+        if (event.shiftKey) {
+          // ⇧: a straight line from where the stroke began.
+          operation.points.splice(1, operation.points.length, world);
+        } else {
+          const last = operation.points.at(-1)!;
+          for (const sample of batch) {
+            if (Math.hypot(sample.x - last.x, sample.y - last.y) > 0.35) operation.points.push(sample);
+          }
         }
         host.setFreeformPreview(inkPreview(opts, operation.stroke, operation.points));
       } else if (operation.kind === 'erase') {
@@ -215,9 +230,12 @@ export function useV2Pointer(options: V2PointerOptions) {
         }
         operationRef.current = { ...operation, from: world };
       } else if (operation.kind === 'connect') {
-        const toWorld = host.screenToWorld(point);
+        // ⇧ on a drawn connector: a free end on the nearest 45°, never bound (as ⇧ frees a dragged endpoint).
+        const free = event.shiftKey && !operation.sourceSide;
+        const raw = host.screenToWorld(point);
+        const toWorld = free ? snapToAngle(operation.fromWorld, raw, Math.PI / 4) : raw;
         operationRef.current = { ...operation, toWorld };
-        const overNode = host.pickNode(point);
+        const overNode = free ? null : host.pickNode(point);
         const target = overNode !== operation.sourceNodeId ? overNode : null;
         host.setConnectionPreview(connectorPreview(opts, {
           source: { nodeId: operation.sourceNodeId, point: operation.fromWorld },
@@ -293,11 +311,21 @@ export function useV2Pointer(options: V2PointerOptions) {
       const onWindowUp = (native: PointerEvent) => {
         if (operationRef.current) pointerUp(retarget(native));
       };
+      const onWindowKey = (native: KeyboardEvent) => {
+        const last = lastMoveRef.current;
+        if (!operationRef.current || !last || !MODIFIER_KEYS.has(native.key)) return;
+        pointerMove({ ...last, shiftKey: native.shiftKey, altKey: native.altKey, metaKey: native.metaKey, ctrlKey: native.ctrlKey });
+      };
+      lastMoveRef.current = null;
       window.addEventListener('pointermove', onWindowMove);
       window.addEventListener('pointerup', onWindowUp);
+      window.addEventListener('keydown', onWindowKey);
+      window.addEventListener('keyup', onWindowKey);
       windowListenersRef.current = () => {
         window.removeEventListener('pointermove', onWindowMove);
         window.removeEventListener('pointerup', onWindowUp);
+        window.removeEventListener('keydown', onWindowKey);
+        window.removeEventListener('keyup', onWindowKey);
       };
       const point = localPoint(event);
       const tool = opts.toolRef.current;
@@ -320,13 +348,14 @@ export function useV2Pointer(options: V2PointerOptions) {
         };
         return;
       }
-      if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'shape') {
-        const shape: V2ShapeKind = tool === 'shape' ? opts.toolConfigRef.current.shape : tool;
+      const shape = toolShape(tool, opts.toolConfigRef.current);
+      if (shape) {
         const world = host.screenToWorld(point);
         operationRef.current = {
           kind: 'create',
           pointerId: event.pointerId,
           shape,
+          square: tool === 'square',
           page,
           startWorld: world,
           startScreen: point,
@@ -385,7 +414,8 @@ export function useV2Pointer(options: V2PointerOptions) {
       const states = buildNodeStateMap(page);
       const canTransform = opts.selectionRef.current.nodeIds.every((id) => !states.get(id)?.locked);
       const handle = canTransform ? host.pickTransformHandle(point) : null;
-      if (handle && !additive && opts.selectionRef.current.nodeIds.length > 0) {
+      // A handle is never a selection gesture: ⇧/⌥ held at the grab are the resize's modifiers.
+      if (handle && opts.selectionRef.current.nodeIds.length > 0) {
         operationRef.current = beginTransformOperation(event.pointerId, page,
           opts.selectionRef.current.nodeIds, handle, host.screenToWorld(point));
         return;
@@ -419,26 +449,46 @@ export function useV2Pointer(options: V2PointerOptions) {
         };
         return;
       }
-      const nodeId = host.pickNode(point);
+      const nodeId = host.pickNode(point, enteredGroup(page, opts.selectionRef.current.nodeIds));
+      // ⇧/⌘ on a shape (Figma): it joins the selection at once and a drag moves them all; a click
+      // without a drag on one already selected takes it back out.
+      if (nodeId && additive) {
+        const current = opts.selectionRef.current;
+        const wasSelected = current.nodeIds.includes(nodeId);
+        if (![...current.nodeIds, nodeId].some((id) => states.get(id)?.locked)) {
+          opts.applyConnectorSelection([]);
+          if (!wasSelected) opts.applySelection(addToSelection(current, [nodeId]));
+          operationRef.current = {
+            ...beginTransformOperation(event.pointerId, page, opts.selectionRef.current.nodeIds, null, host.screenToWorld(point)),
+            ...(wasSelected ? { clickSelects: current.nodeIds.filter((id) => id !== nodeId) } : {}),
+          };
+          return;
+        }
+      }
       if (nodeId && !additive) {
         if (!opts.selectionRef.current.nodeIds.includes(nodeId)) {
           opts.applyConnectorSelection([]);
           opts.applySelection(replaceSelection([nodeId]));
         }
         if (opts.selectionRef.current.nodeIds.some((id) => states.get(id)?.locked)) return;
-        operationRef.current = beginTransformOperation(
-          event.pointerId,
-          page,
-          opts.selectionRef.current.nodeIds,
-          null,
-          host.screenToWorld(point)
-        );
+        const many = opts.selectionRef.current.nodeIds.length > 1;
+        operationRef.current = {
+          ...beginTransformOperation(event.pointerId, page, opts.selectionRef.current.nodeIds, null, host.screenToWorld(point)),
+          ...(many ? { clickSelects: [nodeId] } : {}),
+        };
         return;
       }
       const connectorId = host.pickConnector(point);
       if (connectorId && !nodeId) {
-        opts.applySelection(clearSelection());
-        opts.applyConnectorSelection([connectorId]);
+        const connectors = opts.selectedConnectorIdsRef.current;
+        if (additive) {
+          // ⇧/⌘ toggles a line in or out, the shapes kept.
+          opts.applyConnectorSelection(connectors.includes(connectorId)
+            ? connectors.filter((id) => id !== connectorId) : [...connectors, connectorId]);
+        } else {
+          opts.applySelection(clearSelection());
+          opts.applyConnectorSelection([connectorId]);
+        }
         operationRef.current = null;
         detachWindow();
         try {
@@ -520,7 +570,17 @@ function useDoubleTap(optionsRef: RefObject<V2PointerOptions>) {
         return;
       }
       if (opts.toolRef.current !== 'select') return;
-      const nodeId = host.pickNode(point);
+      const page = opts.pageRef.current;
+      const nodeId = host.pickNode(point, page ? enteredGroup(page, opts.selectionRef.current.nodeIds) : null);
+      // A group draws nothing to edit: a double-click enters it, selecting the member under the pointer (Figma).
+      if (nodeId && page?.nodes.find(({ id }) => id === nodeId)?.kind === 'group') {
+        const member = host.pickNode(point, nodeId);
+        if (member && member !== nodeId) {
+          opts.applyConnectorSelection([]);
+          opts.applySelection(replaceSelection([member]));
+        }
+        return;
+      }
       if (nodeId) {
         // Charts are data: their double-click edits the numbers, not a label.
         if (opts.onOpenChartData?.(nodeId)) return;
@@ -532,7 +592,6 @@ function useDoubleTap(optionsRef: RefObject<V2PointerOptions>) {
         opts.openConnectorEditor(connectorId, point);
         return;
       }
-      const page = opts.pageRef.current;
       if (!page) return;
       const id = opts.mintId('node');
       opts.commit(buildInsertShapeCommand(page, {

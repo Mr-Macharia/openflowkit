@@ -2,7 +2,7 @@ import { cloneJsonValue, isJsonObject, type JsonObject } from './json';
 import { SCENE_DOCUMENT_VERSION, type SceneDocumentV1 } from './types';
 import { validateSceneDocumentV1, type DocumentValidationIssue } from './validation';
 
-export type DocumentMigrationResult =
+type DocumentMigrationResult =
   | { readonly success: true; readonly document: SceneDocumentV1; readonly migrated: false }
   | {
       readonly success: false;

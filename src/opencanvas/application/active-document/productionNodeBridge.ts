@@ -113,7 +113,7 @@ export function buildProductionNodeMutationCommand(page: ScenePage, mutation: Pr
   }
 }
 
-export type ProductionFreeformKind = 'pen' | 'highlighter' | 'line' | 'arrow' | 'sticky' | 'callout';
+type ProductionFreeformKind = 'pen' | 'highlighter' | 'line' | 'arrow' | 'sticky' | 'callout';
 
 export function createProductionProcessNode(
   id: string,

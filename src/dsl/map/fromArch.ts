@@ -12,7 +12,7 @@ import type { MapLink, MapModel, MapNode } from './types';
 
 /** Not an element id: ids are identifiers and dotted paths, which never contain `#`. */
 export const ARCH_ROOT = '#model';
-export const MORE_DESC = 'Fewer connections; open to list them.';
+const MORE_DESC = 'Fewer connections; open to list them.';
 
 const relationText = (r: ArchRelation): string =>
   r.label && r.tech ? `${r.label} [${r.tech}]` : r.label ?? (r.tech ? `[${r.tech}]` : `${r.from} → ${r.to}`);

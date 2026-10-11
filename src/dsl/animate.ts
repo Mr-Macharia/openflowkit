@@ -1,9 +1,9 @@
-import type { ScenePage } from '../opencanvas/domain/document/types';
+import type { SceneNode, ScenePage } from '../opencanvas/domain/document/types';
 import type { JsonObject } from '../opencanvas/domain/document/json';
 import type { DslDiagnostic } from './ast';
 import { diagnostic } from './diagnostics';
 import { joinTokens, type DslSegment } from './segments';
-import { quote } from './text';
+import { quote, slugifyDslId } from './text';
 import { ANIMATION_PRESETS, type AnimationPreset } from '../opencanvas/domain/animation/types';
 import { boundsOfNodes } from '../opencanvas/domain/animation/bounds';
 import { autoSequence } from '../opencanvas/domain/animation/sequence';
@@ -20,13 +20,15 @@ import type { AnimationStep, Timeline } from '../opencanvas/domain/animation/typ
  * invents one.
  */
 
-export interface AnimateStep {
+interface AnimateStep {
   /** Node refs the step reveals. */
   readonly refs: readonly string[];
   /** Edges the step reveals (`a -> c`); both endpoints show too. */
   readonly edges?: readonly (readonly [string, string])[];
   readonly label?: string;
   readonly holdMs?: number;
+  /** Source line, for the W122 an unknown ref earns at compile; not part of the stored block. */
+  readonly line?: number;
 }
 
 export interface AnimateBlock {
@@ -98,7 +100,37 @@ function parseStep(segment: DslSegment, diagnostics: DslDiagnostic[]): AnimateSt
     ...(edges.length ? { edges } : {}),
     ...(label ? { label } : {}),
     ...(holdMs ? { holdMs } : {}),
+    line: segment.line,
   };
+}
+
+/**
+ * A step names a node the way an edge end does: its id as written, its label, or their slug — and
+ * no slug for a name that slugs to nothing (`缓存` → `n`). `nodes` are the diagram's, not its frame.
+ */
+function animateRefResolver(nodes: readonly SceneNode[]): (ref: string) => string | undefined {
+  const ids = new Set(nodes.map((node) => node.id));
+  const byLabel = new Map<string, string>();
+  for (const node of nodes) {
+    if (typeof node.content.label === 'string' && !byLabel.has(node.content.label)) byLabel.set(node.content.label, node.id);
+  }
+  const bySlug = (ref: string) => {
+    const slug = slugifyDslId(ref);
+    // `n` is what a name with no Latin letter or digit slugs to: it names nothing.
+    return (slug !== 'n' || ref.trim().toLowerCase() === 'n') && ids.has(slug) ? slug : undefined;
+  };
+  return (ref) => (ids.has(ref) ? ref : byLabel.get(ref) ?? bySlug(ref));
+}
+
+/** W122 for every step ref no compiled node answers to, on its line: a step that would silently reveal nothing. */
+export function animateRefDiagnostics(block: AnimateBlock, nodes: readonly SceneNode[]): DslDiagnostic[] {
+  const resolve = animateRefResolver(nodes);
+  return block.steps.flatMap((step) => [...step.refs, ...(step.edges ?? []).flat()]
+    .filter((ref) => !resolve(ref))
+    .map((ref): DslDiagnostic => ({
+      code: 'W122', severity: 'warning', line: step.line ?? 0, col: 1, endCol: 1,
+      message: `animate: unknown node "${ref}"`, hint: 'write a node id or label from the diagram', source: 'parse',
+    })));
 }
 
 /**
@@ -216,30 +248,40 @@ export function animateFromJson(value: unknown): AnimateBlock | null {
 }
 
 /**
- * The block as a playable timeline: refs are DSL ids, which are the scene ids
- * for every family that compiles one node per reference. Unknown refs warn and
- * reveal nothing rather than throwing.
+ * The block as a playable timeline: a ref names a node as an edge end does (id
+ * as written, label, or slug). Unknown refs warn and reveal nothing rather than
+ * throwing.
  */
 export function timelineFromAnimate(
   page: ScenePage,
   block: AnimateBlock,
   diagnostics: DslDiagnostic[] = [],
 ): Timeline {
-  const nodeIds = new Set(page.nodes.map((node) => node.id));
-  const connectorsFor = (from: string, to: string): readonly string[] =>
+  // Never the diagram's own frame (its label is the title): it sits at the page root, a group's frame inside it.
+  const drawn = page.nodes.filter((node) => !(node.kind === 'frame' && node.parentId === null));
+  const resolve = animateRefResolver(drawn);
+  diagnostics.push(...animateRefDiagnostics(block, drawn));
+  const connectorsFor = (from: string | undefined, to: string | undefined): readonly string[] =>
     page.connectors
-      .filter((connector) => connector.source.nodeId === from && connector.target.nodeId === to)
+      .filter((connector) => from && to && connector.source.nodeId === from && connector.target.nodeId === to)
       .map((connector) => connector.id);
-  const steps: AnimationStep[] = block.steps.map((step) => {
+  const resolved = block.steps.map((step) => {
     const edgeRefs = (step.edges ?? []).flatMap(([from, to]) => [from, to]);
-    const all = [...step.refs, ...edgeRefs];
-    const known = all.filter((ref) => nodeIds.has(ref));
-    for (const ref of all) {
-      if (!nodeIds.has(ref)) {
-        diagnostics.push({ code: 'W122', severity: 'warning', line: 0, col: 1, endCol: 1, message: `animate: unknown node "${ref}"`, source: 'parse' });
-      }
-    }
-    const connectorIds = (step.edges ?? []).flatMap(([from, to]) => connectorsFor(from, to));
+    const known = [...new Set([...step.refs, ...edgeRefs].flatMap((ref) => resolve(ref) ?? []))];
+    const connectorIds = (step.edges ?? []).flatMap(([from, to]) => connectorsFor(resolve(from), resolve(to)));
+    return { step, known, connectorIds };
+  });
+  // A connector no step names shows with the later of its two ends (an end never named is on screen
+  // throughout), so no arrow floats in before its boxes.
+  const named = new Set(resolved.flatMap(({ connectorIds }) => connectorIds));
+  const firstShown = new Map<string, number>();
+  resolved.forEach(({ known }, index) => known.forEach((id) => { if (!firstShown.has(id)) firstShown.set(id, index); }));
+  for (const connector of page.connectors) {
+    if (named.has(connector.id)) continue;
+    const at = Math.max(firstShown.get(connector.source.nodeId ?? '') ?? -1, firstShown.get(connector.target.nodeId ?? '') ?? -1);
+    if (at >= 0) resolved[at]!.connectorIds.push(connector.id);
+  }
+  const steps: AnimationStep[] = resolved.map(({ step, known, connectorIds }) => {
     const camera = boundsOfNodes(page, known);
     return {
       nodeIds: known,
@@ -253,9 +295,9 @@ export function timelineFromAnimate(
   return block.durationMs ? scaleTimeline(timeline, block.durationMs) : timeline;
 }
 
-export type AnimateOrder = 'auto' | 'code' | (string & {});
+type AnimateOrder = 'auto' | 'code' | (string & {});
 
-export interface MotionTimelineRequest {
+interface MotionTimelineRequest {
   readonly document: SceneDocumentV1;
   readonly pageId: string;
   readonly preset?: AnimationPreset;
@@ -266,7 +308,7 @@ export interface MotionTimelineRequest {
 
 /**
  * The one timeline every host resolves: `auto` walks the connector graph, a
- * flow id replays that phase-5 flow, `code` plays the animate block in the
+ * flow id replays that model flow, `code` plays the animate block in the
  * document's text. Omitted block means `autoSequence`.
  */
 export function motionTimelineFor(request: MotionTimelineRequest): Timeline {

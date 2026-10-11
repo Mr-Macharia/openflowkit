@@ -14,7 +14,7 @@ import { applyPixiNodeMatrix } from './pixiNodeTransform';
 
 type Inks = Readonly<Record<WidgetInk, WidgetInkPaint>>;
 /** Makes (or reuses) a label; the node renderer passes its text pool. */
-export type PixiTextFactory = (text: string, style: NodeStyle, fill: number) => Text;
+type PixiTextFactory = (text: string, style: NodeStyle, fill: number) => Text;
 
 const freshText: PixiTextFactory = (text, style, fill) => createStyledPixiText(text, style, fill, null);
 

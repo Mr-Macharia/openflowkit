@@ -19,6 +19,26 @@ describe('erd family', () => {
     expect(users.size.height).toBeGreaterThanOrEqual(44 + 20 + 3 * 18);
   });
 
+  // Orchestrator 2026-10-11: `nullable` parsed and printed back, but compile dropped it, so format lost it.
+  it('carries `nullable` onto the entity row and keeps it through format', async () => {
+    const text = '%% ofk 1\nerd\n\nusers {\n  bio text nullable\n  email text unique not-null\n}\n';
+    const result = await compile(text);
+    expect(result.nodes[0]!.content.erFields).toEqual([
+      { name: 'bio', dataType: 'text', isNullable: true },
+      { name: 'email', dataType: 'text', isUnique: true, isNotNull: true },
+    ]);
+    expect(await format(text)).toBe(text);
+  });
+
+  // SQL habit: `null` and `not null` were dropped silently, and format then deleted them from the text.
+  it('reads SQL-style `null` and `not null` flags', async () => {
+    const result = await compile('erd\nusers {\n  bio text null\n  email text not null\n}');
+    expect(result.nodes[0]!.content.erFields).toEqual([
+      { name: 'bio', dataType: 'text', isNullable: true },
+      { name: 'email', dataType: 'text', isNotNull: true },
+    ]);
+  });
+
   it('decodes crow-foot relations into semantics', async () => {
     const result = await compile('erd\nusers { id uuid pk }\norders { id uuid pk }\nusers ||--o{ orders : places');
     const relation = result.connectors[0]!;

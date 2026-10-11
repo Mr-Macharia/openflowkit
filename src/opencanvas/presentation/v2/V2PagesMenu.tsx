@@ -5,7 +5,7 @@ import { Button, Icon, IconButton, Menu, MenuItem, MenuSeparator, Popover } from
 import type { useV2Pages } from './useV2Pages';
 
 type PagesApi = ReturnType<typeof useV2Pages>;
-export interface V2PagesMenuProps {
+interface V2PagesMenuProps {
   readonly pages: PagesApi;
   readonly open: boolean;
   readonly anchorRef: React.RefObject<HTMLElement | null>;

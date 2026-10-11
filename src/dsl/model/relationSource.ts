@@ -20,7 +20,7 @@ export function relationSourceLabel(link: string): string {
   return `${url.host}${url.pathname === '/' ? '' : url.pathname}`;
 }
 
-export interface ConnectorSource { readonly from: string; readonly to: string; readonly link: string }
+interface ConnectorSource { readonly from: string; readonly to: string; readonly link: string }
 
 /** The `link` of the model relation a connector draws, with its endpoint names; null when it has none. */
 export function connectorSource(page: ScenePage, connectorId: string): ConnectorSource | null {

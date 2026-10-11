@@ -3,7 +3,7 @@ import { dslFrameMeta } from '../../../dsl/sceneMeta';
 import type { ScenePage } from '../../domain/document/types';
 
 /** A row of the page list: an ordinary page, or a header over the view pages of one C4 model. */
-export type PageListEntry =
+type PageListEntry =
   | { readonly kind: 'group'; readonly id: string; readonly name: string }
   | { readonly kind: 'page'; readonly page: ScenePage; readonly depth: number };
 

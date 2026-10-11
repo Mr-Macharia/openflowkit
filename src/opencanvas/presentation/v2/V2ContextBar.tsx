@@ -10,6 +10,7 @@ import type { ConnectorStylePatch } from '../../domain/commands/styleConnectors'
 import { connectorSource, relationSourceLabel, safeHttpsUrl } from '../../../dsl/model/relationSource';
 import { IconDots, IconExternalLink, IconLayoutSidebarRight, IconTable, IconZoomIn } from '@tabler/icons-react';
 import { Button, ContextBar, ContextGroup, Icon, IconButton, Tooltip } from '../design-system';
+import { platformKeys } from './v2Shortcuts';
 
 interface V2ContextBarProps {
   readonly page: ScenePage;
@@ -23,7 +24,8 @@ interface V2ContextBarProps {
   readonly onSetIcon: (icon: IconChoice) => void;
   readonly onConnectorStyleCommitted: (patch: ConnectorStylePatch) => void;
   readonly style: React.CSSProperties;
-  readonly onOpenMenu: (x: number, y: number) => void;
+  /** The ⋯ button's box: the menu hangs off it. */
+  readonly onOpenMenu: (trigger: DOMRect) => void;
   readonly onInspect: () => void;
   /** Single chart selected: jump straight to its data panel. */
   readonly onOpenChartData?: () => void;
@@ -31,7 +33,7 @@ interface V2ContextBarProps {
   readonly zoomInto?: { readonly name: string; readonly open: () => void };
 }
 
-export interface ContextBarLayout {
+interface ContextBarLayout {
   /** Measured bar width; the caller observes the element. */
   readonly width: number;
   /** Visible canvas edges in viewport px: side panels shrink them. */
@@ -47,6 +49,20 @@ export function visibleCanvasEdges(root: HTMLElement | null): Pick<ContextBarLay
   // whichever one is open (--v2-left-width follows the panel).
   const left = root?.dataset.leftOpen === 'true' ? parseFloat(style?.getPropertyValue('--v2-left-width') ?? '') || 0 : 0;
   return { left, right: window.innerWidth - panel };
+}
+
+/** The edges the selection bar clamps between: the side panels', pulled in to the floating tool and workspace rails. */
+export function contextBarEdges(root: HTMLElement | null): Pick<ContextBarLayout, 'left' | 'right'> {
+  const { left, right } = visibleCanvasEdges(root);
+  const rail = (label: string) => root?.querySelector<HTMLElement>(`[role="toolbar"][aria-label="${label}"]`)?.getBoundingClientRect();
+  const tools = rail('Create');
+  const workspace = rail('Workspace');
+  const inner = {
+    left: tools?.width ? Math.max(left, tools.right) : left,
+    right: workspace?.width ? Math.min(right, workspace.left) : right,
+  };
+  // A phone's rails leave too little room: clamp to the panels alone.
+  return inner.right - inner.left >= (right - left) / 2 ? inner : { left, right };
 }
 
 // Positioned above the selection union, falling below it near the viewport
@@ -69,7 +85,7 @@ export function contextBarStyle(anchor: DOMRect, layout: ContextBarLayout, avoid
   // Both spots blocked (a shape above and below a selected line): lift the bar clear of what it would cover.
   const lifted = Math.min(...avoid.filter((rect) => rect.x - 8 < x + layout.width && rect.x + rect.width + 8 > x
     && rect.y - 8 < above + BAR_HEIGHT && rect.y + rect.height + 8 > above).map((rect) => rect.y)) - BAR_HEIGHT - 8;
-  const top = above < 80 ? anchor.y + anchor.height + 16
+  const top = above < 80 ? below
     : !covers(above) ? above
       : !covers(below) ? below
         : lifted >= 80 && !covers(lifted) ? lifted : above;
@@ -101,10 +117,7 @@ export function unionScreenBounds(rects: readonly (DOMRect | null | undefined)[]
 export function V2ContextBar(props: V2ContextBarProps): React.JSX.Element {
   const { page, connectorId } = props;
   const source = useMemo(() => connectorId ? connectorSource(page, connectorId) : null, [page, connectorId]);
-  const openMenu = (button: HTMLButtonElement) => {
-    const rect = button.getBoundingClientRect();
-    props.onOpenMenu(rect.left, rect.bottom + 6);
-  };
+  const openMenu = (button: HTMLButtonElement) => props.onOpenMenu(button.getBoundingClientRect());
   if (props.connectorId) {
     const href = source ? safeHttpsUrl(source.link) : null;
     const text = source ? relationSourceLabel(source.link) : '';
@@ -126,7 +139,7 @@ export function V2ContextBar(props: V2ContextBarProps): React.JSX.Element {
           </ContextGroup>
         ) : null}
         <ContextGroup label="Actions">
-          <Tooltip content="Inspect" shortcut="⌥I">
+          <Tooltip content="Inspect" shortcut={platformKeys('⌥I')}>
             <IconButton variant="quiet" label="Inspect" icon={<Icon icon={IconLayoutSidebarRight} />}
               onClick={props.onInspect} />
           </Tooltip>
@@ -161,12 +174,12 @@ export function V2ContextBar(props: V2ContextBarProps): React.JSX.Element {
       </ContextGroup>
       <ContextGroup label="Actions">
         {props.zoomInto ? (
-          <Tooltip content={`Open ${props.zoomInto.name}`} shortcut="↵">
+          <Tooltip content={`Open ${props.zoomInto.name}`} shortcut={platformKeys('↵')}>
             <IconButton variant="quiet" label={`Open ${props.zoomInto.name}`} icon={<Icon icon={IconZoomIn} />}
               onClick={props.zoomInto.open} />
           </Tooltip>
         ) : null}
-        <Tooltip content="Inspect" shortcut="⌥I">
+        <Tooltip content="Inspect" shortcut={platformKeys('⌥I')}>
           <IconButton variant="quiet" label="Inspect" icon={<Icon icon={IconLayoutSidebarRight} />}
             onClick={props.onInspect} />
         </Tooltip>

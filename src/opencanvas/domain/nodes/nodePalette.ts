@@ -17,7 +17,7 @@ export const PALETTE_LABELS: Readonly<Record<PaletteKey, string>> = {
   violet: 'Violet', pink: 'Pink', yellow: 'Yellow', cyan: 'Teal',
 };
 
-export interface PaletteSwatch {
+interface PaletteSwatch {
   readonly fill: string;
   readonly stroke: string;
   readonly textColor: string;
@@ -61,11 +61,11 @@ export const INK_PRESETS: readonly { readonly key: PaletteKey; readonly hex: str
 
 export type DiagramPaletteName = 'pastel' | 'paper' | 'builder' | 'mono';
 export type SwatchResolver = (key: PaletteKey, mode: PaletteMode) => PaletteSwatch;
-export type PaletteTables = Readonly<Record<PaletteKey, NodeExportColor>>;
+type PaletteTables = Readonly<Record<PaletteKey, NodeExportColor>>;
 
 export const DEFAULT_DIAGRAM_PALETTE: DiagramPaletteName = 'pastel';
 
-export interface DiagramPaletteInfo {
+interface DiagramPaletteInfo {
   readonly id: DiagramPaletteName;
   readonly label: string;
   readonly hint: string;
@@ -78,7 +78,7 @@ export const DIAGRAM_PALETTES: readonly DiagramPaletteInfo[] = [
   { id: 'mono', label: 'Mono', hint: 'Greyscale for print' },
 ];
 
-export const DIAGRAM_PALETTE_NAMES: readonly DiagramPaletteName[] = DIAGRAM_PALETTES.map(({ id }) => id);
+const DIAGRAM_PALETTE_NAMES: readonly DiagramPaletteName[] = DIAGRAM_PALETTES.map(({ id }) => id);
 
 export function isDiagramPalette(value: unknown): value is DiagramPaletteName {
   return typeof value === 'string' && (DIAGRAM_PALETTE_NAMES as readonly string[]).includes(value);

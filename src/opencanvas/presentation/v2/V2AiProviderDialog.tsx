@@ -15,7 +15,7 @@ import {
   activeConnection, withConnection, withoutKeys, type V2AiConnection, type V2AiSettings,
 } from './useV2AiSettings';
 
-export interface V2AiProviderDialogProps {
+interface V2AiProviderDialogProps {
   readonly open: boolean;
   readonly settings: V2AiSettings;
   readonly onSave: (settings: V2AiSettings) => void;

@@ -62,6 +62,7 @@ export class PixiFocusOverlay {
     this.connectors.container.addChildAt(this.flow, 1);
     this.content.addChild(
       this.containers.graphics,
+      this.nodes.backdrop,
       this.connectors.container,
       this.nodes.graphics,
       this.nodes.media,

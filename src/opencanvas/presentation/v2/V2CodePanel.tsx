@@ -1,5 +1,5 @@
 import { IconPlayerPlay, IconTransform } from '@tabler/icons-react';
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DslDiagnostic } from '../../../dsl/ast';
 import { DSL_FAMILIES } from '../../../dsl/ast';
 import { tokenize } from '../../../dsl/tokenize';
@@ -9,7 +9,7 @@ import { Button, Icon, Panel, Segmented } from '../design-system';
 import { platformKeys } from './v2Shortcuts';
 
 export function V2CodePanel({
-  code, diagnostics, generating, canvasEdited, palette, onPaletteChange, onCodeChange, onGenerate, onClose, convertFrom, autoFocus = true,
+  code, diagnostics, generating, canvasEdited, palette, onPaletteChange, onCodeChange, onGenerate, onClose, convertFrom, autoFocus = true, selectAll = false,
 }: {
   code: string;
   diagnostics: readonly DslDiagnostic[];
@@ -25,10 +25,24 @@ export function V2CodePanel({
   convertFrom?: { readonly label: string; readonly convert: () => void } | undefined;
   /** False when a template opened it beside its diagram: focus stays on the canvas. */
   autoFocus?: boolean;
+  /** The new-diagram sample opens selected, so ⌘V replaces it; a diagram's own source opens with the caret at the end. */
+  selectAll?: boolean;
 }) {
   // ponytail: an empty editor shows the placeholder, not "document is empty".
+  // Foreign syntax (Mermaid, Structurizr, D2) arrives without OpenFlowKit's parse diagnostics (the workspace drops
+  // them); what is left is the conversion's own report, which must show — a failed Convert would look dead otherwise.
   const errors = code.trim() ? diagnostics.filter((item) => item.severity !== 'info') : [];
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  // Opened on request (⌥C, the button): the source is focused (U1-02); the sample is selected so ⌘V replaces it, while an
+  // existing diagram's source gets the caret at its end, so a stray keystroke never wipes it.
+  // A layout effect runs before Panel's own focus pass, which then leaves a child's focus alone.
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!autoFocus || !editor) return;
+    editor.focus();
+    if (selectAll) editor.select(); else editor.setSelectionRange(editor.value.length, editor.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at open
+  }, []);
   const highlightRef = useRef<HTMLPreElement>(null);
   const [suggestions, setSuggestions] = useState<readonly string[]>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -75,14 +89,21 @@ export function V2CodePanel({
     setSuggestions([]);
   };
   return (
-    <Panel title="Diagram as code" onClose={onClose} autoFocus={autoFocus} className="ofk-v2-workspace-panel ofk-v2-code-panel">
+    <Panel title="Diagram as code" onClose={onClose} autoFocus={autoFocus} className="ofk-v2-workspace-panel ofk-v2-code-panel"
+      onKeyDown={(event) => {
+        // ⌘↵ and ⌘⇧M work from anywhere in the panel, not only inside the source.
+        // A key the source already handled (⌘↵ accepting a suggestion) is not a second command.
+        if (event.defaultPrevented || event.nativeEvent.isComposing || !(event.metaKey || event.ctrlKey)) return;
+        if (event.shiftKey && event.key.toLowerCase() === 'm' && convertFrom) { event.preventDefault(); convertFrom.convert(); }
+        else if (event.key === 'Enter') { event.preventDefault(); if (!generating && code.trim()) onGenerate(); }
+      }}>
       <div className="ofk-v2-panel-stack">
         <div className="ofk-code-caption"><span>Source</span><span>Paste OpenFlowKit, Mermaid, Structurizr or D2</span></div>
         {canvasEdited ? <p className="ofk-v2-code-warning" role="status">Canvas edited — regenerate will overwrite those changes.</p> : null}
         {convertFrom ? (
           <div className="ofk-v2-code-mermaid" role="status">
             <Icon icon={IconTransform} />
-            <span>{convertFrom.label} detected.</span>
+            <span>{convertFrom.label} detected. Generate converts it.</span>
             <Button onClick={convertFrom.convert}>Convert <kbd>{platformKeys('⌘⇧M')}</kbd></Button>
           </div>
         ) : null}
@@ -103,8 +124,6 @@ export function V2CodePanel({
             if (suggestions.length && (event.key === 'Enter' || event.key === 'Tab')) { event.preventDefault(); chooseSuggestion(suggestions[suggestionIndex]!); return; }
             if (suggestions.length && event.key === 'Escape') { event.preventDefault(); setSuggestions([]); return; }
             if (event.ctrlKey && event.key === ' ') { event.preventDefault(); openSuggestions('all'); return; }
-            if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm' && convertFrom) { event.preventDefault(); convertFrom.convert(); return; }
-            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); onGenerate(); }
             // Tab indents; Shift+Tab and Esc leave (WCAG 2.1.2). Esc lands on Close, so a second Esc closes the panel.
             if (event.key === 'Tab' && !event.shiftKey) { event.preventDefault(); insert('  '); }
             if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.closest('.ofk-panel')?.querySelector<HTMLElement>('.ofk-panel-header button')?.focus(); }

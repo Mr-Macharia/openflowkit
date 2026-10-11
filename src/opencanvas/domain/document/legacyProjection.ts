@@ -340,7 +340,7 @@ export function projectLegacyDocument(
 }
 
 /** Page extensions as the legacy `canvasExtensions` should see them. */
-export function withoutLegacySnapshot(extensions: JsonObject | undefined): JsonObject {
+function withoutLegacySnapshot(extensions: JsonObject | undefined): JsonObject {
   if (!extensions) return {};
   const { [LEGACY_SNAPSHOT_KEY]: _snapshot, ...rest } = extensions;
   return cloneJsonValue(rest) as JsonObject;

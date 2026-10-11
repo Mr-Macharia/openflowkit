@@ -1,6 +1,6 @@
 import type { FlowNode, NodeData } from '@/lib/types';
 
-export function getMinNodeSize(shape: NodeData['shape'] | undefined): {
+function getMinNodeSize(shape: NodeData['shape'] | undefined): {
   minWidth: number;
   minHeight: number;
 } {

@@ -66,6 +66,14 @@ describe('class and entity node presentation', () => {
     });
   });
 
+  // Found 2026-10-11: `nullable` columns compiled to isNullable but no table showed it.
+  it('keeps a nullable column nullable, from structured and legacy fields', () => {
+    const presentation = resolveClassEntityNodePresentation(node('er_entity', {
+      erFields: [{ name: 'auth_code', dataType: 'text', isNullable: true }, 'note: text NULLABLE', 'id: uuid PK'],
+    }));
+    expect(presentation?.kind === 'er_entity' && presentation.fields.map((field) => field.isNullable)).toEqual([true, true, false]);
+  });
+
   it('rejects unrelated families', () => {
     expect(resolveClassEntityNodePresentation(node('process', {}))).toBeNull();
   });

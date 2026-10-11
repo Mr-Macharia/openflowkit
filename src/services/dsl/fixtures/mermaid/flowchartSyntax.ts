@@ -1,6 +1,6 @@
 // Every flowchart construct in Mermaid's syntax reference, with what it must become. Owner's ask,
 // 2026-10-07: imports must survive real-world Mermaid, not just the tidy subset.
-export interface SyntaxCase { n: string; s: string; nodes: number; edges: number; labels?: string[]; edgeLabels?: string[]; groups?: number; dsl?: string[] }
+interface SyntaxCase { n: string; s: string; nodes: number; edges: number; labels?: string[]; edgeLabels?: string[]; groups?: number; dsl?: string[] }
 
 export const FLOWCHART_SYNTAX: readonly SyntaxCase[] = [
   { n: 'graph keyword + semicolons', s: 'graph LR;\n A-->B;\n B-->C;', nodes: 3, edges: 2 },

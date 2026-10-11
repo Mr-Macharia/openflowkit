@@ -9,12 +9,12 @@ import type { CanvasCamera } from '../../domain/camera/types';
 import type { Point2d } from '../../domain/geometry/types';
 
 export const DOUBLE_TAP_MS = 300;
-export const DOUBLE_TAP_PX = 24;
+const DOUBLE_TAP_PX = 24;
 export const LONG_PRESS_MS = 500;
 // Matches the pointer hook's click threshold: a finger that slid this far is a drag.
 const TAP_SLOP_PX = 4;
 
-export interface Tap {
+interface Tap {
   readonly at: Point2d;
   readonly time: number;
 }

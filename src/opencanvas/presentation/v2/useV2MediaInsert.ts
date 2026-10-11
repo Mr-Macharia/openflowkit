@@ -11,7 +11,7 @@ import { replaceSelection, type CanvasSelection } from '../../application/select
 // a pasted file and a pasted URL. One node per insert, one undo step.
 export const IMAGE_URL_PATTERN = /^https?:\/\/\S+\.(?:png|jpe?g|svg|webp|gif)(?:\?\S*)?$/i;
 
-export interface V2MediaInsertOptions {
+interface V2MediaInsertOptions {
   readonly pageRef: RefObject<ScenePage | null>;
   readonly commit: (command: DocumentCommand) => void;
   readonly applySelection: (selection: CanvasSelection) => void;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { IconChevronDown, IconX } from '@tabler/icons-react';
 import { FONT_STACKS, type FontFamilyKey } from '../../domain/nodes/nodeStyle';
 import { ColorPicker, Dropdown, Icon, IconButton, Popover, Tooltip } from '../design-system';
+import { platformKeys } from './v2Shortcuts';
 
 // Shared building blocks for the style bar: a bar button that opens one
 // popover, and the rows inside it. Every panel is one Popover; the bar keeps
@@ -25,7 +26,7 @@ export function StyleButton(props: StyleButtonProps): React.JSX.Element {
   const ref = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <Tooltip content={props.label} shortcut={props.shortcut}>
+      <Tooltip content={props.label} shortcut={props.shortcut && platformKeys(props.shortcut)}>
         <button ref={ref} type="button" className="ofk-button ofk-style-button" data-variant="quiet"
           aria-label={props.label} aria-haspopup="dialog" aria-expanded={props.open} onClick={props.onToggle}>
           <span className="ofk-style-preview" aria-hidden="true">{props.preview}</span>
@@ -55,7 +56,7 @@ export function PanelRow({ label, children }: { label?: string; children: ReactN
   );
 }
 
-export interface SwatchOption {
+interface SwatchOption {
   readonly id: string;
   readonly label: string;
   /** CSS colour, or 'transparent' for the slashed swatch. */
@@ -150,7 +151,7 @@ export function ToggleRow(props: {
   return (
     <div className="ofk-choice-row" role="group" aria-label={props.label}>
       {props.options.map((option) => (
-        <Tooltip key={option.id} content={option.label} shortcut={option.shortcut}>
+        <Tooltip key={option.id} content={option.label} shortcut={option.shortcut && platformKeys(option.shortcut)}>
           <button type="button" aria-pressed={option.on} aria-label={option.label} className="ofk-choice"
             onClick={() => props.onToggle(option.id)}>{option.icon}</button>
         </Tooltip>

@@ -36,6 +36,16 @@ describe('sequence node presentation', () => {
     });
   });
 
+  // A laid-out bar (rows) ends where `deactivate` is written; only a bare order pair keeps the one-row minimum.
+  it('ends a bar on its deactivate row, with a short minimum, when the layout gives rows', () => {
+    const bars = (seqActivations: JsonObject[]) => (resolveSequenceNodePresentation(
+      node('sequence_participant', { label: 'B', seqActivations })
+    ) as { activations: readonly { startOrder: number; endOrder: number }[] }).activations;
+    expect(bars([{ order: 0, activate: true, row: 1 }, { order: 1, activate: false, row: 1.4 }])).toEqual([{ startOrder: 1, endOrder: 1.4 }]);
+    expect(bars([{ order: 0, activate: true, row: 1 }, { order: 0, activate: false, row: 1 }])[0]!.endOrder).toBeCloseTo(1 + 12 / 52);
+    expect(bars([{ order: 0, activate: true }, { order: 0, activate: false }])).toEqual([{ startOrder: 0, endOrder: 1 }]);
+  });
+
   it('preserves note placement, targets, order, and fragment context', () => {
     expect(
       resolveSequenceNodePresentation(

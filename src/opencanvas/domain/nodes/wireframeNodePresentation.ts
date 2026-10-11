@@ -1,7 +1,7 @@
 import type { SceneNode } from '../document/types';
 import { optionalPresentationString, presentationString } from './nodePresentationValues';
 
-export const BROWSER_WIREFRAME_VARIANTS = [
+const BROWSER_WIREFRAME_VARIANTS = [
   'default',
   'landing',
   'dashboard',
@@ -16,7 +16,7 @@ export const BROWSER_WIREFRAME_VARIANTS = [
   'kanban',
 ] as const;
 
-export const MOBILE_WIREFRAME_VARIANTS = [
+const MOBILE_WIREFRAME_VARIANTS = [
   'default',
   'login',
   'social',
@@ -31,8 +31,8 @@ export const MOBILE_WIREFRAME_VARIANTS = [
   'fitness',
 ] as const;
 
-export type BrowserWireframeVariant = (typeof BROWSER_WIREFRAME_VARIANTS)[number];
-export type MobileWireframeVariant = (typeof MOBILE_WIREFRAME_VARIANTS)[number];
+type BrowserWireframeVariant = (typeof BROWSER_WIREFRAME_VARIANTS)[number];
+type MobileWireframeVariant = (typeof MOBILE_WIREFRAME_VARIANTS)[number];
 
 interface WireframePresentationBase {
   readonly label: string;

@@ -37,7 +37,7 @@ export interface AssistantBlock {
   readonly dsl: string;
 }
 
-export interface AssistantReply {
+interface AssistantReply {
   readonly prose: string;
   readonly blocks: readonly AssistantBlock[];
   /** An openflow fence is open: the model is still writing a diagram. */

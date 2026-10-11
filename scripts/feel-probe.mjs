@@ -121,7 +121,7 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 try {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  await page.goto(`${base}/#/d/feel-${Date.now()}`, { waitUntil: 'load' });
+  await page.goto(`${base}/`, { waitUntil: 'load' }); // a new page lands on a fresh diagram (a made-up #/d/ id is not found)
   await page.waitForFunction(() => window.__V2__?.getState());
   const canvas = page.getByTestId('v2-canvas');
   await canvas.waitFor();

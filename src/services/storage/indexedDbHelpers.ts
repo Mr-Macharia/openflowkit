@@ -1,7 +1,5 @@
 import { openFlowPersistenceDatabase } from './indexedDbSchema';
 
-export type StoredRecord = { id: string };
-
 export function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);

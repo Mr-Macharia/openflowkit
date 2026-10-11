@@ -5,7 +5,7 @@ import { joinTokens, splitStatements, type DslSegment } from './segments';
 import { tokenize, type DslToken } from './tokenize';
 import { DIRECTIONS } from './vocabulary';
 
-export interface DslComment {
+interface DslComment {
   readonly text: string;
   readonly line: number;
 }

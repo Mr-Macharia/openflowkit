@@ -25,7 +25,7 @@ export interface DocumentValidationIssue {
   readonly message: string;
 }
 
-export type DocumentValidationResult =
+type DocumentValidationResult =
   | { readonly success: true; readonly document: SceneDocumentV1 }
   | { readonly success: false; readonly issues: readonly DocumentValidationIssue[] };
 

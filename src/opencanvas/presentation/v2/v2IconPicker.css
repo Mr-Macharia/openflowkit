@@ -49,3 +49,7 @@
 .ofk-style-panel.ofk-style-panel--icons { width: auto; padding: 12px 12px 12px; gap: 0; }
 .ofk-style-panel--icons .ofk-style-panel-heading { display: none; }
 .ofk-style-icon-swatch { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; }
+
+/* Icon cards: where the icon sits, above the picker's search. */
+.ofk-icon-layout { margin-bottom: 10px; }
+.ofk-icon-layout .ofk-choice { gap: 6px; }

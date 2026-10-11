@@ -16,7 +16,7 @@ export interface D2Conversion {
   diagnostics: DslDiagnostic[];
 }
 
-export interface D2ConversionError {
+interface D2ConversionError {
   error: string;
 }
 

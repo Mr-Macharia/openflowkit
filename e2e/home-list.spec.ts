@@ -17,7 +17,7 @@ test('all diagrams: open, rename and delete from the keyboard @gate', async ({ p
 
   await page.getByRole('button', { name: 'Canvas menu' }).focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('menuitem', { name: 'Back to home' }).focus();
+  await page.getByRole('menuitem', { name: 'Home', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('v2-home')).toBeVisible();
   const rows = page.getByRole('list', { name: 'Diagrams' }).getByRole('listitem');

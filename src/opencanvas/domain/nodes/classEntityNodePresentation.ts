@@ -2,8 +2,8 @@ import type { JsonObject } from '../document/json';
 import type { SceneNode } from '../document/types';
 import { optionalPresentationString, presentationString } from './nodePresentationValues';
 
-export type StructuredDataNodeKind = 'class' | 'er_entity';
-export type ClassMemberVisibility = 'public' | 'private' | 'protected' | 'package';
+type StructuredDataNodeKind = 'class' | 'er_entity';
+type ClassMemberVisibility = 'public' | 'private' | 'protected' | 'package';
 
 export interface ClassMemberPresentation {
   readonly visibility: ClassMemberVisibility;
@@ -18,6 +18,7 @@ export interface EntityFieldPresentation {
   readonly isForeignKey: boolean;
   readonly isNotNull: boolean;
   readonly isUnique: boolean;
+  readonly isNullable: boolean;
   readonly reference?: string;
 }
 
@@ -28,14 +29,14 @@ interface SharedStructuredDataPresentation {
   readonly customColor?: string;
 }
 
-export interface ClassNodePresentation extends SharedStructuredDataPresentation {
+interface ClassNodePresentation extends SharedStructuredDataPresentation {
   readonly kind: 'class';
   readonly stereotype?: string;
   readonly attributes: readonly ClassMemberPresentation[];
   readonly methods: readonly ClassMemberPresentation[];
 }
 
-export interface EntityNodePresentation extends SharedStructuredDataPresentation {
+interface EntityNodePresentation extends SharedStructuredDataPresentation {
   readonly kind: 'er_entity';
   readonly fields: readonly EntityFieldPresentation[];
 }
@@ -52,6 +53,7 @@ const PRIMARY_KEY_TOKENS = new Set(['PK', 'PRIMARY']);
 const FOREIGN_KEY_TOKENS = new Set(['FK', 'FOREIGN']);
 const NOT_NULL_TOKENS = new Set(['NN', 'NOTNULL']);
 const UNIQUE_TOKENS = new Set(['UNIQUE', 'UQ']);
+const NULLABLE_TOKEN = 'NULLABLE';
 
 export function isClassEntityNodeKind(kind: string): kind is StructuredDataNodeKind {
   return kind === 'class' || kind === 'er_entity';
@@ -81,12 +83,14 @@ function parseLegacyEntityField(value: string): EntityFieldPresentation {
   let isForeignKey = false;
   let isNotNull = false;
   let isUnique = false;
+  let isNullable = false;
   for (const token of remainder.trim().split(/\s+/).filter(Boolean)) {
     const normalizedToken = token.toUpperCase();
     if (PRIMARY_KEY_TOKENS.has(normalizedToken)) isPrimaryKey = true;
     else if (FOREIGN_KEY_TOKENS.has(normalizedToken)) isForeignKey = true;
     else if (NOT_NULL_TOKENS.has(normalizedToken)) isNotNull = true;
     else if (UNIQUE_TOKENS.has(normalizedToken)) isUnique = true;
+    else if (normalizedToken === NULLABLE_TOKEN) isNullable = true;
     else dataTypeTokens.push(token);
   }
   return {
@@ -96,6 +100,7 @@ function parseLegacyEntityField(value: string): EntityFieldPresentation {
     isForeignKey,
     isNotNull,
     isUnique,
+    isNullable,
   };
 }
 
@@ -107,6 +112,7 @@ function emptyEntityField(): EntityFieldPresentation {
     isForeignKey: false,
     isNotNull: false,
     isUnique: false,
+    isNullable: false,
   };
 }
 
@@ -131,6 +137,7 @@ function parseStructuredEntityField(value: JsonObject): EntityFieldPresentation 
     isForeignKey: objectBoolean(value, 'isForeignKey'),
     isNotNull: objectBoolean(value, 'isNotNull'),
     isUnique: objectBoolean(value, 'isUnique'),
+    isNullable: objectBoolean(value, 'isNullable'),
     ...(reference ? { reference } : {}),
   };
 }

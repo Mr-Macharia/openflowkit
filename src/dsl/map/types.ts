@@ -35,13 +35,13 @@ export interface MapLink {
   inferred?: boolean;
 }
 
-export interface MapSource {
+interface MapSource {
   repo?: string;
   ref?: string;
   sha?: string;
 }
 
-export interface MapStats {
+interface MapStats {
   files: number;
   loc: number;
   /** Resolved import lines (a link can carry several). */

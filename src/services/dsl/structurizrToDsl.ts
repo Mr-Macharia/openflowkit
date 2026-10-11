@@ -15,7 +15,7 @@ export interface StructurizrConversion {
   diagnostics: DslDiagnostic[];
 }
 
-export interface StructurizrConversionError {
+interface StructurizrConversionError {
   error: string;
 }
 

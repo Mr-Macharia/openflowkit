@@ -7,7 +7,7 @@
 import { providerById, type AiProviderDefinition, type AiProviderId } from './providers';
 import { RETRYABLE, classifyStatus, describeCause, originOf, providerDetail, type AiFailureCause } from './diagnosis';
 
-export interface AiProviderConfig {
+interface AiProviderConfig {
   readonly provider: AiProviderId;
   readonly apiKey: string;
   /** Base URL override; the provider default applies when absent. */
@@ -16,7 +16,7 @@ export interface AiProviderConfig {
 }
 
 /** An attached image, base64 without the `data:` prefix. */
-export interface AiImage {
+interface AiImage {
   readonly mediaType: string;
   readonly data: string;
 }
@@ -34,7 +34,7 @@ export interface AiToolCall {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
-export interface AiToolResult {
+interface AiToolResult {
   readonly callId: string;
   readonly name: string;
   readonly content: string;
@@ -48,7 +48,7 @@ export type AiMessage =
   | { readonly role: 'tool'; readonly results: readonly AiToolResult[] };
 
 /** A streamed piece of the reply: answer text, or the model's visible reasoning. */
-export interface AiDelta {
+interface AiDelta {
   readonly text?: string;
   readonly thinking?: string;
 }
@@ -60,7 +60,7 @@ export interface AiTurn {
   readonly replay: unknown;
 }
 
-export interface AiCompletionRequest {
+interface AiCompletionRequest {
   readonly system: string;
   /** One user turn; `messages` wins when both are given. */
   readonly prompt?: string;

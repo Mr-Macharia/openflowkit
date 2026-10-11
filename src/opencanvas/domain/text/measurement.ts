@@ -115,3 +115,9 @@ export function measurePortableText(
     truncated,
   };
 }
+
+/** Cut to roughly `width` at a fixed character width, with an ellipsis: the canvas and the export truncate alike. */
+export function truncateTextToWidth(value: string, width: number, characterWidth = 6.5): string {
+  const limit = Math.max(3, Math.floor(width / characterWidth));
+  return value.length <= limit ? value : `${value.slice(0, Math.max(1, limit - 1))}…`;
+}

@@ -20,12 +20,12 @@ export const WIDGET_KINDS = [
 export type WidgetKind = (typeof WIDGET_KINDS)[number];
 
 export const WIDGET_SEVERITIES = ['info', 'success', 'warning', 'error'] as const;
-export type WidgetSeverity = (typeof WIDGET_SEVERITIES)[number];
+type WidgetSeverity = (typeof WIDGET_SEVERITIES)[number];
 /** `primary` fills a button; a severity tints an alert or a badge. */
 export type WidgetVariant = 'primary' | WidgetSeverity;
 
 /** Which state a control carries. The style bar and the DSL read this one table. */
-export type WidgetStateKey = 'checked' | 'value' | 'active' | 'variant';
+type WidgetStateKey = 'checked' | 'value' | 'active' | 'variant';
 
 interface WidgetSpec {
   readonly name: string;
@@ -107,7 +107,7 @@ export type WidgetPrimitive =
       readonly anchor: 'start' | 'middle' | 'end';
     };
 
-export interface WidgetPresentation {
+interface WidgetPresentation {
   readonly widget: WidgetKind;
   readonly label: string;
   readonly items: readonly string[];
@@ -197,7 +197,7 @@ export function resolveWidgetPresentation(node: SceneNode): WidgetPresentation |
 }
 
 /** Where a widget draws its label, node-local, and how: the label editor opens on it. */
-export interface WidgetLabelBox {
+interface WidgetLabelBox {
   readonly x: number;
   readonly y: number;
   readonly width: number;

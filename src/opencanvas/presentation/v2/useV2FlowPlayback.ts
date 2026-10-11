@@ -26,7 +26,7 @@ export interface FlowPlayback {
   exportText: (kind: 'mermaid' | 'plantuml' | 'sequence') => string | null;
 }
 
-export interface FlowPlaybackOptions {
+interface FlowPlaybackOptions {
   readonly model: ArchModel | null;
   readonly document: SceneDocumentV1 | null;
   readonly page: ScenePage | null;

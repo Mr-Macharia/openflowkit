@@ -42,6 +42,15 @@ export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
   /** An inline editor can consume Escape before the overlay dismisses. */
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }
+/** A button's edges that sit flush with its floating toolbar card (within its padding) move out to the card's: an
+ * Export panel lines up with the bar's right edge and clears its bottom, a mid-bar button keeps its own x. */
+function anchorRect(element: HTMLElement | null, passive: boolean) {
+  const own = element?.getBoundingClientRect();
+  const card = passive ? null : element?.closest('.ofk-floating-region .ofk-toolbar')?.getBoundingClientRect();
+  if (!own || !card) return own;
+  const near = (edge: number, cardEdge: number) => (Math.abs(edge - cardEdge) <= 8 ? cardEdge : edge);
+  return { left: near(own.left, card.left), right: near(own.right, card.right), top: near(own.top, card.top), bottom: near(own.bottom, card.bottom) };
+}
 /** Anchored layer: flips when it would overflow, clamps to the viewport inset, grows from its anchor. */
 export function Popover({
   open,
@@ -70,10 +79,12 @@ export function Popover({
     return () => { parent.children.delete(branch); };
   }, [open, passive, parent, branch]);
   const [box, setBox] = useState<CSSProperties>({ visibility: 'hidden' });
+  // The side it settled on after flipping: a layer with a caret points it back at the anchor.
+  const [side, setSide] = useState<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (!open) return;
     function place() {
-      const anchor = anchorRef.current?.getBoundingClientRect();
+      const anchor = anchorRect(anchorRef.current, passive);
       // Entrance transforms shrink getBoundingClientRect. Use layout size so
       // collision placement stays valid after the animation settles.
       const self = ref.current ? { width: ref.current.offsetWidth, height: ref.current.offsetHeight } : null;
@@ -121,18 +132,23 @@ export function Popover({
         growsUp = !fitsBelow && fitsAbove;
         y = growsUp ? anchor.bottom - self.height : anchor.top;
       }
-      const minY = side === 'left' || side === 'right' ? laneTop : inset;
-      const maxY = side === 'left' || side === 'right' ? vh - laneBottom : vh - inset;
+      // A side layer from a control inside a toolbar lane (a hint beside Export) may share that lane.
+      const minY = (side === 'left' || side === 'right') && anchor.top >= laneTop ? laneTop : inset;
+      const maxY = (side === 'left' || side === 'right') && anchor.bottom <= vh - laneBottom ? vh - laneBottom : vh - inset;
       x = Math.min(Math.max(inset, x), Math.max(inset, vw - inset - self.width));
       y = Math.min(Math.max(minY, y), Math.max(minY, maxY - self.height));
       const originY = growsUp ? 'bottom' : 'top';
       const originX =
         side === 'left' ? 'right' : align === 'end' && side !== 'right' ? 'right' : 'left';
+      // The anchor's centre along the edge that faces it, from the layer's own edge (a caret sits there).
+      const arrow = side === 'left' || side === 'right' ? (anchor.top + anchor.bottom) / 2 - y : (anchor.left + anchor.right) / 2 - x;
+      setSide(side);
       setBox({
         left: x,
         top: y,
         maxHeight: maxY - minY,
         '--ofk-origin': `${originY} ${originX}`,
+        '--ofk-arrow': `${Math.round(arrow)}px`,
         visibility: 'visible',
       } as CSSProperties);
     }
@@ -146,7 +162,7 @@ export function Popover({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, anchorRef, placement, gap]);
+  }, [open, anchorRef, placement, gap, passive]);
   // Focus moves in once the layer is placed and visible (a hidden element
   // cannot take focus). A `data-autofocus` control wins over the first button.
   const visible = box.visibility === 'visible';
@@ -208,6 +224,7 @@ export function Popover({
       ref={ref}
       className={`ofk-popover ofk-overlay ofk-enter ${className}`}
       data-passive={passive || undefined}
+      data-side={side}
       style={{ ...box, ...style }}
     >
       {children}

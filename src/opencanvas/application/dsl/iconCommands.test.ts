@@ -177,4 +177,12 @@ describe('renaming a node with an inferred icon', () => {
     const ledger = applyDocumentCommand(redis, buildArchElementEditCommand(redis, 'shop.db', { name: 'Ledger' }, resolveIcon)!).document;
     expect(placed(ledger, 'shop.db')).toMatchObject({ kind: 'process', content: { label: 'Ledger' } });
   });
+
+  it('takes the icon placement off with the icon, so no iconpos is left behind', async () => {
+    const { page } = await diagram('architecture\nA [tabler/server, iconpos: left]\n');
+    const node = page.nodes.find((candidate) => candidate.id === 'a')!;
+    expect(node.content.contentLayout).toMatchObject({ iconPlacement: 'left' });
+    const plain = withoutIcon(node, true);
+    expect(plain.content.contentLayout).toBeUndefined();
+  });
 });

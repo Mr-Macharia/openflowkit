@@ -10,7 +10,7 @@ export type V2ExportFormat = 'png' | 'svg' | 'pdf' | 'json';
 export type V2ExportScope = 'selection' | 'page' | 'document';
 export type V2ExportTheme = 'light' | 'dark' | 'print';
 
-export interface V2ExportRequest {
+interface V2ExportRequest {
   readonly document: SceneDocumentV1;
   readonly format: V2ExportFormat;
   readonly scope: V2ExportScope;

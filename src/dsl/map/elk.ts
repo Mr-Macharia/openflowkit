@@ -4,9 +4,9 @@ import { edgeText } from './view';
 // The map as an ELK graph and back. Structural types only: elkjs itself is the caller's
 // (a worker in the app, the real library in elk.test.ts), so this module stays pure.
 
-export interface ElkPoint { x: number; y: number }
-export interface ElkLabel { text: string; width: number; height: number; x?: number; y?: number }
-export interface ElkEdge {
+interface ElkPoint { x: number; y: number }
+interface ElkLabel { text: string; width: number; height: number; x?: number; y?: number }
+interface ElkEdge {
   id: string;
   sources: string[];
   targets: string[];

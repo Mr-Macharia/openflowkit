@@ -19,7 +19,7 @@ export interface PixiSequenceNodeVisual {
 }
 
 /** Sequence ink as hex, shared by the canvas and the SVG export so the two cannot drift. */
-export interface SequenceNodeColors {
+interface SequenceNodeColors {
   readonly presentation: SequenceNodePresentation;
   readonly fill: string;
   readonly stroke: string;
@@ -63,6 +63,11 @@ export function sequenceNodeColors(node: SceneNode, canvasColor?: string): Seque
   const isDefault = presentation.colorMode === 'subtle'
     && !hasExplicitColor(node, presentation.kind === 'sequence_fragment' ? presentation.colorKey : 'slate');
   return isDefault && isDarkCanvas(canvasColor) ? washOnDark(ink, canvasColor) : ink;
+}
+
+/** A participant's lifeline spans every message: the canvas and the export paint it under the connectors, over the fragment bands. */
+export function isSequenceParticipant(node: SceneNode): boolean {
+  return node.kind === 'sequence_participant';
 }
 
 export function projectSequenceNodeVisual(node: SceneNode, canvasColor?: string): PixiSequenceNodeVisual | null {

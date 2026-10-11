@@ -18,14 +18,14 @@ flowchart down
 `;
 
 test('the README animation plays through an <img>, GitHub-style', async ({ page }) => {
-  const svg = readFileSync('assets/motion/flow-walkthrough.svg', 'utf8');
+  const svg = readFileSync('assets/motion/flow-build-light.svg', 'utf8');
   expect(svg).toContain('@keyframes');
   expect(svg).toContain('@media (prefers-reduced-motion: reduce)');
   await page.setContent(`<body style="margin:0;background:#fff"><img id="readme" width="420" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"></body>`);
   await page.waitForSelector('#readme');
   await page.waitForTimeout(400);
   const first = await page.locator('#readme').screenshot();
-  // The walkthrough holds each step for a beat, so compare across steps.
+  // The build reveals one step per beat, so compare across steps.
   await page.waitForTimeout(2400);
   const second = await page.locator('#readme').screenshot();
   // CSS keyframes inside an <img> really run: the picture changes over time.
@@ -33,7 +33,7 @@ test('the README animation plays through an <img>, GitHub-style', async ({ page 
 });
 
 test('reduced motion leaves a finished still', async ({ page }) => {
-  const svg = readFileSync('assets/motion/flow-walkthrough.svg', 'utf8');
+  const svg = readFileSync('assets/motion/flow-build-light.svg', 'utf8');
   expect(svg).toContain('@media (prefers-reduced-motion: reduce)');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   // Inline, not <img>: Chromium's emulated prefers-reduced-motion never reaches

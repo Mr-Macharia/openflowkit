@@ -28,7 +28,7 @@ export interface WorkspaceContents {
   readonly adrs: readonly { path: string; text: string }[];
 }
 
-export const WORKSPACE_DSL_FILE = 'architecture.ofk';
+const WORKSPACE_DSL_FILE = 'architecture.ofk';
 const VIEWS_DIR = 'views/';
 const ADR_DIR = 'adr/';
 

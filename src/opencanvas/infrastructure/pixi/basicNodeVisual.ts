@@ -8,7 +8,7 @@ import {
 } from '../../domain/nodes/basicNodePresentation';
 import { pixiHexColor } from './pixiColor';
 
-export interface PixiBasicNodeVisual {
+interface PixiBasicNodeVisual {
   readonly kind: BasicNodeKind;
   readonly shape: BasicNodeShape;
   readonly fill: number;

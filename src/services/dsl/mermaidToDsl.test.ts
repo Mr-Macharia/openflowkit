@@ -27,6 +27,22 @@ describe('looksLikeMermaid on our own architecture DSL', () => {
     expect(looksLikeMermaid('mindmap\n  root((Idea))\n')).toBe(true);
   });
 
+  // U3 2026-10-11: one Mermaid-habit node (`DB[cylinder]`) in a valid OFK architecture read the
+  // whole document as Mermaid, and the E003 that came back taught the agent the wrong language.
+  it('keeps an architecture header OFK when only a glued bracket looks like Mermaid', () => {
+    expect(looksLikeMermaid('architecture\ntitle: Shop\n  Web [tech: React] -> API [tech: Go]\n  group Backend {\n    API\n    DB[cylinder]\n  }\n')).toBe(false);
+    expect(looksLikeMermaid('architecture\n  A -> \n  [[[ nonsense\n')).toBe(false);
+    // Mermaid's own architecture words still decide it, with or without -beta.
+    expect(looksLikeMermaid('architecture\n  junction center\n  center:R -- L:db\n')).toBe(true);
+    // Review 2026-10-11: a node named "junction box", or `service Payments(v2)`, is ours.
+    expect(looksLikeMermaid('architecture\njunction box\nA -> junction box\n')).toBe(false);
+    expect(looksLikeMermaid('architecture\nservice Payments(v2) -> DB\n')).toBe(false);
+    expect(looksLikeMermaid('architecture\n  db:L -- R:server\n')).toBe(true);
+    expect(looksLikeMermaid('architecture-beta\n  DB[cylinder]\n')).toBe(true);
+    // A mindmap keeps reading `root((Idea))` / `id[Label]` as Mermaid.
+    expect(looksLikeMermaid('mindmap\n  root[Idea]\n')).toBe(true);
+  });
+
   it('converts architecture-beta to DSL that generates without converting again', () => {
     const { dsl } = mermaidToDsl('architecture-beta\n  group api(cloud)[API]\n  service db(database)[Database] in api\n  service gateway(internet)[Gateway]\n  gateway:B --> T:db') as { dsl: string };
     expect(looksLikeMermaid(dsl)).toBe(false);

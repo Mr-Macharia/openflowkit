@@ -14,7 +14,7 @@ const MAX_SCANNED = 1_000_000;
 
 const countLines = (content: string): number => (content === '' ? 0 : content.split('\n').length - (content.endsWith('\n') ? 1 : 0));
 
-export interface ScanOptions {
+interface ScanOptions {
   /** Every path in the repo, read or not: a streamed batch resolves imports to files that have not arrived yet. */
   paths?: readonly string[];
   /** Scan only these files; the rest of `files` is context (configs the resolver reads). */

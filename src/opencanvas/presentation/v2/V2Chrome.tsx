@@ -49,7 +49,7 @@ interface V2ChromeProps extends V2SettingsProps {
   readonly toolConfig: V2ToolConfig;
   readonly onPickShape: (shape: ShapeKind) => void;
   /** A keyboard pick in Shapes places the shape at the view centre. */
-  readonly onPlaceShape: (shape: ShapeKind) => void;
+  readonly onPlaceShape: (shape: ShapeKind, square?: boolean) => void;
   readonly onPickConnector: (kind: V2ConnectorTool) => void;
   readonly iconsOpen: boolean;
   readonly onIconsOpenChange: (open: boolean) => void;

@@ -14,7 +14,7 @@ export function fitImageSize(natural: Size2d, max = MAX_IMAGE_SIDE): Size2d {
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
-export interface CreateImageNodeOptions {
+interface CreateImageNodeOptions {
   readonly id: string;
   readonly at: Point2d;
   readonly size: Size2d;

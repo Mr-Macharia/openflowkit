@@ -5,28 +5,24 @@ import { diagnostic } from '../../diagnostics';
 import {
   canonicalizeAttributes, nonVisualAttributes, typedFrom, type TypedAttributes,
 } from '../../attributes';
-import { AUTO_ICON_SHAPES } from '../../autoIcon';
+import { AUTO_ICON_SHAPES, PERSON_ICON } from '../../autoIcon';
 import type { FamilyContext, FamilyScene } from '../types';
 import { attrsToJson, type CanonicalAttribute } from '../../sceneMeta';
-import { ACTOR_CONTENT_LAYOUT, measureGroupSize, measureNodeSize, wrapPolicyFor } from '../../sizing';
+import { ACTOR_CONTENT_LAYOUT, ICON_ROW_LAYOUT, measureGroupSize, measureNodeSize, wrapPolicyFor } from '../../sizing';
 import { labelKey, slugifyDslId } from '../../text';
-import { layoutEdges, type LayoutNodeInput } from '../../layout';
+import { frameInsets, GROUP_INSETS, layoutEdges, type LayoutNodeInput } from '../../layout';
 import {
   COLOR_WORDS, DIRECTIONS, SHAPE_WORDS, attributeSlot,
   canonicalShapeWord, dslShapeWord, isHexColor, nodeAppearance,
 } from '../../vocabulary';
 
-export interface GraphInput {
+interface GraphInput {
   readonly statements: readonly DslStatement[];
   readonly family: string;
   /** Authored direction; effective direction arrives on the context. */
   readonly authoredDirection?: DslDirection;
-  readonly title?: string;
 }
 
-const FRAME_PADDING = { top: 28, right: 28, bottom: 28, left: 28 };
-const FRAME_TITLE_PADDING = { top: 72, right: 28, bottom: 28, left: 28 };
-const GROUP_PADDING = { top: 54, right: 22, bottom: 22, left: 22 };
 
 const RESERVED_SHAPE: Readonly<Record<string, string>> = {
   person: 'person', store: 'cylinder', queue: 'queue', component: 'component',
@@ -85,6 +81,9 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
   const notes: Array<{ line: number; target: string; text: string }> = [];
   const byExplicitId = new Map<string, NodeDraft>();
   const byName = new Map<string, NodeDraft>();
+  /** Nodes whose written id W120 slugified, by the id as written (`Ledger DB`, `a.b`, `数据库`). */
+  const byWrittenId = new Map<string, NodeDraft>();
+  const slugged = new Set<NodeDraft>();
 
   const mergeAttributes = (target: CanonicalAttribute[], extra: CanonicalAttribute[]) => {
     for (const entry of extra) {
@@ -97,11 +96,13 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     reservedKind: string | undefined, at: { line: number; col: number; endCol: number }, warnOnMove = false,
   ): NodeDraft => {
     // `id = Label` names exactly one node: that id, declared or derived — never another node
-    // that shares the label (`api-2 = API` is the second API). A bare word is an explicit id
-    // written bare, then a label.
-    const existing = reference.id
-      ? byExplicitId.get(reference.id)
-      : byExplicitId.get(reference.label) ?? byName.get(labelKey(reference.label));
+    // that shares the label (`api-2 = API` is the second API). A slugified written id names the
+    // node written with it, not one its slug collides with (`数据库` and `缓存` both slug to `n`).
+    // A bare word is an explicit id written bare, then a label, then a slugified written id.
+    const byId = byExplicitId.get(reference.id ?? '');
+    const existing = reference.writtenId ? byWrittenId.get(reference.writtenId)
+      : reference.id ? (byId && !slugged.has(byId) ? byId : undefined)
+        : byExplicitId.get(reference.label) ?? byName.get(labelKey(reference.label)) ?? byWrittenId.get(reference.label);
     if (existing) {
       mergeAttributes(existing.entries, canonicalizeAttributes(reference.attributes, diagnostics));
       if (warnOnMove && parentId !== null && existing.parentId !== null && existing.parentId !== parentId) {
@@ -117,6 +118,11 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     };
     nodes.push(draft);
     byExplicitId.set(id, draft);
+    // W120 promised the slug: the id as written still names this node.
+    if (reference.writtenId) {
+      byWrittenId.set(reference.writtenId, draft);
+      slugged.add(draft);
+    }
     // A bare label means the first node that carries it.
     if (!byName.has(labelKey(reference.label))) byName.set(labelKey(reference.label), draft);
     return draft;
@@ -136,6 +142,7 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
       } else if (statement.kind === 'node') {
         nodeKeys.add(statement.node.label);
         if (statement.node.id) nodeKeys.add(statement.node.id);
+        if (statement.node.writtenId) nodeKeys.add(statement.node.writtenId);
       } else if (statement.kind === 'reserved' && statement.statements) scan(statement.statements);
     }
   };
@@ -234,9 +241,10 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     const desc = typed.entries.find((entry) => entry.key === 'desc')?.value;
     // `icon: none` opts a node out; otherwise a box-like node may take the icon its label names.
     const authoredIcon = typed.icon === 'none' ? undefined : typed.icon;
-    const autoIcon = !typed.icon && AUTO_ICON_SHAPES.has(canonicalWord) && context.inferIcon
+    const inferred = !typed.icon && AUTO_ICON_SHAPES.has(canonicalWord) && context.inferIcon
       ? context.inferIcon(label, typed.entries.find((entry) => entry.key === 'tech')?.value) ?? undefined
       : undefined;
+    const autoIcon = inferred ?? (!typed.icon && canonicalWord === 'person' ? PERSON_ICON : undefined);
     const icon = authoredIcon ?? autoIcon;
     const resolvedIcon = icon && context.resolveIcon ? context.resolveIcon(icon) : null;
     if (authoredIcon && context.resolveIcon && !resolvedIcon) {
@@ -244,8 +252,14 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     }
     const isIconCard = Boolean(icon && (!context.resolveIcon || resolvedIcon));
     const kind = isIconCard ? 'architecture' : spec.kind;
+    // A person card measures like any icon card; the silhouette's tall minimum would lift it off its row.
+    const measureSpec = isIconCard && canonicalWord === 'person' ? SHAPE_WORDS.rect! : spec;
+    const iconRow = typed.iconpos === 'left' && isIconCard;
+    if (typed.iconpos === 'left' && !isIconCard) {
+      diagnostics.push(diagnostic({ line: node.line, col: 1, endCol: 1 }, 'W131', 'warning', 'iconpos needs an icon to place; ignored'));
+    }
     const measure = {
-      kind, label, ...(desc ? { subLabel: desc } : {}), hasIcon: isIconCard, spec,
+      kind, label, ...(desc ? { subLabel: desc } : {}), hasIcon: isIconCard, ...(iconRow ? { iconPlacement: 'left' as const } : {}), spec: measureSpec,
       ...(typed.width !== undefined ? { width: typed.width } : {}),
       ...(typed.height !== undefined ? { height: typed.height } : {}),
     };
@@ -263,7 +277,8 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
       content: {
         label,
         ...(!isIconCard && !sticky && spec.shape ? { shape: spec.shape } : {}),
-        ...(spec.shape === 'actor' ? { contentLayout: ACTOR_CONTENT_LAYOUT } : {}),
+        // A person keeps its actor layout; `iconpos: left` only moves the icon.
+        ...(spec.shape === 'actor' ? { contentLayout: iconRow ? { ...ACTOR_CONTENT_LAYOUT, iconPlacement: 'left' } : ACTOR_CONTENT_LAYOUT } : iconRow ? { contentLayout: ICON_ROW_LAYOUT } : {}),
         ...(desc ? { subLabel: desc } : {}),
         ...(wrapPolicy ? { sizingPolicy: wrapPolicy } : {}),
         ...(sticky ? { color: palette ?? 'yellow' } : {}),
@@ -370,7 +385,9 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     };
   });
 
-  // ponytail: `rank:` and `group [direction]` round-trip but do not constrain ELK yet — wire them to layer options when a family needs them.
+  // ponytail: `rank:` round-trips but constrains no layout. `group [direction]` reaches the layout port: the
+  // deterministic layout honours it, ELK does not (INCLUDE_CHILDREN lays the whole tree in the root's direction)
+  // — lay such a group out on its own (SEPARATE_CHILDREN) when a family needs it.
   const noteIds = new Set(noteDrafts.map(({ id }) => id));
   // ponytail: a group's notes sit beside its box without the layout reserving room; node notes get a slot.
   const noteRoom = noteSlots(noteDrafts.filter((draft) => sceneNodes.some((node) => node.id === draft.targetId)), sceneNodes);
@@ -390,20 +407,15 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
       id: node.id, parentId: node.parentId, size: withLoopRoom(noteRoom.get(node.id)?.box ?? node.size, loopRoom.get(node.id)),
     } satisfies LayoutNodeInput)),
   ];
-  const rootPadding = input.title ? FRAME_TITLE_PADDING : FRAME_PADDING;
+  const rootPadding = frameInsets(Boolean(context.title));
   const laid = await context.layout({
     nodes: layoutNodes,
     edges: layoutEdges(connectors),
     direction: context.direction,
     rootPadding,
-    groupPadding: GROUP_PADDING,
+    groupPadding: GROUP_INSETS,
   }, context.signal);
 
-  const positionedGroups = groupNodes.map((group) => ({
-    ...group,
-    ...(laid.sizes[group.id] ? { size: laid.sizes[group.id]! } : {}),
-    transform: { ...group.transform, translation: laid.positions[group.id] ?? { x: 0, y: 0 } },
-  }));
   const positionOf = new Map<string, Point2d>(Object.entries(laid.positions));
   for (const [id, slot] of noteRoom) {
     const at = positionOf.get(id);
@@ -414,6 +426,14 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     // ponytail: pins are applied after layout, so ELK reserves the unpinned slot — fine for a hint the canvas never writes.
     if (pin) positionOf.set(node.id, pin);
   }
+  // Align before notes are placed, so a note follows its node; then every group still holds what moved.
+  const laidOut = sceneNodes.filter(({ id }) => !noteIds.has(id));
+  const sizedGroups = groupNodes.map((group) => ({ ...group, size: laid.sizes[group.id] ?? group.size }));
+  applyAlignDirectives(alignLines, positionOf, laidOut, sizedGroups);
+  const positionedGroups = holdChildren(sizedGroups, laidOut, positionOf).map((group) => ({
+    ...group,
+    transform: { ...group.transform, translation: positionOf.get(group.id) ?? { x: 0, y: 0 } },
+  }));
   const noteTextByTarget = new Map<string, string[]>();
   const stackedBelow = new Map<string, number>();
   for (const note of noteDrafts) {
@@ -428,7 +448,6 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
     }
     noteTextByTarget.set(note.targetId, [...(noteTextByTarget.get(note.targetId) ?? []), note.text]);
   }
-  applyAlignDirectives(alignLines, positionOf, sceneNodes);
   const positionedNodes = sceneNodes.map((node) => ({
     ...node,
     ...(noteTextByTarget.has(node.id) ? {
@@ -449,7 +468,7 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
   for (const node of positionedNodes) boxes.set(node.id, { parentId: node.parentId, at: node.transform.translation, size: node.size });
 
   // ponytail: the layout reserves no room beside a group, so its note can still overlap what sits to its right; the frame at least holds it.
-  const size = noteDrafts.filter(({ targetId }) => groupsById.has(targetId)).reduce((frame, { id }) => {
+  const noted = noteDrafts.filter(({ targetId }) => groupsById.has(targetId)).reduce((frame, { id }) => {
     const note = boxes.get(id)!;
     const origin = worldOrigin(boxes, id)!;
     return {
@@ -457,6 +476,11 @@ export async function compileGraph(input: GraphInput, context: FamilyContext): P
       height: Math.max(frame.height, origin.y + note.size.height + rootPadding.bottom),
     };
   }, laid.root.width > 0 && laid.root.height > 0 ? laid.root : { width: 640, height: 420 });
+  // `align` and `pin` move nodes after layout: the frame still holds every top-level node and group.
+  const size = [...positionedGroups, ...positionedNodes].filter((node) => node.parentId === null).reduce((frame, node) => ({
+    width: Math.max(frame.width, node.transform.translation.x + node.size.width + rootPadding.right),
+    height: Math.max(frame.height, node.transform.translation.y + node.size.height + rootPadding.bottom),
+  }), noted);
 
   return {
     // Containers first keeps the deterministic order the editor hashes.
@@ -550,12 +574,14 @@ function loopReach(edges: readonly { sourceId: string; targetId: string; label?:
 
 const withLoopRoom = (size: Size2d, reach = 0): Size2d => (reach ? { ...size, width: size.width + reach } : size);
 
-/** `align row A, B` / `align column A, B`: one coordinate shared after layout. */
+/** `align row A, B` / `align column A, B`: one coordinate shared after layout; groups are obstacles too. */
 function applyAlignDirectives(
   alignLines: readonly string[],
   positions: Map<string, Point2d>,
   nodes: readonly SceneNode[],
+  groups: readonly SceneNode[],
 ): void {
+  const obstacles = [...nodes, ...groups];
   for (const line of alignLines) {
     const match = /^align\s+(row|column)\s+(.+)$/i.exec(line);
     if (!match) continue;
@@ -566,9 +592,48 @@ function applyAlignDirectives(
     const anchor = positions.get(members[0]!.id) ?? { x: 0, y: 0 };
     for (const node of members) {
       const current = positions.get(node.id) ?? { x: 0, y: 0 };
-      positions.set(node.id, row ? { x: current.x, y: anchor.y } : { x: anchor.x, y: current.y });
+      let at = row ? { x: current.x, y: anchor.y } : { x: anchor.x, y: current.y };
+      // Snapped onto another layer, a node can land on a sibling there (D under C, aligned with B,
+      // lands on C): it moves on along the aligned axis until it is clear.
+      for (let tries = 0; tries < nodes.length; tries += 1) {
+        const hit = obstacles.find((other) => other !== node && other.parentId === node.parentId && overlaps(at, node.size, positions.get(other.id), other.size));
+        if (!hit) break;
+        const there = positions.get(hit.id)!;
+        at = row ? { x: there.x + hit.size.width + ALIGN_GAP, y: at.y } : { x: at.x, y: there.y + hit.size.height + ALIGN_GAP };
+      }
+      positions.set(node.id, at);
     }
   }
+}
+
+const ALIGN_GAP = 48;
+
+/** Groups grown (innermost first) to hold children that `align` or `pin` moved past their edge. */
+function holdChildren(groups: readonly SceneNode[], nodes: readonly SceneNode[], positions: ReadonlyMap<string, Point2d>): SceneNode[] {
+  const parentOf = new Map(groups.map((group) => [group.id, group.parentId]));
+  const depth = (id: string) => {
+    let levels = 0;
+    for (let at = parentOf.get(id); at && parentOf.has(at); at = parentOf.get(at)) levels += 1;
+    return levels;
+  };
+  const sizes = new Map(groups.map((group) => [group.id, group.size]));
+  for (const group of [...groups].sort((a, b) => depth(b.id) - depth(a.id))) {
+    const children = [...nodes, ...groups].filter((child) => child.parentId === group.id);
+    sizes.set(group.id, children.reduce((size, child) => {
+      const at = positions.get(child.id) ?? { x: 0, y: 0 };
+      const box = sizes.get(child.id) ?? child.size;
+      return {
+        width: Math.max(size.width, at.x + box.width + GROUP_INSETS.right),
+        height: Math.max(size.height, at.y + box.height + GROUP_INSETS.bottom),
+      };
+    }, sizes.get(group.id)!));
+  }
+  return groups.map((group) => ({ ...group, size: sizes.get(group.id)! }));
+}
+
+function overlaps(at: Point2d, size: Size2d, other: Point2d | undefined, otherSize: Size2d): boolean {
+  return Boolean(other) && at.x < other!.x + otherSize.width && other!.x < at.x + size.width
+    && at.y < other!.y + otherSize.height && other!.y < at.y + size.height;
 }
 
 /** Shapes whose DSL word the renderer cannot infer back from the scene shape alone. */

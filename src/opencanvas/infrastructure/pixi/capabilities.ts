@@ -1,4 +1,4 @@
-export interface WebGlCapability {
+interface WebGlCapability {
   readonly supported: boolean;
   readonly version: 0 | 1 | 2;
   readonly reason: string | null;

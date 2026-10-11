@@ -1,9 +1,9 @@
 import { parseNodeDeclaration, type RawNode } from './mermaidParserHelpers';
 
-export type MermaidDiagramType = 'flowchart' | 'stateDiagram' | 'unknown';
+type MermaidDiagramType = 'flowchart' | 'stateDiagram' | 'unknown';
 export type MermaidDirection = 'TB' | 'LR' | 'RL' | 'BT';
 
-export interface MermaidRawEdge {
+interface MermaidRawEdge {
   source: string;
   target: string;
   label: string;
@@ -22,7 +22,7 @@ export interface MermaidParseModel {
   diagramType: MermaidDiagramType;
 }
 
-export interface MermaidParseState {
+interface MermaidParseState {
   nodesMap: Map<string, RawNode>;
   rawEdges: MermaidRawEdge[];
   /** Edge ids (`A e1@--> B`), so `e1@{ … }` sets the edge instead of declaring a node. */

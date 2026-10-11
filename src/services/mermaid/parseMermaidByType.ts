@@ -18,7 +18,7 @@ import {
 import { detectMermaidDiagramType, extractMermaidDiagramHeader } from './detectDiagramType';
 import { detectMermaidWithOfficialParser } from './officialMermaidValidation';
 
-export interface MermaidDispatchParseResult extends ParseResult {
+interface MermaidDispatchParseResult extends ParseResult {
   diagramType?: DiagramType;
   diagnostics?: string[];
   structuredDiagnostics?: MermaidImportDiagnostic[];
@@ -26,7 +26,7 @@ export interface MermaidDispatchParseResult extends ParseResult {
   originalSource?: string;
 }
 
-export interface ParseMermaidByTypeOptions {
+interface ParseMermaidByTypeOptions {
   architectureStrictMode?: boolean;
 }
 

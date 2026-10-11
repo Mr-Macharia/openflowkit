@@ -1,7 +1,7 @@
 // Unicode emoji, grouped the way the OS pickers group them. A static const on
 // purpose: no dependency, no data fetch, and the search is a substring match.
 
-export interface EmojiGroup {
+interface EmojiGroup {
   readonly id: string;
   readonly label: string;
   readonly glyphs: readonly string[];

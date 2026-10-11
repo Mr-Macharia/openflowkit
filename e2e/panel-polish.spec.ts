@@ -5,7 +5,7 @@ test('object actions, page menus and connection states stay usable', async ({ pa
   await page.addInitScript(() => localStorage.setItem('openflowkit-v2-preferences', JSON.stringify({ theme: 'dark' })));
   await page.goto('/');
   await expect(page.getByTestId('v2-canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+  await page.getByRole('button', { name: 'Shapes options', exact: true }).click();
   await page.getByRole('option', { name: 'Rectangle', exact: true }).click();
   await page.mouse.move(430, 230);
   await page.mouse.down();
@@ -112,7 +112,7 @@ test('settings and export remain clear in dark, light and narrow layouts', async
     await expect(settings.getByRole('region', { name: 'Canvas', exact: true })).toBeVisible();
     await expect(settings.locator('details')).toHaveCount(0);
     await settings.screenshot({ path: `/tmp/ofk-settings-${theme.toLowerCase()}.png` });
-    await settings.getByRole('button', { name: 'Done' }).click();
+    await settings.getByRole('button', { name: 'Close panel' }).click();
   }
   await page.setViewportSize({ width: 390, height: 600 });
   await menu.click();

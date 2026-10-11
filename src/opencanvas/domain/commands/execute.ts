@@ -20,7 +20,7 @@ import type {
   SetNodeCommand,
 } from './types';
 
-export class DocumentCommandError extends Error {
+class DocumentCommandError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DocumentCommandError';

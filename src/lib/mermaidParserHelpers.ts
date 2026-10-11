@@ -1,6 +1,6 @@
 import type { NodeData } from './types';
 
-export const SHAPE_OPENERS: Array<{
+const SHAPE_OPENERS: Array<{
   open: string;
   close: string;
   type: string;

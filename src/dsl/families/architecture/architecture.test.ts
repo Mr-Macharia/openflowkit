@@ -485,14 +485,16 @@ views { view landscape }`);
     expect(await format(source)).not.toContain('title:');
   });
 
- it('draws a person as a card with a user icon; [person] still asks for the silhouette', async () => {
+ // Owner 2026-10-11: the blank silhouette reads as a placeholder; `[person]` is a user-icon card too.
+ it('draws a person as a card with a user icon, [person] included', async () => {
     const source = 'architecture\nmodel {person Zed; person Admin; person Guest [person]}\nviews {view landscape}';
     const icons = await compile(source, {autoIcons: true, resolveIcon: (id) => ({packId: 'tabler-outline-v3', shapeId: id.split('/')[1]!})});
     const byId = Object.fromEntries(icons.nodes.map((node) => [node.id, node]));
     // "Zed" matches no icon rule: a person still gets the user icon and a Person header. A better match wins.
     expect(byId.zed!.content).toMatchObject({icon: 'tabler/user', assetPresentation: 'card', archProviderLabel: 'Person'});
     expect(byId.admin!.content.icon).toBe('tabler/user-shield');
-    expect(byId.guest!.content.shape).toBe('actor');
+    expect(byId.guest!.content).toMatchObject({icon: 'tabler/user'});
+    expect(byId.guest!.content).not.toHaveProperty('shape');
     const plain = await compile(source);
     expect(plain.nodes.find((node) => node.id === 'zed')!.content).toMatchObject({shape: 'rounded', subLabel: '[Person]'});
   });
@@ -559,9 +561,9 @@ describe('readable C4 styling', () => {
     expect(node.content).toMatchObject({ color: 'custom', customColor: '#08427b' });
   });
 
-  it('fits a person silhouette name, kind and description inside its body, below the head', () => {
+  it('fits an opted-out person silhouette name, kind and description inside its body, below the head', () => {
     for (const [name, desc] of [['Customer', 'Buys goods online'], ['Ops Engineer', 'Runs the platform'], ['Personal Banking Customer', 'A customer of the bank, with personal bank accounts']]) {
-      const node = draw({ name, desc, attrs: [{ value: 'person' }] });
+      const node = draw({ name, desc, icon: 'none', attrs: [{ value: 'person' }] });
       expect(node.content.shape, name).toBe('actor');
       const area = nodeLabelBounds(node);
       const inner = area.width - 20;

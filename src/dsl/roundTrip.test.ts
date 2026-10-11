@@ -65,3 +65,48 @@ describe('round-trip laws over fixtures', () => {
     expect(added).toEqual([]);
   });
 });
+
+describe('iconpos', () => {
+  const source = 'architecture\nA [icon: tabler/server, iconpos: left]\n';
+
+  it('turns an icon card into a row card, and writes back what it read', async () => {
+    const scene = await compile(source);
+    const node = scene.nodes.find((candidate) => candidate.id === 'a')!;
+    expect(node.content.contentLayout).toMatchObject({ iconPlacement: 'left' });
+    expect(node.size).toEqual({ width: 160, height: 56 });
+    expect(serialize(scene)).toContain('A [tabler/server, iconpos: left]');
+    expect(await format(serialize(scene))).toBe(serialize(scene));
+  });
+
+  it('accepts top as the default and never writes it', async () => {
+    const scene = await compile('architecture\nA [icon: tabler/server, iconpos: top]\n');
+    expect(scene.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+    expect(scene.nodes.find((candidate) => candidate.id === 'a')!.content).not.toHaveProperty('contentLayout');
+    expect(serialize(scene)).toContain('A [tabler/server]');
+  });
+
+  it('warns on any other value, uses top and keeps what was written', async () => {
+    const scene = await compile('architecture\nA [icon: tabler/server, iconpos: bogus]\n');
+    expect(scene.diagnostics).toContainEqual(expect.objectContaining({ code: 'W131', message: 'iconpos takes top or left; top used' }));
+    expect(scene.nodes.find((candidate) => candidate.id === 'a')!.content).not.toHaveProperty('contentLayout');
+    expect(serialize(scene)).toContain('iconpos: bogus');
+  });
+
+  it('keeps a person\'s actor layout and only moves its icon', async () => {
+    const scene = await compile('architecture\nUser [person, iconpos: left]\n');
+    expect(scene.nodes.find((candidate) => candidate.id === 'user')!.content.contentLayout).toMatchObject({ vertical: 'end', iconPlacement: 'left' });
+  });
+
+  it('warns when iconpos has no icon to place, and writes nothing for it', async () => {
+    const scene = await compile('flowchart\nA [iconpos: left]\n');
+    expect(scene.diagnostics).toContainEqual(expect.objectContaining({ code: 'W131', message: expect.stringContaining('needs an icon') }));
+    expect(scene.nodes.find((candidate) => candidate.id === 'a')!.content).not.toHaveProperty('contentLayout');
+    expect(serialize(scene)).not.toContain('iconpos');
+  });
+
+  it('warns that a model element has no icon layout, and keeps the attribute', async () => {
+    const scene = await compile('architecture\nmodel {\n  user = person User [iconpos: left]\n}\n');
+    expect(scene.diagnostics).toContainEqual(expect.objectContaining({ code: 'W131', message: expect.stringContaining('model elements') }));
+    expect(serialize(scene)).toContain('iconpos: left');
+  });
+});

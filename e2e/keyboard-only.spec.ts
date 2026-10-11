@@ -41,6 +41,36 @@ test('the code editor is no trap: Esc leaves it, Esc again closes the panel and 
   expect(await focused(page)).not.toBe('BODY');
 });
 
+test('a named shape keeps its tool letters; a blank one takes the typed name (U1-01, U4-04) @gate', async ({ page }) => {
+  await openCanvas(page);
+  const labels = () => page.evaluate(() => (window as unknown as { __V2__: { getDocument(): { pages: { nodes: { content: { label?: string } }[] }[] } } })
+    .__V2__.getDocument().pages[0]!.nodes.map((node) => node.content.label ?? ''));
+  await page.keyboard.press('r');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await state(page)).nodes.length).toBe(1);
+  await page.keyboard.type('Client');
+  await page.keyboard.press('Escape');
+  await expect.poll(labels).toEqual(['Client']);
+  expect((await state(page)).selectedNodes).toHaveLength(1);
+  await page.keyboard.press('o');
+  await expect.poll(async () => (await state(page)).tool).toBe('ellipse');
+  expect(await labels()).toEqual(['Client']);
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
+});
+
+test('README step one: ⌥C, paste, ⌘↵ generates; the paste replaces the sample (U1-02) @gate', async ({ page }) => {
+  await openCanvas(page);
+  await page.keyboard.press('Alt+c');
+  const source = page.getByRole('textbox', { name: 'Diagram source' });
+  await expect(source).toBeFocused();
+  await page.keyboard.insertText('flowchart\nWeb -> Api -> Db');
+  await expect(source).toHaveValue('flowchart\nWeb -> Api -> Db');
+  await page.getByRole('button', { name: 'Close panel' }).focus();
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect.poll(async () => (await state(page)).nodes.length).toBeGreaterThanOrEqual(3);
+});
+
 test('the ? sheet is a dialog that keeps Tab inside and hands focus back on Escape @gate', async ({ page }) => {
   await openCanvas(page);
   await page.keyboard.press('Shift+Slash');

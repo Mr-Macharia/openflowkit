@@ -98,6 +98,8 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
     // Native chrome controls keep activation/navigation keys. Global tool and
     // history shortcuts still work after choosing a tool with the mouse.
     if (keyOwnedByTarget(event)) return;
+    // An input method's keys (Safari sends the first with the letter and keyCode 229) belong to the composition.
+    if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
     if (event.key === ' ' && !event.repeat) {
       if (!opts.editingRef.current) {
         opts.onSpacePan(true);
@@ -108,87 +110,65 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
     if (opts.editingRef.current) return;
     const command = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
+    // A handled key never reaches the page: a shortcut that opens a panel or an editor moves focus during this
+    // keydown, and the key's default would type it into that field (I put "i" in the icon search).
+    let handled = true;
     if (command && key === 'z') {
       if (event.shiftKey) opts.onRedo();
       else opts.onUndo();
-      event.preventDefault();
     } else if (command && key === 'y') {
       opts.onRedo();
-      event.preventDefault();
     } else if (command && key === 'a') {
       opts.onSelectAll();
-      event.preventDefault();
     } else if (command && (event.key === '=' || event.key === '+')) {
       opts.onZoomStep(1.2);
-      event.preventDefault();
     } else if (command && event.key === '-') {
       opts.onZoomStep(1 / 1.2);
-      event.preventDefault();
-    } else if (command && key === '0') {
-      opts.onFitView();
-      event.preventDefault();
-    } else if (command && key === '1') {
+    // ⌘0 is 100 % (Excalidraw, the browser); fit is ⇧1 everywhere (Figma, tldraw, Excalidraw).
+    } else if (command && (key === '0' || key === '1')) {
       opts.onResetZoom();
-      event.preventDefault();
     } else if (command && key === 'd') {
       opts.onDuplicate();
-      event.preventDefault();
     } else if (command && key === 'f') {
       opts.onFind();
-      event.preventDefault();
     } else if (command && key === 'l') {
       opts.onToggleLock();
-      event.preventDefault();
     } else if (command && event.altKey && (key === 'c' || event.code === 'KeyC')) {
       opts.onCopyStyle();
-      event.preventDefault();
     } else if (command && event.altKey && (key === 'v' || event.code === 'KeyV')) {
       opts.onPasteStyle();
-      event.preventDefault();
     } else if (command && (key === 'g' || event.code === 'KeyG')) {
       if (event.shiftKey) opts.onUngroup(); else if (event.altKey) opts.onWrapInSection(); else opts.onGroup();
-      event.preventDefault();
     } else if (command && key === 'x') {
       opts.onCut();
-      event.preventDefault();
     } else if (command && key === 'c') {
       opts.onCopy();
-      event.preventDefault();
     // ⌘V is not cancelled: that would cancel the native paste event, which the editor reads (shapes, images,
     // image URLs, Mermaid) without a clipboard permission prompt.
     } else if (command && key === 'v') {
       opts.onPasteKey();
+      handled = false;
     } else if (command && (key === 'b' || key === 'i' || key === 'u')) {
       opts.onTextStyle(key === 'b' ? 'bold' : key === 'i' ? 'italic' : 'underline');
-      event.preventDefault();
     } else if (command && (event.code === 'BracketRight' || event.code === 'BracketLeft')) {
       const front = event.code === 'BracketRight';
       opts.onReorder(event.altKey ? (front ? 'front' : 'back') : (front ? 'forward' : 'backward'));
-      event.preventDefault();
     } else if (!command && (event.key === ']' || event.key === '[')) {
       opts.onReorder(event.key === ']' ? 'front' : 'back');
-      event.preventDefault();
     } else if (!command && event.altKey && event.shiftKey && (event.code === 'KeyH' || event.code === 'KeyV')) {
       opts.onDistribute(event.code === 'KeyH' ? 'horizontal' : 'vertical');
-      event.preventDefault();
     } else if (!command && event.altKey && !event.shiftKey && ALT_ALIGN[event.code]) {
       opts.onAlign(ALT_ALIGN[event.code]);
-      event.preventDefault();
     } else if (!command && event.altKey && event.code === 'KeyC') {
       opts.onToggleCode();
-      event.preventDefault();
     } else if (!command && event.altKey && event.code === 'KeyM') {
       opts.onToggleModel();
-      event.preventDefault();
     } else if (!command && event.altKey && !event.shiftKey && event.code === 'KeyI') {
       opts.onToggleInspect();
-      event.preventDefault();
     } else if (command && event.shiftKey && (event.key === 'Delete' || event.key === 'Backspace')) {
       opts.onRemoveFromModel();
-      event.preventDefault();
     } else if (!command && (event.key === 'Delete' || event.key === 'Backspace')) {
       opts.onDelete();
-      event.preventDefault();
     } else if (
       !command &&
       ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
@@ -203,31 +183,25 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
               ? { x: 0, y: -amount }
               : { x: 0, y: amount };
       opts.onNudge(delta);
-      event.preventDefault();
     // M switches Canvas and Map on a model page, ahead of type-to-edit: it is a mode key there, not the start of a label.
     } else if (!command && !event.shiftKey && !event.altKey && key === 'm' && opts.onToggleMap()) {
-      event.preventDefault();
-    // ⇧1/⇧2 (by code) sit above type-to-edit: they zoom, never type "!" or "@" into a label.
-    } else if (!command && !event.altKey && event.shiftKey && (event.code === 'Digit1' || event.code === 'Digit2')) {
-      if (event.code === 'Digit1') opts.onFitView(); else opts.onZoomToSelection();
-      event.preventDefault();
+    // ⇧0/⇧1/⇧2 (by code) sit above type-to-edit: they zoom, never type ")", "!" or "@" into a label.
+    } else if (!command && !event.altKey && event.shiftKey
+      && (event.code === 'Digit0' || event.code === 'Digit1' || event.code === 'Digit2')) {
+      if (event.code === 'Digit0') opts.onResetZoom();
+      else if (event.code === 'Digit1') opts.onFitView(); else opts.onZoomToSelection();
     } else if (!command && !event.altKey && event.key.length === 1 && event.key !== ' '
       && opts.onTypeToEdit(event.key)) {
-      event.preventDefault();
     // ⇧H/V sit below type-to-edit: a capital letter on one selected
     // shape starts its label; flips need none or several selected.
     } else if (!command && !event.altKey && event.shiftKey && event.code === 'KeyI') {
       opts.onInsertImage();
-      event.preventDefault();
     } else if (!command && !event.altKey && event.shiftKey && event.code === 'KeyS') {
       opts.onToggleMore();
-      event.preventDefault();
     } else if (!command && !event.altKey && event.shiftKey && event.code === 'KeyP') {
       opts.onToolChange('highlighter');
-      event.preventDefault();
     } else if (!command && !event.altKey && event.shiftKey && (event.code === 'KeyH' || event.code === 'KeyV')) {
       opts.onFlip(event.code === 'KeyH' ? 'horizontal' : 'vertical');
-      event.preventDefault();
     } else if (!command && !event.shiftKey && !event.altKey && key === 'v') {
       opts.onToolChange('select');
     } else if (!command && !event.shiftKey && !event.altKey && key === 'h') {
@@ -260,10 +234,8 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
       opts.onToggleEmoji();
     } else if (event.key === 'F2') {
       opts.onEditPrimary('f2');
-      event.preventDefault();
     } else if (event.key === 'Enter') {
       opts.onEditPrimary(command || event.shiftKey ? 'f2' : 'enter');
-      event.preventDefault();
     } else if (event.key === 'Escape') {
       if (opts.onCancelGesture()) {
         /* gesture dropped */
@@ -274,7 +246,9 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
       } else {
         opts.onClearSelection();
       }
-      event.preventDefault();
+    } else {
+      handled = false;
     }
+    if (handled) event.preventDefault();
   }, []);
 }

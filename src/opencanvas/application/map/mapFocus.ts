@@ -1,7 +1,7 @@
 import type { ScenePage } from '../../domain/document/types';
 
 /** What stays bright when a box or an arrow is focused in Map mode; everything else dims. */
-export interface MapFocus {
+interface MapFocus {
   readonly nodeIds: readonly string[];
   readonly connectorIds: readonly string[];
 }

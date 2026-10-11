@@ -13,7 +13,7 @@ import {
 import type { DocumentCommand } from '../../domain/commands/types';
 import type { SceneDocumentV1, ScenePage } from '../../domain/document/types';
 
-export interface V2PagesOptions {
+interface V2PagesOptions {
   readonly document: SceneDocumentV1 | null;
   readonly pageId: string | null;
   readonly readOnly: boolean;

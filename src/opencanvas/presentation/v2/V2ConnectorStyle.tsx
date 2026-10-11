@@ -26,10 +26,25 @@ interface V2ConnectorStyleProps {
 type Panel = 'line' | 'ends' | 'label';
 type RouteChoice = ConnectorRouteKind;
 
-const MARKERS: readonly { value: ConnectorMarkerEnd; label: string }[] = [
-  { value: 'none', label: 'None' }, { value: 'arrow', label: 'Arrow' }, { value: 'dot', label: 'Dot' },
-  { value: 'diamond', label: 'Diamond' },
-];
+const MARKER_NAMES: readonly (readonly [ConnectorMarkerEnd, string])[] = [['none', 'None'], ['arrow', 'Arrow'], ['dot', 'Dot'], ['diamond', 'Diamond']];
+const MARKER_HEADS: Readonly<Record<string, React.JSX.Element>> = {
+  arrow: <path d="M15 2 L21 6 L15 10" fill="none" />,
+  dot: <circle cx="18" cy="6" r="3" />,
+  diamond: <path d="M12 6 L16.5 2 L21 6 L16.5 10 Z" />,
+};
+/** Line-and-head cells (as the Width row draws its widths); the word is the tooltip and the accessible name. */
+const markerOptions = (side: 'start' | 'end') => MARKER_NAMES.map(([value, name]) => ({
+  value, title: name,
+  label: <>
+    <svg className="ofk-marker-glyph" viewBox="0 0 24 12" aria-hidden="true" data-side={side}>
+      <path d={value === 'none' ? 'M2 6 H22' : value === 'arrow' ? 'M2 6 H20' : 'M2 6 H14'} fill="none" />
+      {MARKER_HEADS[value]}
+    </svg>
+    <span className="ofk-visually-hidden">{name}</span>
+  </>,
+}));
+const START_MARKERS = markerOptions('start');
+const END_MARKERS = markerOptions('end');
 const WIDTH_PRESETS = [1, 2, 3, 4].map((value) => ({
   value, label: <span className="ofk-width-glyph" style={{ height: value }} />, title: `${value}px`,
 }));
@@ -108,11 +123,11 @@ export function V2ConnectorStyle({ page, connectorId, commit, onCommitted }: V2C
         preview={<span className="ofk-style-text">{markerValue(presentation.sourceMarkers) === 'none' ? '—' : '←'}{markerValue(presentation.targetMarkers) === 'none' ? '—' : '→'}</span>}>
         <PanelRow label="Start">
           <Segmented<ConnectorMarkerEnd | ''> label="Start marker" value={markerValue(presentation.sourceMarkers)}
-            onChange={(marker) => { if (marker) apply({ markerStart: marker }); }} options={MARKERS} />
+            onChange={(marker) => { if (marker) apply({ markerStart: marker }); }} options={START_MARKERS} />
         </PanelRow>
         <PanelRow label="End">
           <Segmented<ConnectorMarkerEnd | ''> label="End marker" value={markerValue(presentation.targetMarkers)}
-            onChange={(marker) => { if (marker) apply({ markerEnd: marker }); }} options={MARKERS} />
+            onChange={(marker) => { if (marker) apply({ markerEnd: marker }); }} options={END_MARKERS} />
         </PanelRow>
         <PanelRow>
           <Button variant="secondary" onClick={() => apply({ reverse: true })}>

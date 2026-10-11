@@ -7,7 +7,7 @@ import type { ArchModel, ArchView } from '../../../dsl/model/types';
 import type { SceneDocumentV1, ScenePage } from '../../domain/document/types';
 
 /** One step of the drill-down chain: a page, a view and the element it shows. */
-export interface ArchitectureCrumb {
+interface ArchitectureCrumb {
   readonly viewId: string;
   readonly pageId: string;
   readonly label: string;

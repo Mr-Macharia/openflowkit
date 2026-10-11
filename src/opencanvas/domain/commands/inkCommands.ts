@@ -5,7 +5,7 @@ import { buildNodeStateMap } from '../scene/nodeState';
 // Ink is a content property, not an appearance one: a stroke's colour and
 // width live in `content.strokeColor`/`content.strokeWidth` so the DSL-less
 // freeform model stays self-describing. One undo step per pick.
-export interface InkPatch {
+interface InkPatch {
   readonly strokeColor?: string;
   readonly strokeWidth?: number;
   /** 0–1; a highlighter's see-through wash. */

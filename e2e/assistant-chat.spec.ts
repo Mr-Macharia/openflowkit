@@ -90,7 +90,7 @@ test('a proposal under review is brought into view and the welcome steps aside @
   await composer.fill('draw a flow for the stub');
   await composer.press('Enter');
   await expect(panel.getByText('Review changes')).toBeVisible();
-  await expect(page.getByText('Make room for your next idea.')).toBeHidden();
+  await expect(page.getByText('Draw it, write it, or hand it to your agent.')).toBeHidden();
   const origin = await screenOf(0, 0);
   expect(origin).not.toBeNull();
   await expect.poll(async () => {

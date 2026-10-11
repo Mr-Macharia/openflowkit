@@ -7,7 +7,7 @@ import { dslFamilyDirection, dslShapeWord, isHexColor } from '../vocabulary';
 // no coordinates, so positions are gone by design; everything else the target
 // cannot say is counted into `losses`, never dropped silently. Pure: no DOM, no React.
 
-export interface MermaidExport {
+interface MermaidExport {
   /** Empty when the family has no Mermaid form. */
   readonly text: string;
   /** Short human strings, deduplicated with counts: "positions and sizes", "3 colors". */

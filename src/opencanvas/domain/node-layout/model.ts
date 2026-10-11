@@ -27,7 +27,7 @@ export const DEFAULT_NODE_CONTENT_LAYOUT: NodeContentLayoutV1 = {
   freeIconPosition: { x: 0.5, y: 0.5 },
 };
 
-export interface NodeContentLayoutValidationResult {
+interface NodeContentLayoutValidationResult {
   readonly success: boolean;
   readonly value: NodeContentLayoutV1;
   readonly issues: readonly string[];

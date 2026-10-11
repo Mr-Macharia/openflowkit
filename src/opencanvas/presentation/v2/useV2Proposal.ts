@@ -15,10 +15,10 @@ import type { SceneDocumentV1 } from '../../domain/document/types';
 import type { ChangeDecision } from '../design-system';
 import { platformKeys } from './v2Shortcuts';
 
-export type V2ProposalPhase = 'idle' | 'working' | 'ready' | 'stale' | 'applied' | 'failed';
+type V2ProposalPhase = 'idle' | 'working' | 'ready' | 'stale' | 'applied' | 'failed';
 
 /** Writes from one reply, in order: diagram blocks (replace `frameId`, or add when null) and scene ops. */
-export interface V2ProposalRequest {
+interface V2ProposalRequest {
   readonly blocks: readonly AssistantWrite[];
   readonly intent: string;
   readonly source?: string;

@@ -3,9 +3,11 @@ import type { DocumentValidationIssue } from '../../domain/document/validation';
 import { Button, ErrorState, Spinner } from '../design-system';
 import { V2StateHero } from './V2StateHero';
 import { downloadRawRecords } from './v2Export';
+import { mintV2Id } from './v2Document';
+import type { V2LoadPhase } from './useV2DocumentLoad';
 
 interface V2LoadCenterProps {
-  readonly phase: 'loading' | 'ready' | 'corrupt' | 'failed';
+  readonly phase: V2LoadPhase;
   readonly documentId: string | undefined;
   readonly corruptIssues: readonly DocumentValidationIssue[];
   readonly loadError: { readonly blocked: boolean; readonly message: string } | null;
@@ -28,6 +30,14 @@ export function V2LoadCenter(props: V2LoadCenterProps): React.JSX.Element {
           description={props.loadError?.message}
           onRetry={props.onRetry}
           secondary={home}
+        />
+      ) : props.phase === 'not-found' ? (
+        <ErrorState
+          hero={<V2StateHero kind="lost-link" />}
+          title="That diagram isn’t in this browser."
+          description="It may have been deleted, or made in another browser — ask for a share link."
+          action={<Button variant="primary" onClick={() => navigate(`/d/${mintV2Id('doc')}`)}>New diagram</Button>}
+          secondary={<Button variant="quiet" onClick={() => navigate('/home')}>Home</Button>}
         />
       ) : props.phase === 'corrupt' ? (
         <ErrorState

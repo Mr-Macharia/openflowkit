@@ -9,7 +9,7 @@ import { createPixiText, truncateTextToWidth } from './pixiText';
 
 const HEADER_HEIGHT = 34;
 
-export interface PixiJourneyNodeDrawResult {
+interface PixiJourneyNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }

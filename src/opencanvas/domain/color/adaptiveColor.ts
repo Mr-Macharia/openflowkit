@@ -1,6 +1,6 @@
 import { getContrastText, mixHex, normalizeHex, rgbToHex } from '../../../lib/colorUtils';
 
-export const AUTO_COLOR = 'auto' as const;
+const AUTO_COLOR = 'auto' as const;
 export const DEFAULT_CANVAS_COLOR = '#f7f7f5';
 
 /** Default ink follows canvas luminance. Explicit document colours stay fixed. */
@@ -31,7 +31,7 @@ export function darkWashFill(fill: string): string {
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${WASH_ALPHA})`;
 }
 
-export interface WashInk {
+interface WashInk {
   readonly fill: string;
   readonly stroke: string;
   readonly text: string;

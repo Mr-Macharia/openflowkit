@@ -649,6 +649,13 @@ function styleLosses(text: string): Array<{ line: number; message: string }> {
  */
 // Mermaid glues the shape to the id (`root((Idea))`, `group api(cloud)[API]`); our DSL puts a space first.
 const MERMAID_SHAPED = /^\s*([\w.-]*(\(\(|\[|\(|\{\{|\)\))|::icon\(|(service|group|junction)\s+[\w-]+[([])/m;
+/**
+ * A bare `architecture` header is ours unless a line is Mermaid's own architecture syntax: `service x(icon)[Title]`,
+ * `group x[Title]`, or a side-pinned edge `a:L -- R:b` (a junction always has one, so `junction` alone decides
+ * nothing: `junction box` is a node of ours). A glued `DB[cylinder]` alone is ours too (the DSL reads it as
+ * `DB [cylinder]`), not a reason to read the whole document as another language.
+ */
+const MERMAID_ARCHITECTURE = /^\s*((service|group)\s+[\w-]+(\([\w:.-]*\))?\[|[\w-]+(\{group\})?:[LRTB]\s*<?-->?\s*[LRTB]:)/m;
 
 /**
  * Mermaid YAML front matter (`---` … `---` before the header) as blank lines, so
@@ -685,7 +692,8 @@ export function looksLikeMermaid(text: string): boolean {
   }
   // Three headers are also our family words; only Mermaid-only syntax makes those Mermaid.
   if (/^gitgraph\b/i.test(first)) return first.startsWith('gitGraph');
-  if (/^(mindmap|architecture)\s*$/i.test(first)) return MERMAID_SHAPED.test(text);
+  if (/^mindmap\s*$/i.test(first)) return MERMAID_SHAPED.test(text);
+  if (/^architecture\s*$/i.test(first)) return MERMAID_ARCHITECTURE.test(text);
   return /^(sequenceDiagram|stateDiagram(-v2)?|classDiagram|erDiagram|journey|architecture-beta|gantt|pie|timeline|sankey-beta|C4Context|quadrantChart|requirementDiagram|xychart-beta|block-beta|packet-beta|kanban|radar-beta|treemap)\b/i.test(first);
 }
 

@@ -21,7 +21,7 @@ import type { AiTool, AiToolCall } from '../../../services/ai/provider';
 import { shapeKindOf } from './assistantContext';
 import type { AssistantBlock } from './assistantPrompt';
 
-export interface AssistantToolContext {
+interface AssistantToolContext {
   readonly document: SceneDocumentV1;
   readonly pageId: string;
   /** Frames on this page the model may replace. */
@@ -34,7 +34,7 @@ export interface AssistantToolContext {
 }
 
 /** What one call did: the text the model reads, and the row the user sees. */
-export interface AssistantToolRun {
+interface AssistantToolRun {
   readonly content: string;
   readonly isError?: boolean;
   readonly label: string;
@@ -61,7 +61,7 @@ const DSL_PARAM = { type: 'string', description: 'Complete OpenFlow DSL; the fir
 const IDS_PARAM = { type: 'array', items: { type: 'string' }, minItems: 1, description: 'Shape ids from list_shapes or the selection.' };
 const HEX = { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' };
 
-export const ASSISTANT_TOOLS: readonly AiTool[] = [
+const ASSISTANT_TOOLS: readonly AiTool[] = [
   {
     name: 'list_diagrams',
     description: 'Every diagram in the document: frame id, page, family, title, and whether it is in scope for changes.',

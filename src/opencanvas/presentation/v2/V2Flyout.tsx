@@ -1,12 +1,16 @@
-import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon, IconButton, Popover, Tooltip } from '../design-system';
 import type { ToolOption, ToolSection } from './v2ToolCatalog';
+import { platformKeys } from './v2Shortcuts';
+import './v2Flyout.css';
 
-// A rail button with a corner triangle that opens a grid of variants. The
-// button keeps one icon and a click always opens the grid (Miro): the pick is
-// one visible step, never a hidden second click. The tool's letter re-arms the
-// last pick without the grid. Picking arms the variant and closes. A flyout
-// with `sections` (More) shows a heading over each group of cells.
+const LONG_PRESS_MS = 400;
+
+// A rail button with a corner triangle that opens a grid of variants. A tool
+// button (`onActivate`) arms its last-used variant on click, as its letter does
+// (U1-05); its corner, a long press or ArrowRight opens the grid (Figma, tldraw).
+// Insert has no tool to arm, so a click opens its grid. Picking arms the variant
+// and closes. A flyout with `sections` (Insert) shows a heading over each group.
 export function FlyoutButton<T extends string>(props: {
   readonly label: string;
   readonly shortcut?: string;
@@ -21,8 +25,22 @@ export function FlyoutButton<T extends string>(props: {
   readonly onPick: (id: T, keyboard: boolean) => void;
   /** Narrow grids (connectors) read better at half width. */
   readonly columns?: number;
+  /** A tool button: a click arms the last-used variant; the corner button opens the grid. */
+  readonly onActivate?: () => void;
+  /** The variant a click arms: the button wears its icon and its tooltip names it. */
+  readonly variant?: ToolOption<string> | undefined;
 }): React.JSX.Element {
-  const anchorRef = useRef<HTMLButtonElement>(null);
+  // The grid sits beside whichever control opened it, and Escape hands focus back there. Both share the button's top and right edge.
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const pressTimer = useRef<number | undefined>(undefined);
+  const longPressed = useRef(false);
+  // A pointerdown on the corner closes an open grid (an outside press) before its click: the click reads the state from before.
+  const openAtPress = useRef(false);
+  useEffect(() => () => window.clearTimeout(pressTimer.current), []);
+  const openFrom = (from: HTMLButtonElement | null) => {
+    anchorRef.current = from;
+    props.onOpenChange(true);
+  };
   const headingId = useId();
   const sections: readonly ToolSection<T>[] = isSectioned(props.options)
     ? props.options : [{ title: '', options: props.options }];
@@ -31,7 +49,7 @@ export function FlyoutButton<T extends string>(props: {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== 'ArrowRight') return;
     event.preventDefault();
-    props.onOpenChange(true);
+    openFrom(event.currentTarget);
   };
 
   // The grid is a listbox: arrows move by cell, Home/End to the ends. Focus is
@@ -59,7 +77,7 @@ export function FlyoutButton<T extends string>(props: {
     ? (options.some((option) => option.id === props.selectedId) ? props.selectedId : options[0]?.id ?? null)
     : null;
   const cell = (option: ToolOption<T>) => (
-    <Tooltip key={option.id} content={option.label} shortcut={option.shortcut}>
+    <Tooltip key={option.id} content={option.label} shortcut={option.shortcut && platformKeys(option.shortcut)}>
       <button
         type="button"
         role="option"
@@ -83,22 +101,70 @@ export function FlyoutButton<T extends string>(props: {
       {cells.map(cell)}
     </div>
   );
+  const activate = props.onActivate;
+  const endPress = () => window.clearTimeout(pressTimer.current);
+  const variant = props.variant;
+  const shortcut = variant?.shortcut ?? props.shortcut;
+  const button = activate ? (
+    <Tooltip content={variant?.label ?? props.label} shortcut={shortcut && platformKeys(shortcut)}>
+      <IconButton
+        variant="quiet"
+        label={props.label}
+        icon={variant ? <Icon icon={variant.icon} /> : props.icon}
+        selected={props.selected}
+        data-flyout=""
+        onKeyDown={onKeyDown}
+        onPointerDown={(event) => {
+          longPressed.current = false;
+          if (event.button !== 0) return;
+          const target = event.currentTarget;
+          pressTimer.current = window.setTimeout(() => { longPressed.current = true; openFrom(target); }, LONG_PRESS_MS);
+        }}
+        onPointerUp={endPress} onPointerLeave={endPress} onPointerCancel={endPress}
+        onClick={() => {
+          if (!longPressed.current) { activate(); if (props.open) props.onOpenChange(false); }
+          longPressed.current = false;
+        }}
+      />
+    </Tooltip>
+  ) : (
+    <Tooltip content={props.label} shortcut={props.shortcut && platformKeys(props.shortcut)}>
+      <IconButton
+        ref={(element) => { anchorRef.current = element; }}
+        variant="quiet"
+        label={props.label}
+        icon={props.icon}
+        selected={props.selected}
+        data-flyout=""
+        aria-haspopup="dialog"
+        aria-expanded={props.open}
+        onKeyDown={onKeyDown}
+        onClick={() => props.onOpenChange(!props.open)}
+      />
+    </Tooltip>
+  );
   return (
     <>
-      <Tooltip content={props.label} shortcut={props.shortcut}>
-        <IconButton
-          ref={anchorRef}
-          variant="quiet"
-          label={props.label}
-          icon={props.icon}
-          selected={props.selected}
-          data-flyout=""
-          aria-haspopup="dialog"
-          aria-expanded={props.open}
-          onKeyDown={onKeyDown}
-          onClick={() => props.onOpenChange(!props.open)}
-        />
-      </Tooltip>
+      {activate ? (
+        <span className="ofk-v2-flyout-slot">
+          {button}
+          <Tooltip content={`${props.label} options`}>
+            <button
+              type="button"
+              className="ofk-v2-flyout-corner"
+              tabIndex={-1}
+              aria-label={`${props.label} options`}
+              aria-haspopup="dialog"
+              aria-expanded={props.open}
+              onPointerDown={() => { openAtPress.current = props.open; }}
+              onClick={(event) => {
+                const wasOpen = event.detail === 0 ? props.open : openAtPress.current;
+                if (wasOpen) props.onOpenChange(false); else openFrom(event.currentTarget);
+              }}
+            />
+          </Tooltip>
+        </span>
+      ) : button}
       <Popover role="dialog" aria-label={`${props.label} options`} open={props.open}
         anchorRef={anchorRef} onClose={() => props.onOpenChange(false)} placement="right-start"
         gap={12} className="ofk-v2-flyout" onKeyDown={moveFocus}

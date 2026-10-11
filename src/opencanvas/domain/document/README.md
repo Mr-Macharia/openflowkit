@@ -12,6 +12,5 @@ Versioned, renderer-independent persisted contracts for OpenCanvas.
 - unknown provider data belongs in namespaced JSON `extensions`.
 - loaded values are validated before use and migration never mutates its input.
 - unknown fields are preserved opaquely through migrate/serialize; newer
-  schemas open read-only via `reason: 'newer-schema'` and are never edited
-  (see `docs/plan/README.md` §4 Architecture).
+  schemas open read-only via `reason: 'newer-schema'` and are never edited.
 - the legacy projection stores a recovery snapshot so V1 JSON files import losslessly.

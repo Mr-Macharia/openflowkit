@@ -14,11 +14,13 @@ interface V2DocumentLoadOptions {
   readonly fixed?: SceneDocumentV1 | undefined;
   /** Shapes a document that is created fresh (never one that was stored), e.g. a repo map born with its source; it is saved at once. */
   readonly initialize?: ((document: SceneDocumentV1) => SceneDocumentV1) | undefined;
+  /** False: a missing, uninitialized document is not found (a link from another browser), never created. */
+  readonly createIfMissing?: boolean;
 }
 
-export type V2LoadPhase = 'loading' | 'ready' | 'corrupt' | 'failed';
+export type V2LoadPhase = 'loading' | 'ready' | 'corrupt' | 'failed' | 'not-found';
 
-// Load on mount: missing → new empty document; ok/recovered → open;
+// Load on mount: missing → new empty document (or not-found for an id from elsewhere); ok/recovered → open;
 // read-only → open with editing disabled; corrupt → notice + export-raw.
 export function useV2DocumentLoad(options: V2DocumentLoadOptions) {
   const [phase, setPhase] = useState<V2LoadPhase>('loading');
@@ -49,6 +51,7 @@ export function useV2DocumentLoad(options: V2DocumentLoadOptions) {
         if (cancelled) return;
         switch (result.status) {
           case 'missing': {
+            if (!options.initialize && options.createIfMissing === false) { setPhase('not-found'); break; }
             const fresh = createEmptyV2Document(options.documentId!);
             if (!options.initialize) {
               options.openDocument(fresh);

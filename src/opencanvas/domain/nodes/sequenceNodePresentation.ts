@@ -1,16 +1,20 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '../document/json';
 import type { SceneNode } from '../document/types';
+import type { Point2d } from '../geometry/types';
+import { basicNodeOutlinePoints } from './basicNodeOutline';
 import { optionalPresentationString, presentationString } from './nodePresentationValues';
 
 /** An activation bar is drawn this wide on its lane; messages on it end on its edge. */
 export const SEQUENCE_ACTIVATION_WIDTH = 12;
+/** The shortest laid-out bar, in 52 px message rows: 12 px. */
+const ACTIVATION_MIN_ROWS = 12 / 52;
 
-export interface SequenceActivationRange {
+interface SequenceActivationRange {
   readonly startOrder: number;
   readonly endOrder: number;
 }
 
-export interface SequenceFragmentPresentation {
+interface SequenceFragmentPresentation {
   readonly type: 'alt' | 'loop' | 'opt' | 'par' | 'break' | 'critical';
   readonly condition: string;
   readonly branchKind?: 'start' | 'else' | 'and' | 'option';
@@ -28,6 +32,8 @@ export type SequenceNodePresentation =
       readonly label: string;
       readonly alias?: string;
       readonly participantKind: 'participant' | 'actor';
+      /** `[db]` heads draw as a cylinder, `[queue]` as a queue; everything else is a box. */
+      readonly head: 'box' | 'cylinder' | 'queue';
       readonly activations: readonly SequenceActivationRange[];
     })
   | {
@@ -44,7 +50,29 @@ export type SequenceNodePresentation =
       readonly label: string;
       readonly condition?: string;
       readonly order: number;
+      /** An `else`/`and` branch: its top edge is the block's dashed divider, not a new box. */
+      readonly divider: boolean;
+      /** The next branch carries the block on: no bottom edge, the divider below is it. */
+      readonly continued: boolean;
     });
+
+/** A participant head's height; the lifeline starts at its bottom. */
+export const SEQUENCE_HEAD_HEIGHT = 48;
+
+/**
+ * A db or queue head as the canvas and the export both draw it: the cylinder node outline
+ * (a queue lies on its side) and the rim that makes it read as one. Local to the head's top-left.
+ */
+export function sequenceHeadShape(head: 'cylinder' | 'queue', width: number): { readonly outline: readonly Point2d[]; readonly rim: readonly Point2d[] } {
+  const along = head === 'queue' ? { width: SEQUENCE_HEAD_HEIGHT, height: width } : { width, height: SEQUENCE_HEAD_HEIGHT };
+  const depth = Math.min(12, along.height / 4);
+  const rim = Array.from({ length: 13 }, (_, index) => {
+    const angle = index * Math.PI / 12;
+    return { x: along.width / 2 + Math.cos(angle) * along.width / 2, y: depth + Math.sin(angle) * depth };
+  });
+  const turn = (points: readonly Point2d[]) => head === 'queue' ? points.map((point) => ({ x: along.height - point.y, y: point.x })) : points;
+  return { outline: turn(basicNodeOutlinePoints('cylinder', along)), rim: turn(rim) };
+}
 
 const FRAGMENT_TYPES = new Set<SequenceFragmentPresentation['type']>([
   'alt',
@@ -83,10 +111,10 @@ function activationRanges(value: JsonValue | undefined): readonly SequenceActiva
     )
     .filter((event) => typeof event.order === 'number' && typeof event.activate === 'boolean')
     // A row (notes above it take room) places the bar; the order is what the text says.
-    .map((event) => ({
-      order: typeof event.row === 'number' && Number.isFinite(event.row) ? Math.max(0, event.row) : order(event.order),
-      activate: event.activate as boolean,
-    }))
+    .map((event) => {
+      const laid = typeof event.row === 'number' && Number.isFinite(event.row);
+      return { order: laid ? Math.max(0, event.row as number) : order(event.order), activate: event.activate as boolean, laid };
+    })
     .sort((left, right) => left.order - right.order);
   const open: number[] = [];
   const ranges: SequenceActivationRange[] = [];
@@ -96,8 +124,10 @@ function activationRanges(value: JsonValue | undefined): readonly SequenceActiva
       continue;
     }
     const startOrder = open.pop();
+    // A laid-out row is where `deactivate` was written: the bar ends there, never shorter than 12 px.
+    // A bare order only says "before message n", so that bar spans at least one row.
     if (startOrder !== undefined) {
-      ranges.push({ startOrder, endOrder: Math.max(startOrder + 1, event.order) });
+      ranges.push({ startOrder, endOrder: Math.max(startOrder + (event.laid ? ACTIVATION_MIN_ROWS : 1), event.order) });
     }
   }
   for (const startOrder of open) ranges.push({ startOrder, endOrder: startOrder + 1 });
@@ -142,6 +172,7 @@ export function resolveSequenceNodePresentation(node: SceneNode): SequenceNodePr
       label: presentationString(node.content.label, 'Participant'),
       ...(alias ? { alias } : {}),
       participantKind: node.content.seqParticipantKind === 'actor' ? 'actor' : 'participant',
+      head: node.content.seqStereotype === 'db' ? 'cylinder' : node.content.seqStereotype === 'queue' ? 'queue' : 'box',
       activations: activationRanges(node.content.seqActivations),
       ...color(node, 'slate'),
     };
@@ -167,6 +198,8 @@ export function resolveSequenceNodePresentation(node: SceneNode): SequenceNodePr
     label: presentationString(node.content.label, 'FRAGMENT'),
     ...(condition ? { condition } : {}),
     order: order(node.content.seqMessageOrder),
+    divider: node.content.seqFragmentDivider === true,
+    continued: node.content.seqFragmentContinued === true,
     ...color(node, 'violet'),
   };
 }

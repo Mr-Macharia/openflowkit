@@ -16,7 +16,7 @@ import {
 } from './wireframeNodeDrawing';
 import { projectWireframeNodeVisual, type PixiWireframeNodeVisual } from './wireframeNodeVisual';
 
-export interface PixiWireframeNodeDrawResult {
+interface PixiWireframeNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }

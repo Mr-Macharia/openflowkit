@@ -1,6 +1,6 @@
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-export interface LogMetadata {
+interface LogMetadata {
   error?: unknown;
   [key: string]: unknown;
 }

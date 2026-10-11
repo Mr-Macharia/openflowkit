@@ -15,7 +15,7 @@ export interface CanonicalAttribute {
   value: string;
 }
 
-export interface DslNodeMeta {
+interface DslNodeMeta {
   id: string;
   line: number;
   /** Authored reference name when `label:` overrides the display label. */
@@ -41,13 +41,13 @@ export interface DslNodeMeta {
   noteFor?: string;
 }
 
-export interface DslConnectorMeta {
+interface DslConnectorMeta {
   line: number;
   attrs?: readonly CanonicalAttribute[];
   comments?: readonly string[];
 }
 
-export interface DslFrameMeta {
+interface DslFrameMeta {
   family: string;
   version: number;
   /** Extra family-line words a family needs (e.g. the chart kind). */
@@ -123,7 +123,7 @@ export function dslConnectorMeta(connector: SceneConnector): DslConnectorMeta {
   };
 }
 
-export function canonicalAttributes(value: readonly unknown[]): CanonicalAttribute[] {
+function canonicalAttributes(value: readonly unknown[]): CanonicalAttribute[] {
   return value.flatMap((entry) => {
     const item = metaObject(entry);
     if (typeof item.value !== 'string') return [];

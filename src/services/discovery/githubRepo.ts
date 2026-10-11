@@ -31,7 +31,7 @@ export class RepoError extends Error {
   }
 }
 
-export interface RepoFiles {
+interface RepoFiles {
   readonly files: readonly ScannedFile[];
   /** Files discovery would read; more than `files` when capped. */
   readonly wanted: number;

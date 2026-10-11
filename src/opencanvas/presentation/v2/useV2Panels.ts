@@ -72,5 +72,3 @@ export function useV2Panels() {
     toggleTree, closeTree, toggleShortcuts, closeShortcuts, closeDocked,
   };
 }
-
-export type V2Panels = ReturnType<typeof useV2Panels>;

@@ -43,7 +43,7 @@ test('each connector kind binds to shapes and re-routes when a shape moves', asy
   const to = centre(b);
 
   const pick = async (name: string) => {
-    await page.getByRole('button', { name: 'Connector' }).click();
+    await page.getByRole('button', { name: 'Connector options' }).click();
     await page.getByRole('option', { name }).click();
   };
 

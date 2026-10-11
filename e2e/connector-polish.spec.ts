@@ -45,8 +45,9 @@ function laneMiddle(lane: { x: number; y: number }[]): { x: number; y: number } 
   return lane[lane.length - 1];
 }
 
-async function freshDoc(page: import('@playwright/test').Page, name: string): Promise<void> {
-  await page.goto(`/#/d/${name}-${Date.now()}`);
+// Each test has its own browser context, so `/` mints a fresh document (a made-up #/d/ id is not found).
+async function freshDoc(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/');
   await page.waitForFunction(() => window.__V2__?.getState());
   await page.getByTestId('v2-canvas').focus();
 }
@@ -86,7 +87,7 @@ async function dragHandleToNode(
 }
 
 test('three parallel edges fan out with no overlap', async ({ page }) => {
-  await freshDoc(page, 'cpolish-parallel');
+  await freshDoc(page);
   const a = await makeNode(page, 250, 350, 0);
   const b = await makeNode(page, 750, 350, 1);
   await dragHandleToNode(page, a, b, 0);
@@ -108,7 +109,7 @@ test('three parallel edges fan out with no overlap', async ({ page }) => {
 });
 
 test('double-click edits the connector label, Delete removes it, undo restores', async ({ page }) => {
-  await freshDoc(page, 'cpolish-label');
+  await freshDoc(page);
   const a = await makeNode(page, 250, 350, 0);
   const b = await makeNode(page, 750, 350, 1);
   const edge = await dragHandleToNode(page, a, b, 0);
@@ -148,7 +149,7 @@ test('double-click edits the connector label, Delete removes it, undo restores',
 });
 
 test('style bar sets dot markers and dashed line', async ({ page }) => {
-  await freshDoc(page, 'cpolish-style');
+  await freshDoc(page);
   const a = await makeNode(page, 250, 350, 0);
   const b = await makeNode(page, 750, 350, 1);
   await dragHandleToNode(page, a, b, 0);

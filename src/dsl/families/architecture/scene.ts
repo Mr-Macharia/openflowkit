@@ -6,8 +6,8 @@ import { attrsToJson } from '../../sceneMeta';
 import { ACTOR_CONTENT_LAYOUT, measureGroupSize, measureNodeSize, WRAP_SIZING_POLICY, wrapPolicyFor } from '../../sizing';
 
 import { COLOR_WORDS, isHexColor, nodeAppearance, SHAPE_WORDS, type DslShapeSpec } from '../../vocabulary';
-import { layoutEdges, type LayoutNodeInput } from '../../layout';
-import { AUTO_ICON_SHAPES } from '../../autoIcon';
+import { frameInsets, GROUP_INSETS, layoutEdges, type LayoutNodeInput } from '../../layout';
+import { AUTO_ICON_SHAPES, PERSON_ICON } from '../../autoIcon';
 import type { FamilyContext, FamilyScene } from '../types';
 import type { SwatchResolver } from '../../../opencanvas/domain/nodes/nodePalette';
 
@@ -18,9 +18,9 @@ import type { SwatchResolver } from '../../../opencanvas/domain/nodes/nodePalett
  * `Customer -> Shop.Web`. Geometry comes from the injected layout port.
  */
 
-const PERSON_ICON = 'tabler/user';
-const FRAME_TITLE_PADDING = { top: 72, right: 28, bottom: 52, left: 28 };
-const GROUP_PADDING = { top: 54, right: 22, bottom: 22, left: 22 };
+/** The frame's bottom keeps room for the view key; a boundary's for its kind tag line under the children. */
+const FRAME_PADDING = { ...frameInsets(true), bottom: 52 };
+const BOUNDARY_PADDING = { ...GROUP_INSETS, bottom: GROUP_INSETS.bottom + 16 };
 
 /** Shape vocabulary per element kind; the tasteful default C4 look. A person is a card with a user icon:
  * the stick-figure silhouette crowds its name and description. `[person]` still asks for the silhouette. */
@@ -107,8 +107,8 @@ export async function compileArchitectureView(
     nodes: layoutNodes,
     edges: layoutEdges(connectors),
     direction: view.direction ?? context.direction,
-    rootPadding: FRAME_TITLE_PADDING,
-    groupPadding: GROUP_PADDING,
+    rootPadding: FRAME_PADDING,
+    groupPadding: BOUNDARY_PADDING,
   }, context.signal);
 
   const position = (node: SceneNode): SceneNode => ({
@@ -164,9 +164,10 @@ export function elementNode(element: ArchElement, parentId: string | null, zInde
   const shapeWord = elementShapeWord(element);
   const spec = specFor(shapeWord);
   // `icon: none` opts out; a boundary keeps its C4 shape. A person with no better match is a user.
-  const autoIcon = !element.icon && context.inferIcon && AUTO_ICON_SHAPES.has(shapeWord)
+  const inferred = !element.icon && context.inferIcon && AUTO_ICON_SHAPES.has(shapeWord)
     ? context.inferIcon(element.name, element.tech) ?? (element.kind === 'person' ? PERSON_ICON : undefined)
     : undefined;
+  const autoIcon = inferred ?? (!element.icon && shapeWord === 'person' ? PERSON_ICON : undefined);
   const authoredIcon = element.icon === 'none' ? undefined : element.icon ?? autoIcon;
   const resolvedIcon = authoredIcon && context.resolveIcon ? context.resolveIcon(authoredIcon) : null;
   const isIconCard = Boolean(authoredIcon && (!context.resolveIcon || resolvedIcon));
@@ -174,7 +175,7 @@ export function elementNode(element: ArchElement, parentId: string | null, zInde
   const subLabel = `[${ELEMENT_KIND_LABEL[element.kind]}${element.tech ? ` · ${element.tech}` : ''}]${element.desc ? `\n${element.desc}` : ''}`;
   const kind = isIconCard ? 'architecture' : spec.kind;
   const wraps = !isIconCard && Boolean(element.desc);
-  const measure = { kind, label, ...(subLabel ? { subLabel } : {}), hasIcon: isIconCard, spec, ...(wraps ? { overflow: 'wrap' as const } : {}) };
+  const measure = { kind, label, ...(subLabel ? { subLabel } : {}), hasIcon: isIconCard, c4Card: true as const, spec, ...(wraps ? { overflow: 'wrap' as const } : {}) };
   const measured = measureNodeSize(measure);
   const custom = context.measureLabel?.(label, kind);
   const size = {width: Math.max(measured.width, custom?.width ?? 0, isIconCard ? 240 : 0), height: Math.max(measured.height, custom?.height ?? 0, isIconCard ? 152 : 0)};

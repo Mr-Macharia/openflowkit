@@ -119,7 +119,7 @@ function quadrantPresentation(data: QuadrantData, size: Size2d): ChartPresentati
 }
 
 /** Series colours in order, so a palette swap re-tints every chart at once. */
-export const CHART_SERIES_KEYS: readonly PaletteKey[] = [
+const CHART_SERIES_KEYS: readonly PaletteKey[] = [
   'blue', 'red', 'emerald', 'amber', 'violet', 'cyan', 'pink', 'yellow',
 ];
 
@@ -128,7 +128,7 @@ export interface ChartData {
   readonly series: readonly { readonly name: string; readonly values: readonly number[] }[];
 }
 
-export interface ChartMark {
+interface ChartMark {
   readonly kind: 'bar' | 'line' | 'area' | 'point' | 'slice' | 'cell' | 'swatch';
   /** Local node coordinates; a line has its full polyline. */
   readonly points: readonly Point2d[];
@@ -139,7 +139,7 @@ export interface ChartMark {
   readonly label?: string;
 }
 
-export interface ChartLabel {
+interface ChartLabel {
   readonly at: Point2d;
   readonly text: string;
   readonly anchor: 'start' | 'middle' | 'end';
@@ -148,7 +148,7 @@ export interface ChartLabel {
   readonly color?: string;
 }
 
-export interface ChartPresentation {
+interface ChartPresentation {
   readonly chart: ChartKind;
   readonly data: ChartData;
   readonly marks: readonly ChartMark[];
@@ -198,7 +198,7 @@ const AXIS_BOTTOM = 30;
 const PADDING = { top: 12, right: 16, left: 16 };
 const LEGEND_ROW = 18;
 
-export function chartContent(node: SceneNode): { chart: ChartKind; data: ChartData; options: Record<string, unknown> } {
+function chartContent(node: SceneNode): { chart: ChartKind; data: ChartData; options: Record<string, unknown> } {
   const raw = node.content.chart;
   const chart = typeof raw === 'string' && (CHART_KINDS as readonly string[]).includes(raw)
     ? raw as ChartKind : 'bar';
@@ -222,7 +222,7 @@ export function chartContent(node: SceneNode): { chart: ChartKind; data: ChartDa
   return { chart, data: { categories, series }, options };
 }
 
-export function chartTitle(node: SceneNode): string {
+function chartTitle(node: SceneNode): string {
   const title = node.content.title;
   if (typeof title === 'string' && title.length > 0) return title;
   // A DSL or agent label doubles as the chart title.

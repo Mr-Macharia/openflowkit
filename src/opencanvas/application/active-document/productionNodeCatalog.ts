@@ -2,7 +2,7 @@ import type { Point2d, Size2d } from '../../domain/geometry/types';
 import type { JsonObject } from '../../domain/document/json';
 import type { SceneNode } from '../../domain/document/types';
 
-export type ProductionNodeGroup =
+type ProductionNodeGroup =
   | 'basic'
   | 'freeform'
   | 'architecture'

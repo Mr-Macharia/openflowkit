@@ -21,7 +21,7 @@ import type { V2ChartKind, V2MoreItem } from './v2ToolCatalog';
 const CATEGORY_CHARTS: ReadonlySet<V2ChartKind> = new Set(['pie', 'donut', 'radar', 'heatmap']);
 const CATEGORY_DATA = { categories: ['A', 'B', 'C', 'D', 'E'], series: [{ name: 'Series 1', values: [4, 8, 6, 9, 3] }] };
 
-export interface V2InsertsOptions {
+interface V2InsertsOptions {
   readonly pageRef: RefObject<ScenePage | null>;
   readonly readOnlyRef: RefObject<boolean>;
   readonly selectionRef: RefObject<CanvasSelection>;

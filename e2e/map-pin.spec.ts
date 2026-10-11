@@ -125,9 +125,13 @@ test('a repo map pins to an editable page; the repo page stays read-only @gate',
   await expect.poll(async () => (await pagesOf(page)).at(-1)!.nodes.length).toBeLessThan(nodesBefore);
   await saved();
 
-  // It persists across a reload (the page the editor opens is the repo's own, so go to the pinned one).
+  // It persists across a reload, which reopens the page it was left on (the pinned one); the repo's map is a page away.
   await page.reload();
   await page.waitForFunction(() => '__V2__' in window);
+  await expect(mapSwitch()).toHaveCount(0);
+  await pagesButton().click();
+  await page.getByRole('button', { name: (await pagesOf(page))[0]!.name, exact: true }).click();
+  await page.keyboard.press('Escape');
   await mapReady();
   expect((await pagesOf(page)).length).toBe(before + 1);
   expect((await pagesOf(page)).at(-1)!.name).toBe('Overview snapshot');

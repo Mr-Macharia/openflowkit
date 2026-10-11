@@ -28,7 +28,7 @@ export interface V2DocumentRecord {
   readonly archivedAt?: string;
 }
 
-export type SaveV2DocumentResult =
+type SaveV2DocumentResult =
   | { readonly status: 'saved'; readonly record: V2DocumentRecord }
   | { readonly status: 'stale'; readonly storedRevision: number };
 

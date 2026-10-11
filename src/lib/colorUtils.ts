@@ -1,6 +1,6 @@
 const DARK_TEXT_LUMINANCE_THRESHOLD = 0.44;
 
-export function clampChannel(value: number): number {
+function clampChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
@@ -18,7 +18,7 @@ export function normalizeHex(hex: string): string | null {
   return null;
 }
 
-export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const normalized = normalizeHex(hex);
   if (!normalized) return null;
   const value = normalized.slice(1);
@@ -46,7 +46,7 @@ export function mixHex(colorA: string, colorB: string, ratio: number): string {
   );
 }
 
-export function getLuminance(hex: string): number {
+function getLuminance(hex: string): number {
   const rgb = hexToRgb(hex);
   if (!rgb) return 1;
   const channels = [rgb.r, rgb.g, rgb.b].map((channel) => {

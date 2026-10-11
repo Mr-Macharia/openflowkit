@@ -8,7 +8,7 @@ import type { ChartData } from '../../domain/nodes/chartNodePresentation';
 import { Button, Icon, IconButton, Panel } from '../design-system';
 import { IconPlus, IconX } from '@tabler/icons-react';
 
-export interface V2ChartDataPanelProps {
+interface V2ChartDataPanelProps {
   readonly node: SceneNode;
   readonly pageId: string;
   readonly commit: (command: DocumentCommand) => void;

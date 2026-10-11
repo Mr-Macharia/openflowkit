@@ -14,14 +14,14 @@ export interface ViewportSceneProjection {
   readonly detailLevel: SemanticDetailLevel;
 }
 
-export interface ViewportProjectionOptions {
+interface ViewportProjectionOptions {
   readonly cullingThreshold?: number;
   readonly overscanScreenPixels?: number;
   readonly retainedNodeIds?: readonly string[];
 }
 
-export const DEFAULT_VIEWPORT_CULLING_THRESHOLD = 250;
-export const DEFAULT_VIEWPORT_OVERSCAN_SCREEN_PIXELS = 240;
+const DEFAULT_VIEWPORT_CULLING_THRESHOLD = 250;
+const DEFAULT_VIEWPORT_OVERSCAN_SCREEN_PIXELS = 240;
 
 export function semanticDetailLevel(zoom: number): SemanticDetailLevel {
   return zoom < 0.35 ? 'overview' : 'full';

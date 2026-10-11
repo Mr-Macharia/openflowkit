@@ -1,5 +1,5 @@
 import { useId, type RefObject } from 'react';
-import { Button, Popover, PopoverHeader, Segmented, Switch } from '../design-system';
+import { Popover, PopoverHeader, Segmented, Switch } from '../design-system';
 import type { V2Density, V2Preferences, V2ThemePreference } from './useV2Preferences';
 import { V2PanelField } from './V2PanelField';
 import { COMMAND } from './v2Shortcuts';
@@ -15,7 +15,7 @@ export function V2Settings({ open, anchorRef, onClose, preferences, onPreference
   const id = useId();
   return (
     <Popover role="dialog" aria-label="Settings" open={open} anchorRef={anchorRef} onClose={onClose} placement="bottom-start">
-      <PopoverHeader title="Settings" close={<Button variant="quiet" onClick={onClose}>Done</Button>} />
+      <PopoverHeader title="Settings" onClose={onClose} />
       <div className="ofk-v2-properties ofk-v2-settings">
         <section className="ofk-v2-panel-section" aria-label="Appearance">
           <h3>Appearance</h3>

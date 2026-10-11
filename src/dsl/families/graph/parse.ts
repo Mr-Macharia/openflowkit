@@ -21,14 +21,14 @@ function parseReference(tokens: readonly DslToken[], diagnostics: DslDiagnostic[
   if (!label) return undefined;
   const first = parsed.body[0]!;
   const last = parsed.body.at(-1)!;
-  let id = equals >= 0 ? joinTokens(parsed.body.slice(0, equals)) : undefined;
-  if (id && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(id)) {
-    const original = id;
-    id = id.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'n';
-    diagnostics.push(tokenDiagnostic('W120', 'warning', parsed.body[0], `Invalid explicit id ${original}; slugified as ${id}`));
+  const written = equals >= 0 ? joinTokens(parsed.body.slice(0, equals)) : undefined;
+  let id = written;
+  if (written && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(written)) {
+    id = written.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'n';
+    diagnostics.push(tokenDiagnostic('W120', 'warning', parsed.body[0], `Invalid explicit id ${written}; slugified as ${id}`));
   }
   return {
-    ...(id ? { id } : {}), label,
+    ...(id ? { id } : {}), ...(written && written !== id ? { writtenId: written } : {}), label,
     attributes: parsed.attributes, line: first.line, col: first.col, endCol: last.endCol,
   };
 }
@@ -68,7 +68,7 @@ function gluedRun(tokens: readonly DslToken[], index: number): readonly DslToken
 }
 
 /** The first operator a graph family has no arrow for (`||--o{`, `..>`), as written. */
-export function foreignArrow(tokens: readonly DslToken[]): string | undefined {
+function foreignArrow(tokens: readonly DslToken[]): string | undefined {
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index]!.kind !== 'arrow') continue;
     const run = gluedRun(tokens, index);
@@ -152,7 +152,7 @@ export function parseEdge(tokens: readonly DslToken[], diagnostics: DslDiagnosti
  * Graph-family statements: nodes, edges, groups and the reserved model records
  * that phase 5 will give semantics. Flowchart, architecture and state share it.
  */
-export interface GraphParseOptions {
+interface GraphParseOptions {
   /** Extra statement keywords a family treats as block kinds (state's `state`). */
   readonly reservedRecords?: ReadonlySet<string>;
 }

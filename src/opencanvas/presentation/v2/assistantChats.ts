@@ -34,7 +34,7 @@ export interface ChatMessage {
   readonly note?: string;
 }
 
-export interface StoredChat {
+interface StoredChat {
   readonly id: string;
   readonly updatedAt: number;
   readonly messages: readonly ChatMessage[];
@@ -48,7 +48,7 @@ export interface ChatStore {
 
 // ponytail: fixed caps; summarise old turns, or move chats to IndexedDB, if people keep long threads.
 export const MAX_CHATS = 30;
-export const MAX_MESSAGES = 60;
+const MAX_MESSAGES = 60;
 
 const isMessage = (value: unknown): value is ChatMessage =>
   !!value && typeof value === 'object' && typeof (value as ChatMessage).text === 'string'

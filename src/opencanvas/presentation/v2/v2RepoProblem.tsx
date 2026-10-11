@@ -6,7 +6,7 @@ import type { V2StateHeroKind } from './V2StateHero';
 // What the two GitHub pages (repo -> diagram, repo -> map) say when a read fails, and the token form they share.
 
 // The token lives in this tab's sessionStorage only: never logged, never in a URL.
-export const TOKEN_KEY = 'ofk.github-token';
+const TOKEN_KEY = 'ofk.github-token';
 export const storedToken = (): string | undefined => { try { return sessionStorage.getItem(TOKEN_KEY) ?? undefined; } catch { return undefined; } };
 export const keepToken = (token: string | null): void => { try { if (token) sessionStorage.setItem(TOKEN_KEY, token); else sessionStorage.removeItem(TOKEN_KEY); } catch { /* storage blocked: the token is used for this try only */ } };
 

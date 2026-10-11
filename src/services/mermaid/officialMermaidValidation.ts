@@ -4,7 +4,7 @@ import { extractMermaidDiagramHeader } from './detectDiagramType';
 // Header-only detection: the official Mermaid runtime is not loaded here (it
 // needs a DOM and returns a different model), so `isValid` only says a
 // recognisable header exists. `parseMermaidByType` uses this as its oracle.
-export interface OfficialMermaidValidationResult {
+interface OfficialMermaidValidationResult {
   isValid: boolean;
   detectedType?: DiagramType;
   rawType?: string;

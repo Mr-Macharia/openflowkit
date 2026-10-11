@@ -86,7 +86,7 @@ export function frameChromePrimitives(preset: FramePreset, size: Size2d): readon
   }
 }
 
-export interface CreatePresetFrameOptions {
+interface CreatePresetFrameOptions {
   readonly id: string;
   readonly preset: FramePreset;
   /** Top-left corner. */

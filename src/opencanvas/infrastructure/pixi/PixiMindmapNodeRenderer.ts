@@ -17,7 +17,7 @@ import { drawPixiLocalRect } from './pixiNodeOutline';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
 import { createPixiText, truncateTextToWidth } from './pixiText';
 
-export interface PixiMindmapNodeDrawResult {
+interface PixiMindmapNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }

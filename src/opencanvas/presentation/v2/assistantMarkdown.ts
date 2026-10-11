@@ -6,7 +6,7 @@ export type MdInline =
   | { readonly kind: 'code' | 'strong' | 'em'; readonly text: string }
   | { readonly kind: 'link'; readonly text: string; readonly href: string };
 
-export type MdBlock =
+type MdBlock =
   | { readonly kind: 'p'; readonly lines: readonly MdInline[][] }
   | { readonly kind: 'h'; readonly level: 1 | 2 | 3; readonly inline: MdInline[] }
   | { readonly kind: 'ul' | 'ol'; readonly items: readonly MdInline[][] }

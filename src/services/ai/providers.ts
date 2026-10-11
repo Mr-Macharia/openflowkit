@@ -10,7 +10,7 @@ export type AiProviderId =
 export type AiWireFormat = 'anthropic' | 'openai' | 'google' | 'ollama';
 
 /** V1's rating, kept verbatim: what the browser will let this provider do. */
-export type ProviderRisk = 'browser_friendly' | 'mixed' | 'proxy_likely';
+type ProviderRisk = 'browser_friendly' | 'mixed' | 'proxy_likely';
 
 export interface AiProviderDefinition {
   readonly id: AiProviderId;

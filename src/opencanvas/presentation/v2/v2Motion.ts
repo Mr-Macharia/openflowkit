@@ -14,10 +14,10 @@ import { withEmbeddedInter } from '../../infrastructure/export/raster';
 import type { V2ExportFile } from './v2Export';
 import { loadIconArt } from './v2IconArt';
 
-/** `auto` walks the connector graph; a flow id replays a phase-5 flow; `code` reads the frame's animate block. */
-export type V2MotionOrder = 'auto' | 'code' | (string & {});
+/** `auto` walks the connector graph; a flow id replays a model flow; `code` reads the frame's animate block. */
+type V2MotionOrder = 'auto' | 'code' | (string & {});
 
-export interface V2MotionRequest {
+interface V2MotionRequest {
   readonly document: SceneDocumentV1;
   readonly pageId: string;
   readonly preset?: AnimationPreset;
@@ -111,7 +111,7 @@ export async function buildMotionSvgFile(request: V2MotionRequest): Promise<V2Ex
 
 export { timelineDuration };
 
-export interface V2MotionEncodeRequest extends V2MotionRequest {
+interface V2MotionEncodeRequest extends V2MotionRequest {
   readonly timeline?: Timeline;
   readonly format: MotionFormat;
   readonly size: MotionSize;

@@ -13,7 +13,7 @@ const LegacyViewPage = lazy(async () => ({ default: (await import('@/opencanvas/
 /** v1 routes that were screens of the old app (phase 12.5); bookmarks land on home. */
 export const LEGACY_HOME_PATHS = ['/templates', '/settings', '/canvas', '/mcp'] as const;
 /** v1 forwarded `#/docs…` to the docs site. Its pages were rebuilt (phase 9), so old slugs land on its home. */
-export const LEGACY_DOCS_PATHS = ['/docs', '/docs/:slug', '/docs/:lang/:slug'] as const;
+const LEGACY_DOCS_PATHS = ['/docs', '/docs/:slug', '/docs/:lang/:slug'] as const;
 const DOCS_SITE = 'https://docs.openflowkit.com/';
 
 function DocsSiteRedirect(): null {

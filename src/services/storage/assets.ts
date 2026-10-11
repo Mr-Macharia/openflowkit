@@ -5,7 +5,7 @@ import { getIndexedDbFactory, getRecord, putRecord, withDatabase } from './index
 // ponytail: a data URL in the record, not a Blob — it survives JSON export
 // inline and needs no object-URL lifecycle. Fine to ~10 MB per image; upgrade
 // path is a Blob record plus a revoked object URL in the media layer.
-export interface StoredAsset {
+interface StoredAsset {
   readonly id: string;
   readonly dataUrl: string;
   readonly name: string;
@@ -14,7 +14,7 @@ export interface StoredAsset {
 
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 
-export function assetBytes(dataUrl: string): number {
+function assetBytes(dataUrl: string): number {
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
   return Math.floor((base64.length * 3) / 4);
 }
@@ -70,7 +70,7 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'];
+const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'];
 
 export function isImageFile(file: File): boolean {
   return IMAGE_MIME_TYPES.includes(file.type);

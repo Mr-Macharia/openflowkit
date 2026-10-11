@@ -8,5 +8,6 @@ Bounded undo/redo over canonical commands.
 - past and future stacks obey a configurable positive limit;
 - history owns no renderer or persistence behavior.
 
-The legacy Zustand snapshot history remains active until a later flagged store
-integration proves parity.
+The document session (`../session/session.ts`) commits document edits through it
+and exposes undo/redo from it. Each entry keeps the command and its inverse, not a
+document snapshot.

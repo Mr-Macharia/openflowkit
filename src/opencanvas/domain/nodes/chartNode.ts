@@ -8,7 +8,7 @@ import {
 
 export const DEFAULT_CHART_SIZE: Size2d = { width: 720, height: 440 };
 
-export interface CreateChartNodeOptions {
+interface CreateChartNodeOptions {
   readonly id: string;
   readonly at: Point2d;
   readonly chart: ChartKind;

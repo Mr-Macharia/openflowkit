@@ -2,11 +2,11 @@ import type { SceneDocumentV1 } from '../../opencanvas/domain/document/types';
 import { decryptDocument, encryptDocument, ShareCryptoError } from './shareCrypto';
 
 /** The one place the share endpoint is named. */
-export const SHARE_ORIGIN: string = import.meta.env.VITE_SHARE_ORIGIN ?? 'https://share.openflowkit.com';
+const SHARE_ORIGIN: string = import.meta.env.VITE_SHARE_ORIGIN ?? 'https://share.openflowkit.com';
 /** Same ceiling as the Worker's (worker/index.ts); checked here first so an oversize document never leaves the browser. */
-export const MAX_SHARE_BYTES = 1_048_576;
+const MAX_SHARE_BYTES = 1_048_576;
 
-export type ShareErrorCode = 'too-large' | 'offline' | 'unreachable' | 'turnstile' | 'rate-limited' | 'not-found' | 'server' | 'forbidden' | 'no-site-key';
+type ShareErrorCode = 'too-large' | 'offline' | 'unreachable' | 'turnstile' | 'rate-limited' | 'not-found' | 'server' | 'forbidden' | 'no-site-key';
 
 export class ShareError extends Error {
   constructor(readonly code: ShareErrorCode, message: string) {
@@ -25,7 +25,7 @@ async function call(fetcher: typeof fetch, url: string, init: RequestInit): Prom
   }
 }
 
-export async function uploadShare(
+async function uploadShare(
   body: Uint8Array, turnstileToken: string, origin = SHARE_ORIGIN, fetcher: typeof fetch = fetch,
 ): Promise<{ id: string; deleteToken: string }> {
   const response = await call(fetcher, `${origin}/s`, { method: 'POST', body, headers: { 'X-Turnstile-Token': turnstileToken } });
@@ -36,7 +36,7 @@ export async function uploadShare(
   return await response.json() as { id: string; deleteToken: string };
 }
 
-export async function downloadShare(id: string, origin = SHARE_ORIGIN, fetcher: typeof fetch = fetch): Promise<Uint8Array> {
+async function downloadShare(id: string, origin = SHARE_ORIGIN, fetcher: typeof fetch = fetch): Promise<Uint8Array> {
   const response = await call(fetcher, `${origin}/s/${id}`, { method: 'GET' });
   if (response.status === 404) throw new ShareError('not-found', 'This link was deleted or never existed.');
   if (!response.ok) throw new ShareError('server', `The share service failed (${response.status}). Try again later.`);
@@ -59,7 +59,7 @@ export function shareLink(appUrl: string, id: string, key: string): string {
   return `${appUrl.split('#')[0]}#/s/${id}/${key}`;
 }
 
-export interface SharedLink { readonly url: string; readonly id: string; readonly deleteToken: string }
+interface SharedLink { readonly url: string; readonly id: string; readonly deleteToken: string }
 
 export async function createShareLink(
   document: SceneDocumentV1,

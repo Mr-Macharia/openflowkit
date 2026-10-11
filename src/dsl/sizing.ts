@@ -1,6 +1,7 @@
 import { resolveSizedNode } from '../opencanvas/domain/node-sizing/model';
 import { LABEL_FONT, measurePortableText, SUBLABEL_FONT } from '../opencanvas/domain/text/measurement';
 import type { SceneNode } from '../opencanvas/domain/document/types';
+import { iconCardSize } from '../opencanvas/domain/nodes/iconCardLayout';
 import { nodeLabelBounds } from '../opencanvas/domain/nodes/nodeLabelBounds';
 import type { Size2d } from '../opencanvas/domain/geometry/types';
 import type { DslShapeSpec } from './vocabulary';
@@ -10,6 +11,10 @@ export interface NodeMeasureRequest {
   readonly label: string;
   readonly subLabel?: string;
   readonly hasIcon: boolean;
+  /** A C4 element card (it keeps its own measure), not a graph icon tile. */
+  readonly c4Card?: true;
+  /** An icon card's layout: the art above its caption (default) or left of its text. */
+  readonly iconPlacement?: 'top' | 'left';
   readonly spec: DslShapeSpec;
   readonly width?: number;
   readonly height?: number;
@@ -35,6 +40,12 @@ const pad = (n: number) => ({ top: n, right: n, bottom: n, left: n });
 export const ACTOR_CONTENT_LAYOUT = {
   version: 1, horizontal: 'center', vertical: 'end', iconPlacement: 'top', labelAlignment: 'center',
   padding: pad(10), gap: 8, iconScale: 1, freeIconPosition: { x: 0.5, y: 0.5 },
+} as const;
+
+/** An icon card with the art on its left (DSL `iconpos: left`). */
+export const ICON_ROW_LAYOUT = {
+  version: 1, horizontal: 'center', vertical: 'center', iconPlacement: 'left', labelAlignment: 'center',
+  padding: pad(16), gap: 8, iconScale: 1, freeIconPosition: { x: 0.5, y: 0.5 },
 } as const;
 
 const TEXT_LAYOUT = {
@@ -76,9 +87,20 @@ export function measureNodeSize(request: NodeMeasureRequest): Size2d {
     };
   }
   const label = measurePortableText(request.label, { ...LABEL_FONT, maxWidth: spec.wrap, overflow: 'visible' });
-  if (request.kind === 'architecture') {
+  if (request.kind === 'architecture' && request.c4Card) {
+    // A C4 card shows a header and two detail lines at most, not a tile's caption: it keeps its own measure.
     const title = measurePortableText(request.label, { fontSize: 12, fontWeight: 600, maxWidth: 200, overflow: 'visible' });
     return clampSize(Math.max(148, title.width + 32), 84 + title.height + 16, spec);
+  }
+  if (request.kind === 'architecture') {
+    // An icon tile hugs its caption (the canvas draws it from the same layout).
+    const card = iconCardSize(blankNode({
+      label: request.label,
+      ...(request.subLabel ? { subLabel: request.subLabel } : {}),
+      assetPresentation: 'icon',
+      ...(request.iconPlacement === 'left' ? { contentLayout: ICON_ROW_LAYOUT } : {}),
+    }, { width: 1, height: 1 }, 'architecture'));
+    return clampSize(card.width, card.height, spec);
   }
   if (request.kind === 'sticky') {
     return clampSize(Math.max(180, label.width + 40), label.height + 64, spec);

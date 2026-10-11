@@ -1,6 +1,7 @@
 import type { SceneConnector, SceneNode } from '../../opencanvas/domain/document/types';
 import { connectorLabelPlate, resolveConnectorLabelStyle } from '../../opencanvas/domain/connectors/labelStyle';
 import type { PaletteKey } from '../../opencanvas/domain/nodes/nodePalette';
+import { frameInsets } from '../layout';
 import { measurePortableText } from '../../opencanvas/domain/text/measurement';
 import type { DslDiagnostic } from '../ast';
 import { nonVisualAttributes, readAttributes, typedFrom } from '../attributes';
@@ -24,17 +25,21 @@ const ACTOR_EXTRA = 40;
 const MESSAGE_OFFSET = 44;
 const MESSAGE_SPACING = 52;
 const NOTE_GAP = 12;
+// A note starts this far above the line the next message would take.
+const NOTE_LIFT = 18;
 const LIFELINE_TAIL = 44;
-const PADDING = { top: 96, right: 56, bottom: 56, left: 56 };
+const PADDING = { right: 56, bottom: 16, left: 56 };
 const FRAGMENT_INSET = 40;
-// A fragment's header sits this far above its first message line: clear of the label that rides above that line.
-const FRAGMENT_LEAD = 48;
 const LABEL_LIFT = 3;
-// Fragment chrome takes timeline room: a closed block's bottom edge, an `else` divider and a
-// header nested on another header each push every later message down this far.
-const CLOSE_ROOM = 48;
-const DIVIDER_ROOM = 24;
-const NEST_ROOM = 28;
+// Vertical room on the timeline: the space between two stacked things, a block's tag-and-guard band,
+// the space under a block's last item, an arrowhead, a self call's loop, a bar's tail under its last message.
+const GAP = 8;
+const TAG_HEIGHT = 24;
+const CLOSE_PAD = 20;
+const ARROW_HALF = 4;
+const SELF_LOOP_DROP = 32;
+const MIN_ABOVE = 12;
+const ACTIVATION_TAIL = 12;
 // The guard text starts this far right of the first lifeline, which the header tag (left of it) never reaches.
 const GUARD_INSET = 10;
 
@@ -56,11 +61,18 @@ interface ParticipantDraft {
   declared: boolean;
   /** Line of the first message that mentions it, if any. */
   firstUseLine: number | null;
-  /** `db | queue | icon` stereotype, kept verbatim for round-trip. */
+  /** `db | queue | icon` stereotype: db and queue draw their head as a cylinder and a queue. */
   stereotype?: string;
   attrs: CanonicalAttribute[];
-  activations: Array<{ order: number; activate: boolean }>;
+  activations: Activation[];
   comments: string[];
+}
+
+interface Activation {
+  order: number;
+  activate: boolean;
+  /** Source line: the serializer writes it back in place, inside the block it was written in. */
+  line: number;
 }
 
 interface MessageDraft {
@@ -98,14 +110,27 @@ interface BranchDraft {
   startOrder: number;
   endOrder: number;
   line: number;
+  /** Line of the `}` (or `} else`) that ends this branch. */
+  endLine: number;
+  /** The branch this `else`/`and` continues; its frame goes on under a divider. */
+  continues: string | null;
   comments: string[];
 }
+
+/** The statements that take room on the timeline, in the order they were written. */
+type TimelineEvent =
+  | { kind: 'message'; index: number }
+  | { kind: 'note'; index: number }
+  | { kind: 'open'; id: string }
+  | { kind: 'close'; id: string }
+  | { kind: 'activation'; activation: Activation; participant: string };
 
 interface SeqModel {
   participants: ParticipantDraft[];
   messages: MessageDraft[];
   notes: NoteDraft[];
   branches: BranchDraft[];
+  timeline: TimelineEvent[];
   autonumber: boolean;
   reserved: string[];
 }
@@ -118,6 +143,7 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
   const notes: NoteDraft[] = [];
   const branches: BranchDraft[] = [];
   const reserved: string[] = [];
+  const timeline: TimelineEvent[] = [];
   const open: BranchDraft[] = [];
   let pendingClose: BranchDraft | null = null;
   const used = new Set<string>();
@@ -162,6 +188,8 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
       const closing = open.pop();
       if (closing) {
         closing.endOrder = messages.length - 1;
+        closing.endLine = segment.line;
+        timeline.push({ kind: 'close', id: closing.id });
         pendingClose = closing;
       } else {
         context.diagnostics.push(tokenDiagnostic('W101', 'warning', segment.tokens[0], 'Unexpected block close; line dropped'));
@@ -194,12 +222,16 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
       continue;
     }
     if (keyword === 'activate' || keyword === 'deactivate') {
-      const participant = resolve(joinTokens(segment.tokens.slice(1)));
+      // A target written `id = Label` (how the serializer names it) is that id; a quoted `"a=b"` is a name.
+      const target = named(segment.tokens.slice(1));
+      const participant = resolve(target.id ?? target.name);
       if (!participant) {
         fail(segment, 'W150', `${keyword} target has no participant`, 'declare it with participant or a message');
         continue;
       }
-      participant.activations.push({ order: messages.length, activate: keyword === 'activate' });
+      const activation = { order: messages.length, activate: keyword === 'activate', line: segment.line };
+      participant.activations.push(activation);
+      timeline.push({ kind: 'activation', activation, participant: participant.id });
       continue;
     }
     if (keyword === 'note') {
@@ -213,9 +245,9 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
         fail(segment, 'W101', 'note needs over / left of / right of and `: text`', 'note over A, B : text');
         continue;
       }
-      const targets = joinTokens(head.slice(position === 'over' ? 1 : 2)).split(',')
+      const targets = splitOnCommas(head.slice(position === 'over' ? 1 : 2))
         // A target written `id = Label` (how the serializer names it) is that id.
-        .map((name) => resolve(name.split('=')[0]!.trim()))
+        .map((tokens) => { const target = named(tokens); return resolve(target.id ?? target.name); })
         .filter((participant): participant is ParticipantDraft => Boolean(participant));
       if (targets.length === 0) {
         fail(segment, 'W150', 'note target is not a participant', 'declare it with participant or a message');
@@ -226,6 +258,7 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
         targets: targets.map((participant) => participant.id), order: messages.length,
         line: segment.line, comments: claimed, parent: open.at(-1)?.id ?? null,
       });
+      timeline.push({ kind: 'note', index: notes.length - 1 });
       continue;
     }
     // Mermaid writes `alt x … end`; ours is `alt x { … }`. Said, not guessed: the lines inside still import.
@@ -242,28 +275,35 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
       const branch: BranchDraft = {
         id: uniqueId(`${keyword}-${branches.length + 1}`), type: keyword, condition: joinTokens(parsed.body),
         branchIndex: 0, parent: open.at(-1)?.id ?? null, startOrder: messages.length, endOrder: messages.length - 1,
-        line: segment.line, comments: claimed,
+        line: segment.line, endLine: segment.line, continues: null, comments: claimed,
       };
       branches.push(branch);
       open.push(branch);
+      timeline.push({ kind: 'open', id: branch.id });
       continue;
     }
     if (keyword === 'else' || keyword === 'and') {
-      const current = open.at(-1) ?? justClosed;
+      // `} else {` continues the block that `}` just closed, wherever it sits; a bare `else {` the open one.
+      const current = justClosed ?? open.at(-1);
       if (!current || current.type !== BRANCH_OF[keyword]) {
         fail(segment, 'W101', `${keyword} needs an open ${BRANCH_OF[keyword]} block`, `${BRANCH_OF[keyword]} { … } ${keyword} { … }`);
         continue;
       }
       current.endOrder = messages.length - 1;
+      current.endLine = segment.line;
+      // The block goes on: the `}` before `else` is a divider, not the block's end.
+      const last = timeline.at(-1);
+      if (last?.kind === 'close' && last.id === current.id) timeline.pop();
       const parsed = readAttributes(segment.tokens.slice(1), context.diagnostics);
       const branch: BranchDraft = {
         id: uniqueId(`${current.type}-${branches.length + 1}`), type: current.type, condition: joinTokens(parsed.body),
         branchIndex: current.branchIndex + 1, parent: current.parent, startOrder: messages.length,
-        endOrder: messages.length - 1, line: segment.line, comments: claimed,
+        endOrder: messages.length - 1, line: segment.line, endLine: segment.line, continues: current.id, comments: claimed,
       };
       branches.push(branch);
       if (open.at(-1) === current) open[open.length - 1] = branch;
       else open.push(branch);
+      timeline.push({ kind: 'open', id: branch.id });
       continue;
     }
     if (keyword === 'autonumber') {
@@ -304,6 +344,7 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
         ...(label ? { label } : {}), line: segment.line, attrs: parsed.attributes,
         comments: claimed, parent: open.at(-1)?.id ?? null,
       });
+      timeline.push({ kind: 'message', index: messages.length - 1 });
       continue;
     }
 
@@ -320,12 +361,24 @@ function parseSequence(segments: readonly DslSegment[], context: FamilyContext):
     participant.attrs.push(...parsed.attributes.filter((attribute) => attribute.key || !PARTICIPANT_STEREOTYPES.has(attribute.value)));
     participant.comments.push(...claimed);
   }
+  const endOfText = (segments.at(-1)?.line ?? 0) + 1;
   while (open.length > 0) {
     const branch = open.pop()!;
     branch.endOrder = messages.length - 1;
+    branch.endLine = endOfText;
+    timeline.push({ kind: 'close', id: branch.id });
     context.diagnostics.push(tokenDiagnostic('W103', 'warning', undefined, `Unclosed ${branch.type} block`, '} inserted'));
   }
-  return { participants, messages, notes, branches, autonumber, reserved };
+  return { participants, messages, notes, branches, timeline, autonumber, reserved };
+}
+
+function splitOnCommas(tokens: readonly DslToken[]): DslToken[][] {
+  const parts: DslToken[][] = [[]];
+  for (const token of tokens) {
+    if (token.kind === 'punctuation' && token.value === ',') parts.push([]);
+    else parts.at(-1)!.push(token);
+  }
+  return parts;
 }
 
 function textWidth(text: string, fontSize: number, extra: number): number {
@@ -335,7 +388,6 @@ function textWidth(text: string, fontSize: number, extra: number): number {
 function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
   // Node translations stay frame-relative (the scene composes the parent
   // transform); only connector waypoints are page coordinates.
-  void context;
   const laneWidth = new Map(model.participants.map((participant) => [
     participant.id, Math.max(LANE_WIDTH, textWidth(participant.label, 12, 40)),
   ]));
@@ -347,59 +399,73 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
     cursor += laneWidth.get(participant.id)! + LANE_GAP;
   }
   const lanesRight = model.participants.length > 0 ? cursor - LANE_GAP : PADDING.left + LANE_WIDTH;
-  const timelineY = (row: number) => HEADER + ACTOR_EXTRA + MESSAGE_OFFSET + row * MESSAGE_SPACING;
-  // Notes take their own room on the timeline: each pushes everything written after it down by
-  // its height. Orders stay message indices (the text round-trips on them); rows carry the room.
+  // A titled frame starts its content below the header band and its gap; an actor's figure takes the
+  // top, other participants the ACTOR_EXTRA below it. Untitled, the content starts at the frame's edge.
+  const hasActor = model.participants.some((participant) => participant.kind === 'actor');
+  const top = context.title ? frameInsets(true).top - (hasActor ? 0 : ACTOR_EXTRA) : 0;
+  const headerBottom = top + ACTOR_EXTRA + HEADER;
+  const firstLine = headerBottom + MESSAGE_OFFSET;
+  const rowAt = (y: number) => (y - firstLine) / MESSAGE_SPACING;
   const noteSizes = new Map(model.notes.map((note) => {
     const width = Math.max(180, textWidth(note.text, 11, 44));
     const height = Math.max(56, Math.round(measurePortableText(note.text, { fontSize: 11, fontWeight: 500, maxWidth: width - 24, overflow: 'wrap' }).height) + 40);
     return [note.id, { width, height }] as const;
   }));
-  const room = (note: NoteDraft) => noteSizes.get(note.id)!.height + NOTE_GAP;
-  const roomOf = (notes: readonly NoteDraft[]) => notes.reduce((total, note) => total + room(note), 0);
-  const parentOf = new Map(model.branches.map((branch) => [branch.id, branch.parent]));
-  const inside = (parent: string | null, branchId: string) => {
-    for (let at = parent; at; at = parentOf.get(at) ?? null) if (at === branchId) return true;
-    return false;
-  };
-  const byId = new Map(model.branches.map((branch) => [branch.id, branch]));
-  const continued = (branch: BranchDraft) => model.branches.some((other) => other.type === branch.type && other.parent === branch.parent
-    && other.branchIndex === branch.branchIndex + 1 && other.startOrder === branch.endOrder + 1);
-  /** Room a branch's own header takes beyond FRAGMENT_LEAD: an `else` divider, or a header nested on its parent's. */
-  const headerRoom = (branch: BranchDraft) => branch.branchIndex > 0 ? DIVIDER_ROOM
-    : branch.parent && byId.get(branch.parent)?.startOrder === branch.startOrder ? NEST_ROOM : 0;
-  /** Chrome above message `order`; `header` counts only the headers that open before (outside) that branch's. */
-  const chrome = (order: number, header?: BranchDraft) => model.branches.reduce((total, branch) => total
-    + (branch.startOrder < order || (branch.startOrder === order && (!header || branch === header || inside(header.parent, branch.id))) ? headerRoom(branch) : 0)
-    + (branch.endOrder < order && !continued(branch) ? CLOSE_ROOM : 0), 0);
-  /** Message `order`'s row: every note written before it (order ≤ its own) and all fragment chrome sit above it. */
-  const rowOf = (order: number) => order + (roomOf(model.notes.filter((note) => note.order <= order)) + chrome(order)) / MESSAGE_SPACING;
-  const noteTop = new Map(model.notes.map((note, index) => [note.id, timelineY(note.order) + roomOf(model.notes.slice(0, index)) + chrome(note.order) - 18]));
-  const branchSpan = (branch: BranchDraft): { startY: number; endY: number } => {
-    // Notes written inside the block sit in its band; one written just before it sits above.
-    const startY = timelineY(branch.startOrder) + chrome(branch.startOrder, branch)
-      + roomOf(model.notes.filter((note) => note.order < branch.startOrder || (note.order === branch.startOrder && !inside(note.parent, branch.id)))) - FRAGMENT_LEAD;
-    const lastMessage = branch.endOrder >= branch.startOrder ? timelineY(rowOf(branch.endOrder)) : startY + 8;
-    const notesBottom = Math.max(-Infinity, ...model.notes.filter((note) => inside(note.parent, branch.id))
-      .map((note) => noteTop.get(note.id)! + noteSizes.get(note.id)!.height));
-    // A block nested inside ends above this one's bottom edge.
-    const nestedBottom = Math.max(-Infinity, ...model.branches.filter((child) => child.parent === branch.id).map((child) => branchSpan(child).endY + 12));
-    return { startY, endY: Math.max(lastMessage, notesBottom, nestedBottom) };
-  };
-  // A branch ends where the next one (`else`, `and`) of its block begins, not 44px below its last message.
-  const nextStartY = (branch: BranchDraft) => {
-    const next = model.branches.find((other) => other.type === branch.type && other.parent === branch.parent
-      && other.branchIndex === branch.branchIndex + 1 && other.startOrder === branch.endOrder + 1);
-    return next ? branchSpan(next).startY : undefined;
-  };
-  const lastOrder = Math.max(-1, ...model.messages.map((message) => message.order));
-  const branchesBottom = model.branches.reduce((bottom, branch) => Math.max(bottom, branchSpan(branch).endY + 48), 0);
-  const notesBottom = Math.max(0, ...model.notes.map((note) => noteTop.get(note.id)! + noteSizes.get(note.id)!.height));
-  const lifeline = Math.max(
-    HEADER + ACTOR_EXTRA + MESSAGE_OFFSET + (rowOf(lastOrder) + 1) * MESSAGE_SPACING + LIFELINE_TAIL,
-    branchesBottom + 24,
-    notesBottom + LIFELINE_TAIL,
-  );
+  const labelLift = (text: string) => connectorLabelPlate(text, labelStyle, { x: 0, y: 0 }).height / 2 + LABEL_LIFT;
+  /** Room a message takes above its line: the label plate that rides there (a self call's label sits on its loop). */
+  const above = (message: MessageDraft) => message.label && message.from !== message.to ? labelLift(message.label) * 2 : MIN_ABOVE;
+  const branchById = new Map(model.branches.map((branch) => [branch.id, branch]));
+
+  // One walk down the timeline in the order the text was written: each message, note, block edge
+  // and activation takes the next free room, so nothing written later lands on something earlier.
+  const lineOf = new Map<number, number>();
+  const noteTop = new Map<string, number>();
+  const spans = new Map<string, { top: number; bottom: number }>();
+  const activationY = new Map<Activation, number>();
+  /** Bars opened since the last message: they start on the next message's line. */
+  let pending: Array<{ activation: Activation; participant: string }> = [];
+  let next = firstLine; // the earliest line the next message may take
+  let floor = headerBottom; // the lowest pixel anything takes so far
+  let lastLine: number | null = null;
+  for (const event of model.timeline) {
+    if (event.kind === 'message') {
+      const message = model.messages[event.index]!;
+      const line = Math.max(next, floor + GAP + above(message));
+      lineOf.set(event.index, line);
+      for (const { activation } of pending) activationY.set(activation, line);
+      pending = [];
+      floor = line + (message.from === message.to ? SELF_LOOP_DROP : ARROW_HALF);
+      next = line + MESSAGE_SPACING;
+      lastLine = line;
+    } else if (event.kind === 'note') {
+      const note = model.notes[event.index]!;
+      const y = Math.max(next - NOTE_LIFT, floor + GAP);
+      noteTop.set(note.id, y);
+      floor = y + noteSizes.get(note.id)!.height;
+      next = floor + NOTE_GAP + NOTE_LIFT;
+    } else if (event.kind === 'open') {
+      // A header (or an `else` divider) sits under whatever came before; its tag and guard take a band.
+      const y = floor + GAP;
+      const continues = branchById.get(event.id)!.continues;
+      if (continues) spans.get(continues)!.bottom = y;
+      spans.set(event.id, { top: y, bottom: y + TAG_HEIGHT });
+      floor = y + TAG_HEIGHT;
+    } else if (event.kind === 'close') {
+      const span = spans.get(event.id)!;
+      span.bottom = floor + CLOSE_PAD;
+      floor = span.bottom;
+    } else if (event.activation.activate) {
+      pending.push(event);
+    } else {
+      // A bar ends where its `deactivate` is written: under the last message, or under the block it closes after.
+      const y = Math.max(floor, lastLine === null ? floor : lastLine + ACTIVATION_TAIL);
+      for (const open of pending) if (open.participant === event.participant) activationY.set(open.activation, y);
+      pending = pending.filter((open) => open.participant !== event.participant);
+      activationY.set(event.activation, y);
+    }
+  }
+  for (const { activation } of pending) activationY.set(activation, next);
+  const lifelineBottom = Math.max(next, floor + GAP) + LIFELINE_TAIL;
   const scene = (x: number, y: number) => ({ x, y });
   const nodes: SceneNode[] = [];
   const connectors: SceneConnector[] = [];
@@ -413,31 +479,30 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
   };
 
   // Fragments first: their fills paint behind the participants (draw order).
+  // A branch the next (`else`, `and`) continues ends where that one's dashed divider begins: one frame.
+  const continued = new Set(model.branches.map((branch) => branch.continues));
   for (const branch of model.branches) {
-    const { startY, endY } = branchSpan(branch);
-    const topLeft = scene(PADDING.left - FRAGMENT_INSET, startY);
-    // A branch ends exactly where the next (`else`, `and`) begins: a taller box would strike through its header.
-    const next = nextStartY(branch);
+    const span = spans.get(branch.id)!;
+    const topLeft = scene(PADDING.left - FRAGMENT_INSET, span.top);
     nodes.push({
       id: branch.id, kind: 'annotation', parentId: null, layerId: 'default', zIndex: 0,
       transform: { translation: topLeft, rotationRadians: 0, scale: { x: 1, y: 1 } },
-      size: {
-        width: Math.max(220, lanesRight - PADDING.left + FRAGMENT_INSET + 30),
-        height: next === undefined ? Math.max(64, endY + 44 - startY) : next - startY,
-      },
+      size: { width: Math.max(220, lanesRight - PADDING.left + FRAGMENT_INSET + 30), height: span.bottom - span.top },
       content: {
         seqFragmentId: branch.id,
         label: branch.branchIndex === 0 ? branch.type.toUpperCase() : branch.type === 'par' ? 'AND' : 'ELSE',
         ...(branch.condition ? { subLabel: branch.condition, seqGuard: guardBox(topLeft.x) } : {}),
         color: FRAGMENT_COLORS[branch.type] ?? 'violet',
         seqMessageOrder: branch.startOrder,
+        ...(branch.continues ? { seqFragmentDivider: true } : {}),
+        ...(continued.has(branch.id) ? { seqFragmentContinued: true } : {}),
       },
       appearance: {}, ports: [],
       metadata: {
         dsl: {
           id: branch.id, line: branch.line, seqBranch: true, seqFragmentType: branch.type,
           seqFragmentBranch: branch.branchIndex, seqFragmentParent: branch.parent,
-          seqFragmentStart: branch.startOrder, seqFragmentEnd: branch.endOrder,
+          seqFragmentStart: branch.startOrder, seqFragmentEnd: branch.endOrder, seqFragmentEndLine: branch.endLine,
           ...(branch.comments.length ? { comments: branch.comments } : {}),
         },
       },
@@ -453,13 +518,15 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
     const attrs = nonVisualAttributes(typed, 'node');
     nodes.push({
       id: participant.id, kind: 'sequence_participant', parentId: null, layerId: 'default', zIndex: 1,
-      transform: { translation: scene(laneX.get(participant.id)!, actor ? 0 : ACTOR_EXTRA), rotationRadians: 0, scale: { x: 1, y: 1 } },
-      size: { width: laneWidth.get(participant.id)!, height: lifeline + (actor ? ACTOR_EXTRA : 0) },
+      transform: { translation: scene(laneX.get(participant.id)!, top + (actor ? 0 : ACTOR_EXTRA)), rotationRadians: 0, scale: { x: 1, y: 1 } },
+      size: { width: laneWidth.get(participant.id)!, height: lifelineBottom - top - (actor ? 0 : ACTOR_EXTRA) },
       content: {
         label: participant.label,
         seqParticipantKind: participant.kind,
+        ...(participant.stereotype ? { seqStereotype: participant.stereotype } : {}),
+        // Rows always ride along: the renderer ends a bar on its `deactivate` row only when it has one.
         ...(participant.activations.length ? { seqActivations: participant.activations.map((activation) => (
-          rowOf(activation.order) === activation.order ? { ...activation } : { ...activation, row: rowOf(activation.order) })) } : {}),
+          { ...activation, row: rowAt(activationY.get(activation)!) })) } : {}),
         ...(custom ? { color: 'custom', customColor: custom } : palette ? { color: palette } : {}),
       },
       appearance: {}, ports: [],
@@ -477,7 +544,6 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
     });
   }
 
-  const labelLift = (text: string) => connectorLabelPlate(text, labelStyle, { x: 0, y: 0 }).height / 2 + LABEL_LIFT;
   for (const message of model.messages) {
     const attrs = nonVisualAttributes(typedFrom(message.attrs), 'edge');
     const self = message.from === message.to;
@@ -493,7 +559,7 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
       semantics: {
         seqMessageKind: self ? 'self' : message.arrow === '-->' || message.arrow === '-->>' ? 'return' : message.arrow === '->>' ? 'async' : 'sync',
         seqMessageOrder: message.order,
-        ...(rowOf(message.order) === message.order ? {} : { seqMessageRow: rowOf(message.order) }),
+        ...(rowAt(lineOf.get(message.order)!) === message.order ? {} : { seqMessageRow: rowAt(lineOf.get(message.order)!) }),
       },
       metadata: {
         dsl: {
@@ -527,7 +593,7 @@ function materialize(model: SeqModel, context: FamilyContext): FamilyScene {
   }
 
   const width = Math.max(lanesRight, ...nodes.map((node) => node.transform.translation.x + node.size.width)) + PADDING.right;
-  const height = Math.max(lifeline + PADDING.bottom, ...nodes.map((node) => node.transform.translation.y + node.size.height + 24));
+  const height = Math.max(lifelineBottom + PADDING.bottom, ...nodes.map((node) => node.transform.translation.y + node.size.height + 24));
   return {
     nodes,
     connectors,
@@ -550,6 +616,7 @@ interface SceneBranch {
   start: number;
   end: number;
   line: number;
+  endLine: number | null;
 }
 
 /** Strict line order is the canonical form; blocks re-open around their messages. */
@@ -571,20 +638,28 @@ function sequenceText(scene: DslFrameScene): string[] {
         start: typeof meta.seqFragmentStart === 'number' ? meta.seqFragmentStart : 0,
         end: typeof meta.seqFragmentEnd === 'number' ? meta.seqFragmentEnd : -1,
         line: Number(meta.line ?? 0),
+        endLine: typeof meta.seqFragmentEndLine === 'number' ? meta.seqFragmentEndLine : null,
       };
     })
     .sort((a, b) => a.line - b.line);
   const orderOf = (connector: SceneConnector) => typeof connector.semantics.seqMessageOrder === 'number' ? connector.semantics.seqMessageOrder : 0;
-  /** Innermost branch that contains a message order. */
-  const ownerOf = (order: number): string | null => {
+  /**
+   * Innermost branch an item was written in: by its source line when both have one (a note or a
+   * `deactivate` after a block's last message stays in that block), else by message order.
+   */
+  const ownerOf = (order: number, line: number): string | null => {
     let best: SceneBranch | null = null;
     for (const branch of branches) {
-      if (order < branch.start || order > branch.end) continue;
-      if (!best || branch.start >= best.start) best = branch;
+      const inside = branch.endLine !== null && line !== Number.MAX_SAFE_INTEGER
+        ? line > branch.line && line < branch.endLine
+        : order >= branch.start && order <= branch.end;
+      if (!inside) continue;
+      if (!best || branch.line >= best.line) best = branch;
     }
     return best?.id ?? null;
   };
   const heads = branches.filter((branch) => branch.branchIndex === 0);
+  const lineOfOrder = new Map(messages.map((message) => [orderOf(message), dslConnectorMeta(message).line]));
   /** Branches after `head` that continue the same block (else/and), scoped by line. */
   const continuationsOf = (head: SceneBranch): SceneBranch[] => {
     const nextHeadLine = heads
@@ -661,13 +736,21 @@ function sequenceText(scene: DslFrameScene): string[] {
       }
     }
     for (const message of messages) {
-      if (ownerOf(orderOf(message)) !== parent) continue;
-      items.push({ line: dslConnectorMeta(message).line, rank: 1, lines: messageLine(message).map((text) => `${indent}${text}`) });
+      const line = dslConnectorMeta(message).line;
+      if (ownerOf(orderOf(message), line) !== parent) continue;
+      items.push({ line, rank: 1, lines: messageLine(message).map((text) => `${indent}${text}`) });
     }
     for (const note of notes) {
       const order = typeof note.content.seqMessageOrder === 'number' ? note.content.seqMessageOrder : 0;
-      if (ownerOf(order) !== parent) continue;
-      items.push({ line: dslNodeMeta(note).line, rank: 2, lines: noteLine(note).map((text) => `${indent}${text}`) });
+      const line = dslNodeMeta(note).line;
+      if (ownerOf(order, line) !== parent) continue;
+      items.push({ line, rank: 2, lines: noteLine(note).map((text) => `${indent}${text}`) });
+    }
+    for (const participant of participants) {
+      for (const activation of activationsOf(participant, lineOfOrder)) {
+        if (ownerOf(activation.order, activation.line) !== parent) continue;
+        items.push({ line: activation.line, rank: 1, lines: [`${indent}${activation.activate ? 'activate' : 'deactivate'} ${nodeName(participant)}`] });
+      }
     }
     for (const branch of heads) {
       if (branch.parent !== parent) continue;
@@ -682,6 +765,20 @@ function sequenceText(scene: DslFrameScene): string[] {
   const reserved = Array.isArray(raw.reserved) ? raw.reserved.filter((item): item is string => typeof item === 'string') : [];
   lines.push(...reserved);
   return lines;
+}
+
+const aboveLine = (line: number | undefined) => (line === undefined || line === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : line - 0.5);
+
+/** A bar saved without its source line (older documents) is written just above the message it precedes. */
+function activationsOf(node: SceneNode, lineOfOrder: ReadonlyMap<number, number>): Activation[] {
+  const value = node.content.seqActivations;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry)
+    && typeof entry.order === 'number' && typeof entry.activate === 'boolean'
+    ? [{
+      order: entry.order, activate: entry.activate,
+      line: typeof entry.line === 'number' ? entry.line : aboveLine(lineOfOrder.get(entry.order)),
+    }] : []));
 }
 
 function conditionOf(branch: SceneBranch): string {

@@ -24,9 +24,9 @@ import type { useV2Proposal } from './useV2Proposal';
 export type { AssistantScope, ChatImage, ChatMessage } from './assistantChats';
 
 /** What the reply is doing right now, for the status line. */
-export type AssistantActivity = 'idle' | 'waiting' | 'streaming' | 'building' | 'fixing';
+type AssistantActivity = 'idle' | 'waiting' | 'streaming' | 'building' | 'fixing';
 
-export interface V2AssistantOptions {
+interface V2AssistantOptions {
   readonly documentId: string | null;
   readonly page: ScenePage | null;
   readonly selectedIds: readonly string[];

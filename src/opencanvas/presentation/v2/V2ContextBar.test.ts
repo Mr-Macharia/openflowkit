@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { contextBarStyle } from './V2ContextBar';
+import { describe, expect, it, vi } from 'vitest';
+import { contextBarEdges, contextBarStyle } from './V2ContextBar';
 
 const layout = { width: 300, left: 0, right: 1280 };
 
@@ -10,8 +10,8 @@ describe('contextBarStyle', () => {
   it('centres a point anchor above the path', () => {
     expect(contextBarStyle(new DOMRect(300, 400, 0, 200), layout)).toMatchObject({ left: 150, top: 296 });
   });
-  it('falls below the whole path near the top', () => {
-    expect(contextBarStyle(new DOMRect(300, 40, 0, 200), layout).top).toBe(256);
+  it('falls below the whole path near the top, clear of its + handle (U4-03)', () => {
+    expect(contextBarStyle(new DOMRect(300, 40, 0, 200), layout).top).toBe(280);
   });
   it('stays inside the visible canvas when panels shrink it', () => {
     expect(contextBarStyle(new DOMRect(-500, 400, 120, 60), { ...layout, left: 300 }).left).toBe(308);
@@ -35,5 +35,17 @@ describe('contextBarStyle', () => {
     const c = new DOMRect(380, 564, 160, 72);
     const top = contextBarStyle(line, layout, [a, c]).top as number;
     expect(top + 48).toBeLessThanOrEqual(a.y - 8);
+  });
+});
+
+describe('contextBarEdges (U4-18)', () => {
+  it('clamps between the floating rails, not the raw viewport', () => {
+    document.body.innerHTML = '<div class="ofk-v2"><div role="toolbar" aria-label="Create"></div><div role="toolbar" aria-label="Workspace"></div></div>';
+    const [tools, rail] = document.querySelectorAll<HTMLElement>('[role="toolbar"]');
+    tools!.getBoundingClientRect = () => new DOMRect(8, 80, 60, 400);
+    rail!.getBoundingClientRect = () => new DOMRect(1372, 80, 52, 300);
+    vi.stubGlobal('innerWidth', 1440);
+    expect(contextBarEdges(document.querySelector('.ofk-v2'))).toEqual({ left: 68, right: 1372 });
+    vi.unstubAllGlobals();
   });
 });

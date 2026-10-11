@@ -2,6 +2,8 @@ import type { SceneNode, ScenePage } from '../../opencanvas/domain/document/type
 import { createDefaultSceneLayer } from '../../opencanvas/domain/document/defaults';
 import { SUBLABEL_FONT, TEXT_PADDING } from '../sizing';
 import { measurePortableText } from '../../opencanvas/domain/text/measurement';
+import { architectureCardHeight } from '../../opencanvas/domain/nodes/architectureCardLayout';
+import { resolveNodeStyle } from '../../opencanvas/domain/nodes/nodeStyle';
 import type { Point2d, Size2d } from '../../opencanvas/domain/geometry/types';
 import { boundaryNode, elementNode, relationConnector, type ElementContext } from '../families/architecture/scene';
 import type { ArchElement, ArchModel } from '../model/types';
@@ -24,7 +26,7 @@ export interface MapLook extends Omit<ElementContext, 'origin'> {
 }
 
 /** Where each visible box sits (absolute coordinates, as ELK hands them back) and which arrows are drawn. */
-export interface MapLayout {
+interface MapLayout {
   rects: ReadonlyMap<string, LaidRect>;
   edges: readonly AggEdge[];
 }
@@ -42,9 +44,14 @@ const unlabelled = (node: SceneNode): SceneNode => {
   return { ...node, content: { ...content, ...(desc ? { subLabel: desc } : {}) } };
 };
 
-const retag = (node: SceneNode, tag: string): SceneNode => {
-  const [, ...desc] = String(node.content.subLabel ?? '').split('\n');
-  return { ...node, content: { ...node.content, subLabel: [`[${tag}]`, ...desc].join('\n') } };
+// A repo box says its repo word where the C4 kind word was: on a card, the chip (its note is the card's own detail
+// line); on an open box, the frame's footer, with the note beside it ("Folder · 12 files") and no C4 brackets.
+const retag = (node: SceneNode, element: ArchElement, tag: string): SceneNode => {
+  const content = node.kind === 'architecture'
+    ? { archProviderLabel: tag, subLabel: [[tag, element.tech].filter(Boolean).join(' · '), element.desc].filter(Boolean).join('\n') }
+    : node.kind === 'frame' ? { subLabel: [tag, element.desc].filter(Boolean).join(' · ') }
+      : { subLabel: [`[${tag}]`, ...String(node.content.subLabel ?? '').split('\n').slice(1)].join('\n') };
+  return { ...node, content: { ...node.content, ...content } };
 };
 
 export const closedBoxSize = (look: MapLook, node: MapNode): Size2d => {
@@ -54,10 +61,12 @@ export const closedBoxSize = (look: MapLook, node: MapNode): Size2d => {
   // The card is sized for the kind word it would show ("Service"); a repo tag ("Folder · 120 files") can be wider, so the box grows to it.
   const tag = look.tags?.get(node.id);
   const tagWidth = tag ? Math.ceil(measurePortableText(`[${tag}]`, { ...SUBLABEL_FONT, maxWidth: 400, overflow: 'visible' }).width) + 2 * TEXT_PADDING : 0;
-  return elementNode(element, null, 0, { ...look, origin: ORIGIN, measureLabel: (label, kind) => {
+  const drawn = elementNode(element, null, 0, { ...look, origin: ORIGIN, measureLabel: (label, kind) => {
     const own = look.measureLabel?.(label, kind);
     return { width: Math.max(own?.width ?? 0, tagWidth), height: own?.height ?? 0 };
-  } }).size;
+  } });
+  // A repo card says a name and a size, not a C4 description: it is as tall as that, not the card's roomy default.
+  return tag && drawn.kind === 'architecture' ? { width: drawn.size.width, height: architectureCardHeight(drawn, resolveNodeStyle(drawn)) } : drawn.size;
 };
 
 export function mapScene(model: MapModel, open: ReadonlySet<string>, layout: MapLayout, look: MapLook): ScenePage {
@@ -75,7 +84,7 @@ export function mapScene(model: MapModel, open: ReadonlySet<string>, layout: Map
     const parentId = parentRect ? parent : null;
     const tag = look.tags?.get(id);
     const drawn = isOpen ? boundaryNode(element, parentId, i + 1, ctx) : elementNode(element, parentId, i + 1, ctx);
-    const built = tag ? retag(drawn, tag) : drawn;
+    const built = tag ? retag(drawn, element, tag) : drawn;
     nodes.push({
       ...(elements.has(id) ? built : unlabelled(built)),
       size: { width: rect.width, height: rect.height },

@@ -110,4 +110,18 @@ describe('wrapping through the families', () => {
     expect(text.width).toBeLessThanOrEqual(idle.size.width - 32 + 1e-9);
     expect(text.height).toBeLessThanOrEqual(idle.size.height);
   });
+
+  it('sizes an icon tile to hug its caption, a row card to its art and text', () => {
+    const tile = (label: string, subLabel?: string, iconPlacement?: 'left'): NodeMeasureRequest =>
+      ({ kind: 'architecture', label, ...(subLabel ? { subLabel } : {}), hasIcon: true, ...(iconPlacement ? { iconPlacement } : {}), spec: SHAPE_WORDS.rect! });
+    // Plate to 84, caption 88 + one 14.4 line + 4: the old 115 left 9 px of empty band under it.
+    expect(measureNodeSize(tile('API'))).toEqual({ width: 148, height: 107 });
+    expect(measureNodeSize(tile('API', 'primary')).height).toBe(Math.ceil(88 + 14.4 + 4 + 13.2 + 4));
+    expect(measureNodeSize(tile('API', undefined, 'left'))).toEqual({ width: 160, height: 56 });
+  });
+
+  it('keeps a C4 card at the size it had: it is not an icon tile', () => {
+    const card = { kind: 'architecture', label: 'Payments', subLabel: '[System]\n'.padEnd(200, 'x'), hasIcon: true, c4Card: true, spec: SHAPE_WORDS.rect! } as const;
+    expect(measureNodeSize(card)).toEqual({ width: 148, height: 115 });
+  });
 });

@@ -11,13 +11,13 @@ import type { SceneDocumentV1, ScenePage } from '../../domain/document/types';
 import type { Point2d } from '../../domain/geometry/types';
 import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
 
-export interface V2ConnectorLabelEdit {
+interface V2ConnectorLabelEdit {
   readonly connectorId: string;
   readonly bounds: DOMRect;
   readonly value: string;
 }
 
-export interface V2ConnectorLabelEditingOptions {
+interface V2ConnectorLabelEditingOptions {
   readonly document: SceneDocumentV1 | null;
   readonly pageRef: RefObject<ScenePage | null>;
   readonly hostRef: RefObject<PixiRendererHost | null>;

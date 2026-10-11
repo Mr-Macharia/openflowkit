@@ -1,4 +1,4 @@
-export type AiSafeErrorCode =
+type AiSafeErrorCode =
   | 'INVALID_PROPOSAL' | 'SCHEMA_REJECTED' | 'PRECONDITION_FAILED'
   | 'PROVIDER_UNAVAILABLE' | 'RATE_LIMITED' | 'CANCELLED' | 'UNKNOWN';
 

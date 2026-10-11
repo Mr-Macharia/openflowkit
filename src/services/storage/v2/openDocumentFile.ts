@@ -14,7 +14,7 @@ export function defaultLegacyNodeSize(node: JsonObject) {
 const OPENS = 'OpenFlowKit opens the .json files it exports, from this version or the previous one.';
 
 /** `notice`: what opening had to change, for the person who opened it. */
-export type OpenedDocumentFile = { readonly document: SceneDocumentV1; readonly notice?: string } | { readonly error: string };
+type OpenedDocumentFile = { readonly document: SceneDocumentV1; readonly notice?: string } | { readonly error: string };
 
 /**
  * A `.json` file the user opens: our own export (canonical JSON, any supported

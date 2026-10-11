@@ -9,7 +9,7 @@ import {
   type AiProposedChange, type AiSceneProposal,
 } from './sceneProposal';
 
-export type ProposalScope = {
+type ProposalScope = {
   readonly kind: 'selection' | 'page' | 'document';
   readonly pageId: string;
   readonly objectIds: readonly string[];
@@ -31,7 +31,7 @@ export interface Proposal extends AiSceneProposal {
   readonly status: 'pending';
 }
 
-export interface CreateProposalInput {
+interface CreateProposalInput {
   readonly document: SceneDocumentV1;
   readonly revision: number;
   readonly source: string;

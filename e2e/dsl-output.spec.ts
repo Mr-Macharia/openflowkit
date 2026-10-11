@@ -34,7 +34,8 @@ test('generated architecture diagrams carry shapes, icons, colours and arrowhead
   const document = await read(page);
   const nodes = document?.pages[0]?.nodes ?? [];
   const byId = Object.fromEntries(nodes.map((node) => [node.id, node]));
-  expect(byId.client).toMatchObject({ kind: 'process', content: { shape: 'actor' } });
+  // A person draws as a user-icon card, never the blank silhouette.
+  expect(byId.client).toMatchObject({ kind: 'architecture', content: { icon: 'tabler/user' } });
   expect(byId.gateway).toMatchObject({ kind: 'architecture', content: { icon: 'aws/api-gateway', assetPresentation: 'icon' } });
   expect(byId.resize?.content.archIconShapeId).toBeTruthy();
   expect(byId.bucket).toMatchObject({ content: { color: 'amber' } });

@@ -9,12 +9,12 @@ import { darkWashFill, isDarkCanvas, resolveAdaptiveInk, WASH_SUB_INK } from '..
 import { hasExplicitColor, nodePaletteName, PALETTE_KEYS, paletteResolver } from './nodePalette';
 import { widgetLabelBox } from './widgetNodePresentation';
 import { framePresetOf } from './framePreset';
+import { DRAWN_SHAPE_FILL } from './shapeNode';
 import { mixHex, readableTextOn } from '../../../lib/colorUtils';
 
 // Every visible property of a node, resolved from flat `appearance` keys
-// (docs/plan/phase-1-style.md §1) with legacy `content.*` palette/typography
-// keys as fallbacks. Renderers, the label editor and measurement all read
-// this and nothing else, so a style edit is one shallow appearance merge.
+// with legacy `content.*` palette/typography keys as fallbacks. Renderers, the
+// label editor and measurement all read this and nothing else, so a style edit is one shallow appearance merge.
 
 export type FontFamilyKey = 'sans' | 'serif' | 'mono' | 'hand';
 export type FontWeight = 400 | 500 | 600 | 700;
@@ -159,6 +159,13 @@ function familyDefaults(node: SceneNode): FamilyDefaults {
     const colors = resolveNodeVisualStyle(architecture.colorKey, architecture.colorMode, architecture.customColor,
       nodePaletteName(node));
     const icon = architecture.display === 'provider-icon';
+    // A row card (icon left of its text) is a plain rounded card: its own fill, text on it, start-aligned.
+    if (icon && architecture.iconPlacement === 'left') {
+      return {
+        fill: colors.bg, stroke: colors.border, strokeWidth: 1, text: colors.text, cornerRadius: 10,
+        fontSize: 13, fontWeight: 600, textAlign: 'start', textVerticalAlign: 'middle', textPadding: 12, labelOnCanvas: false,
+      };
+    }
     return {
       fill: icon ? colors.iconBg : colors.bg, stroke: colors.border, strokeWidth: icon ? 1 : 1.5, text: colors.text,
       cornerRadius: icon ? 14 : 12,
@@ -217,9 +224,10 @@ function computeNodeStyle(node: SceneNode, canvasColor?: string): NodeStyle {
   const dark = isDarkCanvas(canvasColor);
   const containerWash = a.fill === undefined && defaults.fill.startsWith('rgba(') && dark;
   // A default paper-white or pastel node washes the same way; an explicit colour never does. The DSL
-  // writes the white swatch for a node with no colour word, so that exact fill counts as unset.
+  // writes the white swatch for a node with no colour word, and a drawn shape is born with its paper fill: both count as unset.
   const white = paletteResolver(nodePaletteName(node))('white', 'pastel');
-  const unsetFill = a.fill === undefined || (typeof a.fill === 'string' && a.fill.toLowerCase() === white.fill);
+  const unsetFill = a.fill === undefined
+    || (typeof a.fill === 'string' && (a.fill.toLowerCase() === white.fill || a.fill.toLowerCase() === DRAWN_SHAPE_FILL));
   const defaultWash = dark && unsetFill && /^#[0-9a-f]{6}$/i.test(defaults.fill)
     && !widgetLabelBox(node) && !framePresetOf(node) && !hasExplicitColor(node, familyColorKey(node));
   const darkWash = containerWash || defaultWash;

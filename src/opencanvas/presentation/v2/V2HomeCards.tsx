@@ -88,7 +88,7 @@ export function StartChip({ kind, title, hint, onStart }: {
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 /** A diagram's first page in the current theme, or a quiet placeholder. */
-export function DiagramPreview({ thumbnail, appearance }: {
+function DiagramPreview({ thumbnail, appearance }: {
   readonly thumbnail: V2Thumbnail | null | undefined;
   readonly appearance: 'light' | 'dark';
 }): React.JSX.Element {
@@ -194,7 +194,7 @@ function useCardMenu() {
   return { menu, onContextMenu, onOpenChange: (open: boolean) => setMenu({ open, at: open ? menu.at : null }) };
 }
 
-export interface DiagramActions {
+interface DiagramActions {
   readonly starred: boolean;
   readonly onStar: () => void;
   readonly onRename: () => void;

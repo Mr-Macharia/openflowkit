@@ -4,7 +4,7 @@ import type { JsonObject } from '../document/json';
 import { nextNodeZIndex } from './shapeNode';
 import { WIDGETS, type WidgetKind, type WidgetVariant } from './widgetNodePresentation';
 
-export interface CreateWidgetNodeOptions {
+interface CreateWidgetNodeOptions {
   readonly id: string;
   readonly widget: WidgetKind;
   /** Top-left corner. */

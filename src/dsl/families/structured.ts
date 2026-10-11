@@ -12,14 +12,14 @@ import { attributeText, commentLines, isBareWords, nodeName, nodeReference, quot
 import { COLOR_WORDS, isHexColor, sortAttributes } from '../vocabulary';
 import type { Family, FamilyContext, FamilyScene } from './types';
 import type { DslToken } from '../tokenize';
-import { layoutEdges } from '../layout';
+import { frameInsets, GROUP_INSETS, layoutEdges } from '../layout';
 import { measureGroupSize } from '../sizing';
 
 // ERD and UML class diagrams share one engine: a graph of structured entities
 // (blocks of member rows) with typed relations. Only the row grammar, the
 // relation vocabulary and the scene content differ (grammar §8.5, §8.6).
 
-export type StructuredKind = 'erd' | 'class';
+type StructuredKind = 'erd' | 'class';
 
 /** Child-to-parent relations; the parent goes first in layout. */
 const PARENT_FIRST = new Set(['--|>', '..|>']);
@@ -50,7 +50,7 @@ const ER_FLAGS: Readonly<Record<string, keyof ErFlags>> = {
   pk: 'isPrimaryKey', primary: 'isPrimaryKey', key: 'isPrimaryKey',
   fk: 'isForeignKey', foreign: 'isForeignKey',
   unique: 'isUnique', uq: 'isUnique',
-  nullable: 'isNullable', nn: 'isNotNull', 'not-null': 'isNotNull',
+  nullable: 'isNullable', null: 'isNullable', nn: 'isNotNull', 'not-null': 'isNotNull',
 };
 const CLASS_STEREOTYPES = new Set(['interface', 'abstract', 'enum', 'class', 'entity']);
 
@@ -142,10 +142,13 @@ function parseErRow(tokens: readonly DslToken[], at: { line: number }): MemberDr
   const name = joinTokens([words[0]!]);
   const dataType = words[1] ? joinTokens([words[1]!]) : 'text';
   const flags: ErFlags = {};
-  for (const token of words.slice(2)) {
-    const flag = ER_FLAGS[token.value.toLowerCase()];
-    if (flag) flags[flag] = true;
-  }
+  const rest = words.slice(2).map((token) => token.value.toLowerCase());
+  rest.forEach((word, index) => {
+    // SQL's two-word `not null` is one flag; its `null` must not read as nullable.
+    if (word === 'not' && rest[index + 1] === 'null') flags.isNotNull = true;
+    else if (word === 'null' && rest[index - 1] === 'not') return;
+    else if (ER_FLAGS[word]) flags[ER_FLAGS[word]] = true;
+  });
   const text = erRowText(name, dataType, flags);
   return { text, field: { name, dataType, ...flags }, line: at.line };
 }
@@ -421,6 +424,7 @@ function entityContent(kind: StructuredKind, entity: EntityDraft): JsonObject {
         ...(member.field!.isForeignKey ? { isForeignKey: true } : {}),
         ...(member.field!.isUnique ? { isUnique: true } : {}),
         ...(member.field!.isNotNull ? { isNotNull: true } : {}),
+        ...(member.field!.isNullable ? { isNullable: true } : {}),
       })),
     };
   }
@@ -516,8 +520,8 @@ async function materialize(kind: StructuredKind, model: StructuredModel, context
     edges: layoutEdges(connectors).map((edge, index) => (PARENT_FIRST.has(String(connectors[index]!.semantics.classRelation))
       ? { ...edge, sourceId: edge.targetId, targetId: edge.sourceId } : edge)),
     direction: context.direction,
-    rootPadding: { top: context.title ? 72 : 28, right: 28, bottom: 28, left: 28 },
-    groupPadding: { top: 54, right: 22, bottom: 22, left: 22 },
+    rootPadding: frameInsets(Boolean(context.title)),
+    groupPadding: GROUP_INSETS,
   }, context.signal);
   const positioned = [...groupNodes, ...nodes].map((node) => ({
     ...node,

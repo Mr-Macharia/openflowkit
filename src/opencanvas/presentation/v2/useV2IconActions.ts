@@ -18,7 +18,7 @@ import { buildSetIconCommand } from '../../domain/commands/iconCommands';
 import type { IconChoice } from '../../domain/nodes/iconNode';
 import { resolveDslIcon } from '../../../services/dsl/iconResolver';
 
-export interface V2IconActionsOptions {
+interface V2IconActionsOptions {
   readonly pageRef: RefObject<ScenePage | null>;
   readonly readOnly: boolean;
   readonly commit: (command: DocumentCommand) => void;

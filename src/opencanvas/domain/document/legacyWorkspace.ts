@@ -23,7 +23,7 @@ export interface LegacyWorkspaceSources {
  */
 export type LegacyMermaidConverter = (page: ScenePage, source: string, origin: Point2d) => Promise<ScenePage | null>;
 
-export interface LegacyWorkspaceOptions {
+interface LegacyWorkspaceOptions {
   readonly resolveNodeSize?: LegacyProjectionOptions['resolveNodeSize'];
   readonly convertMermaid?: LegacyMermaidConverter;
   /** True leaves a v1 document out (already imported at this `updatedAt`): no projection, no Mermaid work. */
@@ -37,7 +37,7 @@ export interface LegacyImportFailure {
   readonly error: string;
 }
 
-export interface LegacyWorkspace {
+interface LegacyWorkspace {
   /** Sorted by v1 id, so two runs over the same records are identical. */
   readonly documents: readonly SceneDocumentV1[];
   readonly idMap: Readonly<Record<string, string>>;

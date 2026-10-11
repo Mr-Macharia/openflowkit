@@ -105,5 +105,3 @@ export interface SceneDocumentV1 {
   readonly metadata: JsonObject;
   readonly extensions: JsonObject;
 }
-
-export type SceneDocument = SceneDocumentV1;

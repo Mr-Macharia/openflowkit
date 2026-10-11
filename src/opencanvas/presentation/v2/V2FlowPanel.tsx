@@ -4,7 +4,7 @@ import { Button, Icon, IconButton } from '../design-system';
 import type { FlowPlayback } from './useV2FlowPlayback';
 import type { ArchModel, FlowStepKind } from '../../../dsl/model/types';
 
-export interface V2FlowPanelProps {
+interface V2FlowPanelProps {
   readonly playback: FlowPlayback;
   readonly model: ArchModel | null;
   readonly onClose: () => void;

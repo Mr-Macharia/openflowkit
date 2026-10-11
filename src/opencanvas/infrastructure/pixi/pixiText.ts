@@ -1,10 +1,7 @@
 import { Graphics, Text, type Container, type TextStyleFontWeight, type TextStyleOptions } from 'pixi.js';
 import { FONT_STACKS, type NodeStyle } from '../../domain/nodes/nodeStyle';
 
-export function truncateTextToWidth(value: string, width: number, characterWidth = 6.5): string {
-  const limit = Math.max(3, Math.floor(width / characterWidth));
-  return value.length <= limit ? value : `${value.slice(0, Math.max(1, limit - 1))}…`;
-}
+export { truncateTextToWidth } from '../../domain/text/measurement';
 
 export function createPixiText(
   text: string,

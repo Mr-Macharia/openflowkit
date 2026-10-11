@@ -4,7 +4,7 @@ import { framePresetOf, type FramePreset } from './framePreset';
 
 export const CONTAINER_NODE_KINDS = ['group', 'section', 'swimlane', 'frame'] as const;
 
-export type ContainerNodeKind = (typeof CONTAINER_NODE_KINDS)[number];
+type ContainerNodeKind = (typeof CONTAINER_NODE_KINDS)[number];
 
 export interface ContainerNodePresentation {
   readonly kind: ContainerNodeKind;

@@ -24,8 +24,8 @@ export const LIBRARY_SHAPES: readonly LibraryShape[] = [
 
 export const SHAPE_KINDS: readonly ShapeKind[] = ['rectangle', 'ellipse', 'text', ...LIBRARY_SHAPES];
 
-export const DEFAULT_SHAPE_SIZE: Size2d = { width: 160, height: 72 };
-export const DEFAULT_TEXT_SIZE: Size2d = { width: 160, height: 48 };
+const DEFAULT_SHAPE_SIZE: Size2d = { width: 160, height: 72 };
+const DEFAULT_TEXT_SIZE: Size2d = { width: 160, height: 48 };
 
 // Round and pointy shapes need more room than a box for the same label.
 const SHAPE_SIZES: Readonly<Partial<Record<ShapeKind, Size2d>>> = {
@@ -94,7 +94,7 @@ function shapeNodeKind(kind: ShapeKind): { nodeKind: string; content: Record<str
 }
 
 /** Numbered circles count up per page: the next 1-based label. */
-export function nextNumberedLabel(page: ScenePage): string {
+function nextNumberedLabel(page: ScenePage): string {
   const used = page.nodes
     .filter((node) => node.content.shape === 'numbered-circle')
     .map((node) => Number(node.content.label))
@@ -102,7 +102,7 @@ export function nextNumberedLabel(page: ScenePage): string {
   return String(used.reduce((max, value) => Math.max(max, value), 0) + 1);
 }
 
-export interface CreateShapeNodeOptions {
+interface CreateShapeNodeOptions {
   readonly kind: ShapeKind;
   readonly id: string;
   readonly at: Point2d;
@@ -112,6 +112,9 @@ export interface CreateShapeNodeOptions {
   /** Sticky style from the last edit, merged over the kind's default paint. */
   readonly appearance?: JsonObject;
 }
+
+/** The paper fill a drawn shape is born with: a default, so a dark canvas washes it like any unset fill. */
+export const DRAWN_SHAPE_FILL = '#fdfdfb';
 
 export function createShapeNode(page: ScenePage, options: CreateShapeNodeOptions): SceneNode {
   const { nodeKind, content } = shapeNodeKind(options.kind);
@@ -126,7 +129,7 @@ export function createShapeNode(page: ScenePage, options: CreateShapeNodeOptions
     size: { ...(options.size ?? defaultShapeSize(options.kind)) },
     content: { ...content, ...(label === undefined ? {} : { label }) },
     appearance: {
-      ...(options.kind === 'text' ? {} : { fill: '#fdfdfb', stroke: '#555952', strokeWidth: 1.5 }),
+      ...(options.kind === 'text' ? {} : { fill: DRAWN_SHAPE_FILL, stroke: '#555952', strokeWidth: 1.5 }),
       ...options.appearance,
     },
     ports: [],

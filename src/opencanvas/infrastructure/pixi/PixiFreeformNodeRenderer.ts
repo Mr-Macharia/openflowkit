@@ -14,7 +14,7 @@ import { createPixiText, decoratePixiText, pixiTextStyle } from './pixiText';
 import { resolveNodeStyle } from '../../domain/nodes/nodeStyle';
 import { pixiPaintColor } from './pixiColor';
 
-export interface PixiFreeformNodeDrawResult {
+interface PixiFreeformNodeDrawResult {
   readonly label: Container;
   readonly debug: PixiNodeDebugRecord;
 }

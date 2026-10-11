@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { V2DocumentRepository } from '../../../services/storage/v2/v2Repository';
 import { repoMapSourceOf, withRepoMapSource } from '../../application/map/repoMapSource';
-import { createEmptyV2Document } from './v2Document';
+import { createEmptyV2Document, mayCreateDocument, mintV2Id } from './v2Document';
 import { useV2DocumentLoad } from './useV2DocumentLoad';
 
 const stamp = (d: ReturnType<typeof createEmptyV2Document>) => ({ ...d, name: 'initialized' });
@@ -60,5 +60,22 @@ describe('useV2DocumentLoad initialize', () => {
     const { openDocument, view } = run(repo({ status: 'missing' }), { initialize: undefined });
     await waitFor(() => expect(view.result.current.phase).toBe('ready'));
     expect(openDocument.mock.calls[0]![0].name).not.toBe('initialized');
+  });
+});
+
+describe('useV2DocumentLoad unknown id (U1-08)', () => {
+  it('a missing id this browser never minted is not found: nothing is created or opened', async () => {
+    const repository = repo({ status: 'missing' });
+    const { openDocument, view } = run(repository, { initialize: undefined, createIfMissing: false });
+    await waitFor(() => expect(view.result.current.phase).toBe('not-found'));
+    expect(openDocument).not.toHaveBeenCalled();
+    expect(repository.saveDocument).not.toHaveBeenCalled();
+  });
+  it('an id minted here (or the last one open) still opens empty', async () => {
+    const id = mintV2Id('doc');
+    expect(mayCreateDocument(id, null)).toBe(true);
+    expect(mayCreateDocument('doc-elsewhere-1', 'doc-elsewhere-1')).toBe(true);
+    expect(mayCreateDocument('doc-elsewhere-1', null)).toBe(false);
+    expect(mayCreateDocument(mintV2Id('node'), null)).toBe(false);
   });
 });

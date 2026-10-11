@@ -3,7 +3,7 @@ import { BRIDGE_DEFAULT_PORT } from '../../../agent/bridge/protocol';
 
 export type V2ThemePreference = 'system' | 'light' | 'dark';
 export type V2Density = 'comfortable' | 'compact';
-export type V2DiagramPalette = 'pastel' | 'paper' | 'builder' | 'mono';
+type V2DiagramPalette = 'pastel' | 'paper' | 'builder' | 'mono';
 export interface V2Preferences {
   theme: V2ThemePreference;
   showGrid: boolean;

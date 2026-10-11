@@ -5,7 +5,7 @@ import type { CanvasCamera } from '../../domain/camera/types';
 import type { ScenePage } from '../../domain/document/types';
 import { createTestDocument, createTestNode } from '../../testing/builders/documentBuilder';
 import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
-import { useV2LabelEditing } from './useV2LabelEditing';
+import { typeToEditNames, useV2LabelEditing } from './useV2LabelEditing';
 
 function setup() {
   const page = createTestDocument({ nodes: [
@@ -123,3 +123,29 @@ describe('useV2LabelEditing', () => {
     expect(result.current.editing).toBeNull();
     expect(announce).toHaveBeenCalledWith('This title comes from the architecture view. Edit it in diagram source.');
   });
+
+describe('typeToEditNames (U1-01, U4-04)', () => {
+  it('a blank shape takes the typed letter as its name; a named one keeps its tool letters', () => {
+    expect(typeToEditNames(createTestNode('a', { content: { label: '' } }))).toBe(true);
+    expect(typeToEditNames(createTestNode('b', { content: {} }))).toBe(true);
+    expect(typeToEditNames(createTestNode('c', { content: { label: '  ' } }))).toBe(true);
+    expect(typeToEditNames(createTestNode('d', { content: { label: 'Client' } }))).toBe(false);
+    expect(typeToEditNames(createTestNode('e', { kind: 'text', content: { label: 'Note' } }))).toBe(false);
+    expect(typeToEditNames(undefined)).toBe(false);
+  });
+
+  it('never claims a key for something with no label to edit', () => {
+    expect(typeToEditNames(createTestNode('g', { kind: 'group', content: {} }))).toBe(false);
+    const view = createTestNode('v', { kind: 'frame', content: { label: '' }, metadata: { dsl: { viewTitle: 'x' } } });
+    expect(typeToEditNames(view)).toBe(false);
+  });
+
+  // Review 2026-10-11: a generated frame (no title) and a pen stroke counted as blank, so R/O/T still named them.
+  it('a generated diagram frame and a drawn stroke keep their tool letters', () => {
+    const generated = createTestNode('f', { kind: 'frame', content: { label: '' }, metadata: { dsl: { source: 'flowchart\nA -> B' } } });
+    expect(typeToEditNames(generated)).toBe(false);
+    for (const kind of ['pen', 'highlighter', 'line', 'arrow']) {
+      expect(typeToEditNames(createTestNode(kind, { kind, content: { points: [] } } as never)), kind).toBe(false);
+    }
+  });
+});

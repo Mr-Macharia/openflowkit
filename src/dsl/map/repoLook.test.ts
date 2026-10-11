@@ -2,7 +2,9 @@ import ELK from 'elkjs/lib/elk.bundled.js';
 import { describe, expect, it } from 'vitest';
 import { validateSceneDocumentV1 } from '../../opencanvas/domain/document/validation';
 import { SCENE_DOCUMENT_FORMAT, SCENE_DOCUMENT_VERSION } from '../../opencanvas/domain/document/types';
+import { architectureCardHeight } from '../../opencanvas/domain/nodes/architectureCardLayout';
 import { paletteResolver } from '../../opencanvas/domain/nodes/nodePalette';
+import { resolveNodeStyle } from '../../opencanvas/domain/nodes/nodeStyle';
 import { budgetEdges } from './edgeBudget';
 import { buildMap } from './build';
 import { fromElkLayout, toElkGraph, type ElkNode } from './elk';
@@ -14,6 +16,7 @@ import { aggregate, presets } from './view';
 
 const model = buildMap(FIXTURE);
 const look = repoLook(model, { swatch: paletteResolver('pastel') });
+const strings = (v: unknown): string[] => typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
 const JARGON = /\bC4\b|\bContainers?\b|\bContext\b|Software system|External system|\bService\b|Component/;
 
 async function sceneAt(depth: Depth) {
@@ -36,13 +39,59 @@ describe('repoLook', () => {
     expect(text.filter((t) => JARGON.test(t))).toEqual([]);
   });
 
-  it('tags boxes with their repo kind and size, and shows the path', async () => {
+  it('draws a closed box as the editor card: a plain kind chip, its language, the size as a quiet note', async () => {
     const page = await sceneAt('everything');
-    const sub = (id: string) => String(page.nodes.find((n) => n.id === id)!.content.subLabel);
-    // An open box is a frame: its title bar carries the tag only; closed boxes also show the path.
-    expect(sub('server/routes')).toBe(`[Folder · ${model.nodes['server/routes'].files} files]`);
-    expect(sub('server/routes/r00.ts')).toMatch(/^\[File · \d+ lines\]\nserver\/routes\/r00\.ts$/);
-    expect(sub('ext:stripe')).toMatch(/^\[Outside service\]/);
+    const node = (id: string) => page.nodes.find((n) => n.id === id)!;
+    // An open box is a frame: its footer says the kind and size the way a card does, without brackets.
+    expect(node('server/routes').content.subLabel).toBe(`Folder · ${model.nodes['server/routes'].files} files`);
+    const file = node('server/routes/r00.ts');
+    expect(file.kind).toBe('architecture');
+    expect(file.content).toMatchObject({
+      label: 'r00.ts', archProviderLabel: 'File', archResourceType: 'TypeScript', icon: 'developer/languages-typescript',
+      archEnvironment: `${model.nodes['server/routes/r00.ts'].loc} lines`, assetPresentation: 'card',
+    });
+    // No brackets anywhere on a card, and its name said once.
+    for (const card of page.nodes.filter((n) => n.kind === 'architecture')) {
+      const said = strings(card.content);
+      expect(said.filter((t) => /[[\]]/.test(t)), card.id).toEqual([]);
+      const fields = [card.content.archProviderLabel, card.content.archResourceType, card.content.archEnvironment];
+      expect(fields, card.id).not.toContain(card.content.label);
+    }
+    expect(node('ext:stripe').content).toMatchObject({ archProviderLabel: 'Outside service', icon: 'tabler/brand-stripe' });
+    // A more box is leftovers, not a TypeScript thing: no language, its own icon.
+    expect(node('server/routes#more').content).toMatchObject({ archProviderLabel: 'More', archResourceType: '', icon: 'tabler/dots' });
+  });
+
+  it('follows the theme: a card takes its colours from the palette keys, not a painted fill', async () => {
+    const page = await sceneAt('overview');
+    const web = page.nodes.find((n) => n.id === 'web')!;
+    expect(web.content).toMatchObject({ label: 'Web app', archProviderLabel: 'Module', archResourceType: 'TypeScript', archEnvironment: '4 files' });
+    expect(web.appearance).toEqual({});
+    // As tall as what it says: no empty lower half, so a map is not larger than its words need.
+    expect(web.size.height).toBe(architectureCardHeight(web, resolveNodeStyle(web)));
+    expect(web.size.height).toBeLessThan(120);
+    // Every colour is a kind's own (washed on a dark canvas), never one an author chose (kept pale there).
+    const cards = (await sceneAt('everything')).nodes.filter((n) => n.kind === 'architecture');
+    expect(cards.filter((n) => n.content.color && n.content.archKindColor !== n.content.color).map((n) => n.id)).toEqual([]);
+    expect(cards.find((n) => n.id === 'ext:stripe')!.content.archKindColor).toBeDefined();
+  });
+
+  it('names a part by what discovery found it runs, with that technology\'s icon; a part with no source says no count', () => {
+    const m = buildMap({
+      files: [{ path: 'vote/app.py', loc: 51 }], imports: [],
+      parts: [{ name: 'vote', dir: 'vote', desc: 'container · Python' }, { name: 'worker', dir: 'worker', desc: 'container · .NET' }],
+    });
+    const l = repoLook(m, { swatch: paletteResolver('pastel') });
+    const vote = l.arch.elements.find((e) => e.id === 'vote')!;
+    expect(vote).toMatchObject({ tech: 'Python', icon: 'developer/languages-python', desc: '1 file' });
+    expect(l.arch.elements.find((e) => e.id === 'worker')).toMatchObject({ tech: '.NET', icon: 'developer/backend-dotnet' });
+    expect(l.arch.elements.find((e) => e.id === 'worker')!.desc).toBeUndefined();
+  });
+
+  it('a box with no known language gets its kind\'s plain icon, never none', () => {
+    const m = buildMap({ files: [{ path: 'docs/a.md', loc: 3 }, { path: 'lib/x.unknown', loc: 3 }], imports: [] });
+    const l = repoLook(m, { swatch: paletteResolver('pastel') });
+    expect(l.arch.elements.every((e) => e.icon && e.icon !== 'none')).toBe(true);
   });
 
   it('draws outside services as the gray external look, and more/group boxes', async () => {
@@ -71,13 +120,13 @@ describe('repoLook sizing', () => {
 
 describe('repoLook words', () => {
   const C4 = /Container|System|Software|Component|Context/i;
-  const strings = (v: unknown): string[] => typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
 
   it('never says "0 files" and counts a group by its descendants', () => {
-    const tags = [...look.tags!.values()];
-    expect(tags.filter((t) => t.includes('0 files'))).toEqual([]);
-    expect(look.tags!.get('root#outside')).toBe('Outside services');
-    expect(look.tags!.get('root#files')).toMatch(/^Group · \d+ files?$/);
+    const notes = look.arch.elements.map((e) => e.desc ?? '');
+    expect(notes.filter((t) => /(^|\D)0 files/.test(t))).toEqual([]);
+    expect(look.tags!.get('root#outside')).toBe('Group');
+    expect(look.arch.elements.find((e) => e.id === 'root#outside')!.desc).toBe('1 service');
+    expect(look.arch.elements.find((e) => e.id === 'root#files')!.desc).toMatch(/^\d+ files?$/);
   });
 
   it('leaks no C4 word into any drawn field, even when the host infers icons', async () => {

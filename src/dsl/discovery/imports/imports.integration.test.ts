@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { scanImports } from './scan';
 import type { SourceFile } from './types';
 
-// This repo is the corpus: the prototype extractor (docs/plan/prototypes/repo-map) found 2,282 resolved
+// This repo is the corpus: an earlier prototype extractor found 2,282 resolved
 // imports over the same roots. Config files ride along because resolution reads them.
 const ROOT = process.cwd();
 const ROOTS = ['src', 'mcp-server/src', 'worker', 'action', 'docs-site'];

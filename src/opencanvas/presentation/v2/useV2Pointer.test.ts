@@ -10,7 +10,7 @@ import { clearSelection, replaceSelection, type CanvasSelection } from '../../ap
 import type { Bounds2d } from '../../domain/geometry/types';
 import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
 import { useV2Pointer } from './useV2Pointer';
-import type { V2GestureApi } from './v2PointerGestures';
+import { enteredGroup, type V2GestureApi } from './v2PointerGestures';
 import { defaultShapeSize } from '../../domain/nodes/shapeNode';
 import { DEFAULT_TOOL_CONFIG } from './v2ToolCatalog';
 import type { V2Tool } from './V2CreationToolbar';
@@ -34,14 +34,14 @@ function setup(
   const host = {
     screenToWorld: (point: { x: number; y: number }) => point,
     getViewportSize: vi.fn(() => ({ width: 1000, height: 800 })),
-    pickNode: vi.fn((_point: { x: number; y: number }): string | null => 'a'),
+    pickNode: vi.fn((_point: { x: number; y: number }, _scope?: string | null): string | null => 'a'),
     pickConnector: vi.fn((): string | null => null),
     getSelectedConnectorId: vi.fn((): string | null => null),
     pickConnectorHandle: vi.fn(() => null),
     pickTransformHandle: vi.fn((): 'south-east' | null => null),
     pickConnectHandle: vi.fn(() => null),
     setMarquee: vi.fn(), setPlacementGhost: vi.fn(), setTransformPreview: vi.fn(), setAlignmentGuides: vi.fn(), setConnectionPreview: vi.fn(), setDropTarget: vi.fn(), setHoveredConnector: vi.fn(),
-    setConnectorSelection: vi.fn(), setConnectorPreview: vi.fn(),
+    setConnectorSelection: vi.fn(), setConnectorPreview: vi.fn(), setFreeformPreview: vi.fn(),
     setHover: vi.fn(), getNodesWorldBounds: vi.fn((_ids: readonly string[]): Bounds2d | null => null),
     pickNodesInScreenBounds: vi.fn((_bounds: Bounds2d): readonly string[] => []),
     pickConnectorsInScreenBounds: vi.fn((_bounds: Bounds2d): readonly string[] => []),
@@ -462,5 +462,195 @@ describe('V2 quick-create from side handles', () => {
     expect(commit).toHaveBeenCalledOnce();
     expect(commit.mock.calls[0][0]).toMatchObject({ kind: 'insert-connector', connector: { source: { nodeId: 'b' }, target: { nodeId: 'a' } } });
     expect(applyConnectorSelection).toHaveBeenLastCalledWith(['new']);
+  });
+});
+
+// The bar is Figma, with tldraw/Excalidraw where they agree: modifiers held at
+// the press count, and a modifier pressed or let go mid-drag updates the drag.
+describe('V2 modifier conventions', () => {
+  const shift = (base: ReactPointerEvent<HTMLElement>) => ({ ...base, shiftKey: true });
+  const alt = (base: ReactPointerEvent<HTMLElement>) => ({ ...base, altKey: true });
+
+  it('⇧ held before grabbing a corner still resizes, with the aspect locked', () => {
+    const { result, event, host, selectionRef, commit } = setup();
+    selectionRef.current = replaceSelection(['a']);
+    host.pickTransformHandle.mockReturnValue('south-east');
+    act(() => result.current.handlePointerDown(shift(event(100, 50))));
+    act(() => result.current.handlePointerMove(shift(event(300, 60))));
+    act(() => result.current.handlePointerUp(shift(event(300, 60))));
+    expect(commit).toHaveBeenCalledOnce();
+    const after = commit.mock.calls[0][0].after;
+    expect(commit.mock.calls[0][0].label).toBe('Resize selection');
+    expect(after.size.width / after.size.height).toBeCloseTo(2);
+    expect(selectionRef.current.nodeIds).toEqual(['a']);
+  });
+
+  it('⌥ held before grabbing a corner resizes from the centre', () => {
+    const { result, event, host, selectionRef, commit } = setup();
+    selectionRef.current = replaceSelection(['a']);
+    host.pickTransformHandle.mockReturnValue('south-east');
+    act(() => result.current.handlePointerDown(alt(event(100, 50))));
+    act(() => result.current.handlePointerUp(alt(event(120, 60))));
+    expect(commit.mock.calls[0][0].after).toMatchObject({
+      size: { width: 140, height: 70 }, transform: { translation: { x: -20, y: -10 } },
+    });
+  });
+
+  it('⇧ held on an unselected shape adds it and drags the whole selection along one axis', () => {
+    const b = createTestNode('b', { transform: { translation: { x: 300, y: 0 }, rotationRadians: 0, scale: { x: 1, y: 1 } } });
+    const { result, event, host, selectionRef, commit } = setup([b]);
+    selectionRef.current = replaceSelection(['a']);
+    host.pickNode.mockReturnValue('b');
+    act(() => result.current.handlePointerDown(shift(event(350, 25))));
+    expect(selectionRef.current.nodeIds).toEqual(['a', 'b']);
+    act(() => result.current.handlePointerMove(shift(event(410, 45))));
+    act(() => result.current.handlePointerUp(shift(event(410, 45))));
+    const moved = commit.mock.calls[0][0].commands.map((command: { after: { id: string; transform: { translation: unknown } } }) =>
+      [command.after.id, command.after.transform.translation]);
+    expect(moved).toEqual([['a', { x: 60, y: 0 }], ['b', { x: 360, y: 0 }]]);
+  });
+
+  it('⇧-click without a drag still toggles: a selected shape leaves the selection, nothing is written', () => {
+    const { result, event, selectionRef, commit } = setup([createTestNode('b')]);
+    selectionRef.current = replaceSelection(['a', 'b']);
+    act(() => result.current.handlePointerDown(shift(event(50, 25))));
+    act(() => result.current.handlePointerUp(shift(event(51, 25))));
+    expect(selectionRef.current.nodeIds).toEqual(['b']);
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('a plain click (no drag) on one shape of a multi-selection selects just that one; a drag moves them all', () => {
+    const { result, event, selectionRef, commit } = setup([createTestNode('b')]);
+    selectionRef.current = replaceSelection(['a', 'b']);
+    act(() => result.current.handlePointerDown(event(50, 25)));
+    act(() => result.current.handlePointerMove(event(90, 25)));
+    act(() => result.current.handlePointerUp(event(90, 25)));
+    expect(commit.mock.calls[0][0].commands).toHaveLength(2);
+    expect(selectionRef.current.nodeIds).toEqual(['a', 'b']);
+    act(() => result.current.handlePointerDown(event(50, 25)));
+    act(() => result.current.handlePointerUp(event(50, 25)));
+    expect(selectionRef.current.nodeIds).toEqual(['a']);
+  });
+
+  it('⇧-click on a line toggles it into the selection, the shapes kept', () => {
+    const { result, event, host, selectionRef, applyConnectorSelection } = setup();
+    selectionRef.current = replaceSelection(['a']);
+    host.pickNode.mockReturnValue(null);
+    host.pickConnector.mockReturnValue('edge');
+    act(() => result.current.handlePointerDown(shift(event(300, 300))));
+    expect(selectionRef.current.nodeIds).toEqual(['a']);
+    expect(applyConnectorSelection).toHaveBeenLastCalledWith(['edge']);
+    act(() => result.current.handlePointerDown(shift(event(300, 300))));
+    expect(applyConnectorSelection).toHaveBeenLastCalledWith([]);
+  });
+
+  it('⌥-drag leaves the original and drops a copy where the drag ends, as one step, the copy selected', () => {
+    const { result, event, selectionRef, commit, host } = setup();
+    act(() => result.current.handlePointerDown(alt(event(50, 25))));
+    act(() => result.current.handlePointerMove(alt(event(250, 25))));
+    act(() => result.current.handlePointerUp(alt(event(250, 25))));
+    expect(commit).toHaveBeenCalledOnce();
+    const batch = commit.mock.calls[0][0];
+    expect(batch.kind).toBe('batch');
+    expect(batch.commands).toHaveLength(1);
+    expect(batch.commands[0]).toMatchObject({ kind: 'insert-node', node: { id: 'new', transform: { translation: { x: 200, y: 0 } } } });
+    expect(selectionRef.current.nodeIds).toEqual(['new']);
+    expect(host.setTransformPreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it('a modifier pressed mid-drag re-previews at once, without waiting for the next move', async () => {
+    const { result, event, host } = setup();
+    act(() => result.current.handlePointerDown(event(50, 25)));
+    act(() => result.current.handlePointerMove(event(150, 45)));
+    await flushFrame();
+    expect(host.setTransformPreview.mock.calls.at(-1)?.[0].bounds).toMatchObject({ x: 100, y: 20 });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })); });
+    await flushFrame();
+    expect(host.setTransformPreview.mock.calls.at(-1)?.[0].bounds).toMatchObject({ x: 100, y: 0 });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: false })); });
+    await flushFrame();
+    expect(host.setTransformPreview.mock.calls.at(-1)?.[0].bounds).toMatchObject({ x: 100, y: 20 });
+    act(() => result.current.handlePointerCancel());
+  });
+
+  it('drawing a shape: ⇧ makes it 1:1, ⌥ grows it from the press', () => {
+    const { result, event, commit, toolRef } = setup();
+    toolRef.current = 'rectangle';
+    act(() => result.current.handlePointerDown(shift(event(100, 100))));
+    act(() => result.current.handlePointerMove(shift(event(180, 130))));
+    act(() => result.current.handlePointerUp(shift(event(180, 130))));
+    expect(commit.mock.calls[0][0].node.size).toEqual({ width: 80, height: 80 });
+    toolRef.current = 'ellipse';
+    act(() => result.current.handlePointerDown(alt(event(100, 100))));
+    act(() => result.current.handlePointerUp(alt(event(180, 130))));
+    expect(commit.mock.calls[1][0].node).toMatchObject({
+      size: { width: 160, height: 60 }, transform: { translation: { x: 20, y: 70 } },
+    });
+  });
+
+  it('the connector tool with ⇧ draws a free end on the nearest 45°', () => {
+    const { result, event, commit, toolRef, host } = setup();
+    toolRef.current = 'connector';
+    host.pickNode.mockReturnValue(null);
+    act(() => result.current.handlePointerDown(event(0, 0)));
+    act(() => result.current.handlePointerMove(shift(event(200, 30))));
+    act(() => result.current.handlePointerUp(shift(event(200, 30))));
+    const target = commit.mock.calls[0][0].connector.target;
+    expect(target.nodeId).toBeNull();
+    expect(target.point.x).toBeCloseTo(200);
+    expect(target.point.y).toBeCloseTo(0);
+  });
+
+  it('the pen with ⇧ draws a straight line from where the stroke began', () => {
+    const { result, event, commit, toolRef } = setup();
+    toolRef.current = 'pen';
+    act(() => result.current.handlePointerDown(event(0, 0)));
+    act(() => result.current.handlePointerMove(shift(event(40, 30))));
+    act(() => result.current.handlePointerMove(shift(event(100, 20))));
+    act(() => result.current.handlePointerUp(shift(event(100, 20))));
+    expect(commit.mock.calls[0][0].node.content.points).toEqual([{ x: 0, y: 0 }, { x: 100, y: 20 }]);
+  });
+});
+
+// Figma: a click picks the whole group; a double-click enters it; once inside, clicks pick its members.
+describe('V2 groups', () => {
+  const group = () => [
+    createTestNode('g', { kind: 'group' }),
+    createTestNode('b', { parentId: 'g' }),
+  ];
+  const scoped = (_point: { x: number; y: number }, scope?: string | null) => (scope === 'g' ? 'b' : 'g');
+
+  it('double-click on a group selects the member under the pointer, never opens an editor', () => {
+    const { result, event, host, selectionRef, openEditor } = setup(group());
+    host.pickNode.mockImplementation(scoped);
+    act(() => result.current.handleDoubleClick(event(50, 25)));
+    expect(selectionRef.current.nodeIds).toEqual(['b']);
+    expect(openEditor).not.toHaveBeenCalled();
+    // Inside the group, the next double-click is on the member itself: its label.
+    act(() => result.current.handleDoubleClick(event(50, 25)));
+    expect(openEditor).toHaveBeenCalledWith('b');
+  });
+
+  it('with a member selected, a click picks within the group', () => {
+    const { result, event, host, selectionRef } = setup(group());
+    host.pickNode.mockImplementation(scoped);
+    selectionRef.current = replaceSelection(['b']);
+    act(() => result.current.handlePointerDown(event(50, 25)));
+    act(() => result.current.handlePointerUp(event(50, 25)));
+    expect(selectionRef.current.nodeIds).toEqual(['b']);
+    expect(host.pickNode).toHaveBeenCalledWith({ x: 50, y: 25 }, 'g');
+  });
+});
+
+describe('enteredGroup', () => {
+  it('is the group every selected node sits directly in, else null', () => {
+    const page = createTestDocument({ nodes: [
+      createTestNode('g', { kind: 'group' }), createTestNode('b', { parentId: 'g' }), createTestNode('c', { parentId: 'g' }),
+      createTestNode('s', { kind: 'section' }), createTestNode('d', { parentId: 's' }), createTestNode('e'),
+    ] }).pages[0];
+    expect(enteredGroup(page, ['b', 'c'])).toBe('g');
+    expect(enteredGroup(page, ['b', 'e'])).toBeNull();
+    expect(enteredGroup(page, ['d'])).toBeNull();
+    expect(enteredGroup(page, [])).toBeNull();
   });
 });

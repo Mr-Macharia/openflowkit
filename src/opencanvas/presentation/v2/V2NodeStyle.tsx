@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import {
   IconAlignCenter, IconAlignLeft, IconAlignRight, IconArrowBarToDown, IconArrowBarToUp,
   IconArrowsVertical, IconChevronDown, IconBold, IconItalic, IconMoodSmile,
-  IconStrikethrough, IconUnderline,
+  IconLayoutNavbar, IconLayoutSidebar, IconStrikethrough, IconUnderline,
 } from '@tabler/icons-react';
 
 import { loadProviderShapePreview } from '@/services/shapeLibrary/providerCatalog';
 import type { SceneNode, ScenePage } from '../../domain/document/types';
 import type { JsonObject } from '../../domain/document/json';
 import type { DocumentCommand } from '../../domain/commands/types';
+import { buildSetIconPlacementCommand } from '../../domain/commands/iconCommands';
 import { buildStyleNodesCommand } from '../../domain/commands/styleNodes';
 import type { IconChoice } from '../../domain/nodes/iconNode';
 import { hasIcon } from '../../application/dsl/iconCommands';
@@ -22,7 +23,7 @@ import { resolveBasicNodePresentation } from '../../domain/nodes/basicNodePresen
 import { buildSetWidgetStateCommand, type WidgetStatePatch } from '../../domain/commands/widgetCommands';
 import { WIDGETS, WIDGET_SEVERITIES, resolveWidgetPresentation } from '../../domain/nodes/widgetNodePresentation';
 import { buildSetHeaderCommand } from '../../domain/commands/groupNodes';
-import { resolveArchitectureNodePresentation } from '../../domain/nodes/architectureNodePresentation';
+import { resolveArchitectureNodePresentation, type IconCardPlacement } from '../../domain/nodes/architectureNodePresentation';
 import { V2IconPicker } from './V2IconPicker';
 import { resolveNodeStyle, STYLE_LIMITS, type NodeStyle } from '../../domain/nodes/nodeStyle';
 import { isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
@@ -33,10 +34,10 @@ import {
 } from '../../domain/nodes/nodePalette';
 import { ChoiceRow, CustomColorSwatch, FontPicker, PanelRow, StyleButton, SwatchGrid, ToggleRow, useStyleDraft } from './V2StyleControls';
 
-export type NodeStyleCommon = { readonly [K in keyof NodeStyle]: NodeStyle[K] | null };
+type NodeStyleCommon = { readonly [K in keyof NodeStyle]: NodeStyle[K] | null };
 
 /** Per-key common value across the selection; null where they differ. */
-export function commonNodeStyle(nodes: readonly SceneNode[]): NodeStyleCommon {
+function commonNodeStyle(nodes: readonly SceneNode[]): NodeStyleCommon {
   const styles = nodes.map((node) => resolveNodeStyle(node));
   const first = styles[0] ?? EMPTY_STYLE;
   const result: Record<string, unknown> = {};
@@ -146,6 +147,14 @@ export function V2NodeStylePanels({ page, nodeIds, commit, onPreview, onCommitte
   const canPickIcon = !isText && !isContainer && !isStroke && !isChart && !isImage && !nodes.some((node) => node.kind === 'widget');
   const currentIcon = nodes.length === 1 ? resolveArchitectureNodePresentation(nodes[0])?.icon : undefined;
   const selectedIcon = currentIcon?.kind === 'provider' ? currentIcon : null;
+  // Icon cards choose where the icon sits; a mixed selection has no single answer, so no option is checked.
+  const cards = nodes.map((node) => resolveArchitectureNodePresentation(node)).filter((card) => card?.display === 'provider-icon');
+  const iconCards = cards.length === nodes.length;
+  const placement = iconCards && cards.every((card) => card!.iconPlacement === cards[0]!.iconPlacement) ? cards[0]!.iconPlacement : null;
+  const commitPlacement = (next: IconCardPlacement) => {
+    const command = buildSetIconPlacementCommand(page, nodeIds, next);
+    if (command) commit(command);
+  };
   const textColorIsAuto = nodes.every((node) => node.appearance.textColor === undefined || node.appearance.textColor === 'auto');
   const toggle = (panel: Panel) => { clear(); setOpen((current) => (current === panel ? null : panel)); };
   const close = () => { clear(); setOpen(null); };
@@ -178,6 +187,15 @@ export function V2NodeStylePanels({ page, nodeIds, commit, onPreview, onCommitte
       {canPickIcon ? (
         <StyleButton label="Icon" open={open === 'icon'} onToggle={() => toggle('icon')} onClose={close} panelClassName="ofk-style-panel--icons"
           preview={selectedIcon ? <IconSwatch packId={selectedIcon.packId} shapeId={selectedIcon.shapeId} /> : <Icon icon={IconMoodSmile} />}>
+          {iconCards ? (
+            <div className="ofk-icon-layout">
+              <ChoiceRow<IconCardPlacement> label="Layout" value={placement} onChange={commitPlacement}
+                options={[
+                  { value: 'top', title: 'Icon above', label: <><Icon icon={IconLayoutNavbar} /><span>Icon above</span></> },
+                  { value: 'left', title: 'Icon left', label: <><Icon icon={IconLayoutSidebar} /><span>Icon left</span></> },
+                ]} />
+            </div>
+          ) : null}
           <V2IconPicker selected={selectedIcon} onClose={close}
             {...(nodes.some(hasIcon) ? { onRemove: () => { onRemoveIcons(); close(); } } : {})}
             onPick={(icon) => { onSetIcon(icon); close(); }} />

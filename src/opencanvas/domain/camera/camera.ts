@@ -47,7 +47,7 @@ export function panCamera(camera: CanvasCamera, delta: Vector2d): CanvasCamera {
 // Wheel deltas arrive in pixels (0), lines (1, Firefox) or pages (2).
 // A line is one text row; a page is one viewport. Without this a line-mode
 // wheel pans 16x too slowly and a page-mode wheel barely moves.
-export const WHEEL_LINE_PX = 16;
+const WHEEL_LINE_PX = 16;
 
 export function normalizeWheelDelta(
   delta: { deltaX: number; deltaY: number; deltaMode: number },

@@ -13,7 +13,7 @@ export const SHARE_ENVELOPE_VERSION = 1;
 const IV_BYTES = 12;
 const KEY_BYTES = 32;
 
-export type ShareCryptoErrorCode = 'bad-key' | 'unknown-version' | 'corrupt' | 'decrypt-failed' | 'invalid-document';
+type ShareCryptoErrorCode = 'bad-key' | 'unknown-version' | 'corrupt' | 'decrypt-failed' | 'invalid-document';
 
 export class ShareCryptoError extends Error {
   constructor(readonly code: ShareCryptoErrorCode, message: string) {
@@ -22,7 +22,7 @@ export class ShareCryptoError extends Error {
   }
 }
 
-export function toBase64Url(bytes: Uint8Array): string {
+function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

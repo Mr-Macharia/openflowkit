@@ -3,12 +3,13 @@ Plan: `docs/plan/README.md` (untracked, owner's copy), v3 from 2026-10-03: phase
 (0–11) done, archived at `docs/archive/plan-executed-2026-10-03/`; 7b/8 parked; 6.10 → 14.1.
 
 ## Now
-- **Overnight 2026-10-10**: 6 audits + 10 personas → ~150 fixes (CAS saves, ⌘V/Mermaid paste, ⌥C, one undo per intent, DSL quoting,
-  Structurizr regen, phone CSS, docs): `docs/plan/overnight-2026-10-10.md` (decisions, rejected asks, patches).
-- **Launch checks 2026-10-10 (day)**: `docs/plan/launch-checks-2026-10-10.md`. `_headers` now ships (public/), dev + e2e run under the
-  production CSP and fail on any violation; agent get_syntax/icon search/frame paging fixed; ERD SVG valid; repo maps on 11 real repos.
-- Icon catalog: re-run `node scripts/gen-icon-manifest.mjs` after adding SVGs (a test fails until you do); URLs load per provider.
-- Gate: `npm run verify` (~9 min headed). CI: `quality` (unit, build, MCP) ∥ 4 e2e shards → `e2e-report` (one merged report).
+- **Overnight 2026-10-11 (uncommitted, owner reviews)**: 9 personas/audits → README + docs site rebuilt, ERD/class export, tool keys vs
+  labels, agent canvasEdits, repo-map cards, CI lint: `docs/plan/overnight-2026-10-11.md` (owner decisions + holds). 10-10 night: `overnight-2026-10-10.md`.
+  Day 10-11 (same log, rounds 2–3): Share = view-only | editable copy; GitHub #68 arrow ends + #51 Icon above/left (`iconpos`);
+  section headers clear of content; labels off other edges; round 5: map drill-down GIF, Layers audit (11 fixes), WebMCP
+  (`docs/plan/webmcp-plan.md`). Owner to-dos: `docs/plan/owner-actions.md`. README art: `scripts/readme/*.mjs`.
+- **Launch checks 2026-10-10**: `docs/plan/launch-checks-2026-10-10.md` (`_headers` ships; dev + e2e fail on any CSP violation).
+- Icon catalog: re-run `node scripts/gen-icon-manifest.mjs` after adding SVGs. Gate: `npm run verify` (~9 min headed). README/docs screens: `scripts/capture-readme.mjs`, `docs-site/scripts/capture-screens.mjs`. CI: `quality` (unit, build, MCP) ∥ 4 e2e shards → `e2e-report` (one merged report).
 - **Phases 12 + 13 DONE 2026-10-03.** Owner's: merge `main` → `v2`, PR `v2` → `main`, Cloudflare Landing, tag `v1-final`; 13.4 needs a stronger model.
 ## Roadmap 2026-10 run (opus-5.5, from 2026-10-07): plan `docs/plan/roadmap-2026-10.md`, log + RESUME `docs/plan/roadmap-progress.md`
 - Done, pushed: 1.1 headless ELK, 1.2–1.6 discovery + names, 2.1 CLI ops, 2.2 repo → diagram, 2.3 share links, 2.4 `--svg`,
@@ -26,15 +27,14 @@ Plan: `docs/plan/README.md` (untracked, owner's copy), v3 from 2026-10-03: phase
   focus ring, neutral read-only lock (dff3aeac). cf87050b: Canvas|Map on every doc (Map start screen shares the canvas
   welcome layout), Share/Export bar top right. Map bar = segmented Top level (all shut) | One level in | All levels +
   Edit as drawing; Map edits go to the model card (double-click, menu, ⌘⇧⌫) or explain once per visit. Export panel docks right. Pushed.
-- Owner: publish MCP 0.2.0 (Action default CLI needs it); deploy `start:http` over HTTPS, verify hosts (README). Actions: `docs/plan/cofounder-action-list.md`. `e2e:headed` 10-09: 261/266; 5 local GPU budgets fail at 23ff9aa4 too (Mac). Open: H5 eval.
+- Owner: MCP 0.2.0 publish, `start:http` over HTTPS (`docs/plan/owner-actions.md`). `e2e:headed` 10-09: 261/266 (5 GPU budgets, Mac). Open: H5 eval.
 ## Found, not fixed (owner calls)
 - Launch checklist (tested + evidence, then holds: MCP publish, merge, canvas UI): `docs/plan/launch-holds.md`. CI uploads first-failure
   traces (`e2e-traces`). A new worker's deps are pre-scanned (`optimizeDeps.entries`), or dev reloads mid-session.
 - AI pass 10-09 (Haiku/Sonnet + real Ollama): hangs, silent failures, Ollama context, camera lands on the applied diagram, chart title ×1, sequence labels clear; big grouped layouts kept INCLUDE_CHILDREN (SEPARATE wrecks small ones). Discovery is blind to .NET/Elixir without containers (G1). Headless layout cap: 1000 shapes / 400 connections; Share Worker: `worker/README.md`.
 ## Ceilings (`// ponytail:` in code)
-- Whole SVG re-emitted per export; chart/ink/image/annotation/text frames rasterized in JS.
-  GIF: 256 colours, ≤ 20 fps, no custom keyframes (phase 8). Frames don't clip on export.
-- Animation is page-scoped only; deployment replica/group semantics and migration fidelity remain partial.
+- Whole SVG re-emitted per export; chart/ink/image/annotation/text frames rasterized in JS. GIF: 256 colours, ≤ 20 fps,
+  no custom keyframes. Frames don't clip on export. Animation is page-scoped; deployment/migration fidelity partial.
 ## Next — owner's order, 2026-10-06 (D8 decided: no labs flag)
 - Canvas UI done (10-06 rail/Inspect/Shapes/connector pass; 10-09 UI pass above) → launch holds, 13.4 → 14.4 → 15.
   Open: D7, D11 (own glyphs, empty screen). Next: owner click-through when the GPU is free, then `docs/plan/launch-qa-prompt.md`.

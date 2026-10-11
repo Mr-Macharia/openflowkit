@@ -41,12 +41,12 @@ test('Insert opens by mouse and keyboard with one level of sections; Pointer and
 
   // Hand lives in Pointer, Eraser moved from More to Draw; each lights its group.
   const pointer = rail(page).getByRole('button', { name: 'Pointer', exact: true });
-  await pointer.click();
+  await rail(page).getByRole('button', { name: 'Pointer options', exact: true }).click();
   await page.getByRole('option', { name: 'Hand' }).click();
   await expect.poll(async () => (await state(page)).tool).toBe('hand');
   await expect(pointer).toHaveAttribute('aria-pressed', 'true');
   const draw = rail(page).getByRole('button', { name: 'Draw', exact: true });
-  await draw.click();
+  await rail(page).getByRole('button', { name: 'Draw options', exact: true }).click();
   await page.getByRole('option', { name: 'Eraser' }).click();
   await expect.poll(async () => (await state(page)).tool).toBe('eraser');
   await expect(draw).toHaveAttribute('aria-pressed', 'true');

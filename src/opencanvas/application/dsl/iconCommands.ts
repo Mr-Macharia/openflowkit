@@ -1,6 +1,7 @@
 // Taking icons off nodes: one node, a selection, or a whole diagram. Each is
 // one undo step, and a diagram node remembers the choice in its DSL metadata
 // so regenerating from text does not bring the icon back.
+import { withIconPlacement } from '../../domain/nodes/iconNode';
 import type { DocumentCommand, SetNodeCommand } from '../../domain/commands/types';
 import type { JsonObject } from '../../domain/document/json';
 import type { SceneNode, ScenePage } from '../../domain/document/types';
@@ -41,11 +42,11 @@ export function withoutIcon(node: SceneNode, optOut: boolean): SceneNode {
   const raw = node.metadata.dsl;
   // A canvas-made icon node has no text behind it: keep its box, draw a rectangle.
   if (!raw || typeof raw !== 'object') {
-    return { ...node, kind: 'process', content: { shape: 'rectangle', ...content } };
+    return { ...node, kind: 'process', content: { shape: 'rectangle', ...withIconPlacement(content, 'top') } };
   }
   const meta = dslNodeMeta(node);
   const spec = SHAPE_WORDS[canonicalShapeWord(meta.shape ?? 'rect') ?? 'rect']!;
-  const { color: _color, customColor: _custom, colorMode: _mode, ...plain } = content;
+  const { color: _color, customColor: _custom, colorMode: _mode, ...plain } = withIconPlacement(content, 'top');
   const label = typeof node.content.label === 'string' ? node.content.label : '';
   const subLabel = typeof node.content.subLabel === 'string' ? node.content.subLabel : undefined;
   const size = measureNodeSize({ kind: spec.kind, label, ...(subLabel ? { subLabel } : {}), hasIcon: false, spec });

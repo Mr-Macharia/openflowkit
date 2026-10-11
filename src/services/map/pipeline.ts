@@ -25,7 +25,7 @@ export interface MapProgress {
   staleRef?: string;
 }
 
-export interface PipelineOptions {
+interface PipelineOptions {
   token?: string;
   signal?: AbortSignal;
   fetch?: FetchRepoOptions['fetch'];

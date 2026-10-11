@@ -3,7 +3,7 @@
 // endpoint (a custom base URL can name a private host).
 export const ISSUE_URL = 'https://github.com/Vrun-design/openflowkit/issues/new';
 
-export interface AssistantReportInput {
+interface AssistantReportInput {
   readonly prompt: string;
   readonly reply: string;
   readonly provider: string;

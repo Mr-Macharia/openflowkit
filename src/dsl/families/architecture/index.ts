@@ -49,7 +49,7 @@ async function compileGraphGraph(segments: Parameters<Family['compile']>[0], con
 }
 
 /** The view the single-frame pipeline renders when a workspace has several. */
-export function primaryView(model: ArchModel): ArchView {
+function primaryView(model: ArchModel): ArchView {
   return model.views[0] ?? implicitView(model);
 }
 

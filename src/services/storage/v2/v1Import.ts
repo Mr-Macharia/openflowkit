@@ -20,7 +20,7 @@ export const V1_IMPORT_MARKER_KEY = 'ofk.v1Import';
 const V1_FALLBACK_KEY = 'openflowkit-documents-fallback';
 const V1_ZUSTAND_KEY = 'openflowkit-storage';
 
-export interface V1ImportEntry {
+interface V1ImportEntry {
   /** The v1 name, so a failure can be listed by what the user called it. */
   readonly name?: string;
   readonly importedAt: string;
@@ -31,12 +31,12 @@ export interface V1ImportEntry {
   readonly v2Revision?: number;
 }
 
-export interface V1ImportMarker {
+interface V1ImportMarker {
   readonly completedAt: string;
   readonly docs: Readonly<Record<string, V1ImportEntry>>;
 }
 
-export interface V1ImportReport {
+interface V1ImportReport {
   /** v2 ids written by this run, most recently edited in v1 first. */
   readonly imported: readonly string[];
   readonly failures: readonly LegacyImportFailure[];
@@ -54,7 +54,7 @@ export function readV1ImportMarker(storage: Storage = localStorage): V1ImportMar
 }
 
 /** The three v1 sources, read-only: one readonly transaction and localStorage gets. */
-export async function readV1Sources(factory: IDBFactory, storage: Storage): Promise<LegacyWorkspaceSources> {
+async function readV1Sources(factory: IDBFactory, storage: Storage): Promise<LegacyWorkspaceSources> {
   const database = await openFlowPersistenceDatabase(factory);
   try {
     const transaction = database.transaction([PERSISTED_DOCUMENTS_STORE_NAME, FLOW_METADATA_STORE_NAME], 'readonly');
@@ -184,7 +184,7 @@ export async function readV1AiSettings(factory: IDBFactory, storage: Storage): P
 /** 12.1's "Export all my diagrams" file; v2 writes it too and opens it as a multi-document import. */
 export const V1_BACKUP_FORMAT = 'openflowkit-v1-backup';
 
-export interface V1Backup {
+interface V1Backup {
   readonly format: typeof V1_BACKUP_FORMAT;
   readonly version: 1;
   readonly exportedAt: string;
@@ -220,7 +220,7 @@ export function isV1Backup(value: unknown): value is V1Backup {
   return isJsonObject(value) && value.format === V1_BACKUP_FORMAT && Array.isArray(value.documents);
 }
 
-export interface V1BackupOpenReport {
+interface V1BackupOpenReport {
   readonly opened: readonly string[];
   /** Already in this browser (an earlier import or open); the copy here is kept. */
   readonly existing: number;

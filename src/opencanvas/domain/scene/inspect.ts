@@ -6,19 +6,19 @@ import { buildNodeWorldMatrices, nodeWorldBounds } from './worldGeometry';
 // What the Inspect panel shows for a selection: plain rows, no React. The panel
 // renders whatever sections come back, so a new field is one line here.
 
-export interface InspectRow {
+interface InspectRow {
   readonly label: string;
   readonly value: string;
   /** A colour to draw beside the value. */
   readonly swatch?: string;
 }
 
-export interface InspectSection {
+interface InspectSection {
   readonly title: string;
   readonly rows: readonly InspectRow[];
 }
 
-export interface InspectLink {
+interface InspectLink {
   readonly direction: 'in' | 'out';
   /** The node at the other end; null for a free endpoint. */
   readonly nodeId: string | null;
@@ -26,7 +26,7 @@ export interface InspectLink {
   readonly label: string;
 }
 
-export interface InspectCode {
+interface InspectCode {
   /** The diagram frame whose source holds the line. */
   readonly frameId: string;
   /** 1-based, as the DSL records it. */

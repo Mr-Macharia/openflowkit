@@ -94,7 +94,7 @@ export interface RemoveConnectorCommand extends CommandBase {
 
 /** Who authored a transaction. Human edits carry none; agents name their
  * source and the proposal (idempotency key) that produced the batch. */
-export interface CommandAttribution {
+interface CommandAttribution {
   readonly kind: 'agent';
   readonly source: string;
   readonly proposalId: string;

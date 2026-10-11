@@ -48,6 +48,15 @@ describe('useV2Keyboard type-to-edit', () => {
     expect(onToolChange).not.toHaveBeenCalled();
   });
 
+  // Review 2026-10-11: Safari's IME sends its first keydown with the letter and keyCode 229.
+  it('a key the input method is composing is neither a label nor a shortcut', () => {
+    const { key, onTypeToEdit, onToolChange } = setup();
+    key({ key: 'r', keyCode: 229 });
+    key({ key: 'r', nativeEvent: { isComposing: true } } as never);
+    expect(onTypeToEdit).not.toHaveBeenCalled();
+    expect(onToolChange).not.toHaveBeenCalled();
+  });
+
   it('falls through to shortcuts when nothing editable is selected or a modifier is held', () => {
     const { key, onToolChange, onTypeToEdit } = setup(vi.fn(() => false));
     key({ key: 'r' });
@@ -113,16 +122,31 @@ describe('useV2Keyboard camera', () => {
     expect(onToggleLock).toHaveBeenCalledOnce();
   });
 
-  it('⌘0 fits, ⌘1 resets to 100 %, ⌘= / ⌘- step around the viewport centre', () => {
+  it('⌘0 / ⇧0 / ⌘1 reset to 100 %, ⇧1 fits (Figma, tldraw, Excalidraw), ⌘= / ⌘- step around the viewport centre', () => {
     const { key, onFitView, onResetZoom, onZoomStep } = setup(vi.fn(() => false));
     key({ key: '0', metaKey: true });
-    expect(onFitView).toHaveBeenCalledOnce();
+    key({ key: ')', code: 'Digit0', shiftKey: true });
     key({ key: '1', metaKey: true });
-    expect(onResetZoom).toHaveBeenCalledOnce();
+    expect(onResetZoom).toHaveBeenCalledTimes(3);
+    expect(onFitView).not.toHaveBeenCalled();
+    key({ key: '!', code: 'Digit1', shiftKey: true });
+    expect(onFitView).toHaveBeenCalledOnce();
     key({ key: '=', metaKey: true });
     expect(onZoomStep).toHaveBeenCalledWith(1.2);
     key({ key: '-', metaKey: true });
     expect(onZoomStep).toHaveBeenCalledWith(1 / 1.2);
+  });
+
+  it('every key it handles is kept from the page, so a panel it opens never receives the letter', () => {
+    const { key } = setup(vi.fn(() => false));
+    for (const letter of ['i', 'e', 'n', 'f', 'l', 'r', 'v']) {
+      const preventDefault = vi.fn();
+      key({ key: letter, preventDefault });
+      expect(preventDefault, letter).toHaveBeenCalled();
+    }
+    const unhandled = vi.fn();
+    key({ key: 'q', preventDefault: unhandled });
+    expect(unhandled).not.toHaveBeenCalled();
   });
 
   it('space arms the hand tool and H switches to it', () => {

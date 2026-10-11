@@ -4,50 +4,51 @@ exports[`repoLook > draws the repo scene at overview 1`] = `
 [
   [
     "server",
-    "process",
+    "architecture",
     null,
     {
-      "height": 80,
-      "width": 135,
+      "height": 92,
+      "width": 240,
     },
     "API server",
-    "[Module · 17 files]
-server",
+    "Module · TypeScript
+17 files",
   ],
   [
     "web",
-    "process",
+    "architecture",
     null,
     {
-      "height": 80,
-      "width": 135,
+      "height": 92,
+      "width": 240,
     },
     "Web app",
-    "[Module · 4 files]
-web",
+    "Module · TypeScript
+4 files",
   ],
   [
     "root#files",
-    "process",
+    "architecture",
     null,
     {
-      "height": 66,
-      "width": 120,
+      "height": 92,
+      "width": 240,
     },
     "Repo files",
-    "[Group · 1 file]",
+    "Group
+1 file",
   ],
   [
     "root#outside",
-    "process",
+    "architecture",
     null,
     {
-      "height": 80,
-      "width": 258,
+      "height": 92,
+      "width": 240,
     },
     "Outside services",
-    "[Outside services]
-Services the code calls over the network.",
+    "Group
+1 service",
   ],
 ]
 `;

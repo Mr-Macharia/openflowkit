@@ -27,7 +27,7 @@ export interface ArchitectureActionHost {
   readonly openInMap?: (elementId: string) => boolean;
 }
 
-export interface ArchitectureActionsOptions {
+interface ArchitectureActionsOptions {
   readonly architecture: V2Architecture;
   readonly document: SceneDocumentV1 | null;
   readonly pageRef: RefObject<ScenePage | null>;
@@ -35,7 +35,7 @@ export interface ArchitectureActionsOptions {
   readonly mintId: (prefix: string) => string;
 }
 
-export interface ArchitectureActions {
+interface ArchitectureActions {
   createFlow: (flow: ArchFlow) => void;
   /** The element's id afterwards: a just-added element's first rename moves it to the new name. */
   editElement: (elementId: string, patch: ArchElementPatch) => string | null;

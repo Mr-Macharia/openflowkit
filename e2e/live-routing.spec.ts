@@ -70,7 +70,7 @@ test('dragging a bound node around an obstacle reroutes without crossing', async
   // (the default Arrow goes straight, by design).
   const rectA = (await nodeRect(page, a))!;
   const rectC = (await nodeRect(page, c))!;
-  await page.getByRole('button', { name: 'Connector' }).click();
+  await page.getByRole('button', { name: 'Connector options' }).click();
   await page.getByRole('option', { name: 'Elbow' }).click();
   await page.mouse.move(box.x + rectA.x + rectA.width / 2, box.y + rectA.y + rectA.height / 2);
   await page.mouse.down();

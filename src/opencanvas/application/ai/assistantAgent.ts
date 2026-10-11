@@ -13,7 +13,7 @@ export interface AgentStep {
   readonly status: 'running' | 'done' | 'error';
 }
 
-export interface AgentRunOptions {
+interface AgentRunOptions {
   readonly messages: readonly AiMessage[];
   readonly toolkit: AssistantToolkit;
   /** One model round with these messages and the toolkit's tools. */
@@ -27,7 +27,7 @@ export interface AgentRunOptions {
 }
 
 // ponytail: fixed cap; free tiers allow ~10 requests a minute, so a long plan should ask, not loop.
-export const MAX_ROUNDS = 8;
+const MAX_ROUNDS = 8;
 const WRAP_UP = 'Step limit reached. Answer the user now without calling more tools.';
 
 const aborted = (signal?: AbortSignal): void => {

@@ -2,7 +2,7 @@ import { dslFrameRaw } from '../../../dsl/sceneMeta';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CanvasCamera } from '../../domain/camera/types';
 import type { DocumentCommand } from '../../domain/commands/types';
-import type { ScenePage } from '../../domain/document/types';
+import type { SceneNode, ScenePage } from '../../domain/document/types';
 import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
 import { sameRect } from './V2ContextBar';
 import { buildDeleteSelectionCommand, buildSetNodeLabelCommand } from '../../domain/commands/sceneEdits';
@@ -32,6 +32,21 @@ export interface OpenEditorOptions {
   readonly isNew?: boolean;
   /** Type-to-edit: the editor opens with this text instead of the current label. */
   readonly initialValue?: string;
+}
+
+const STROKE_KINDS: ReadonlySet<string> = new Set(['pen', 'highlighter', 'line', 'arrow']);
+
+/**
+ * Type-to-edit names a blank shape (just placed, never named) and nothing else: on a named one the
+ * letters stay tool shortcuts, and Enter/F2 rename it (U1-01). Groups, label-less widgets and
+ * derived view titles have no label to type into.
+ */
+export function typeToEditNames(node: SceneNode | undefined): boolean {
+  if (!node || node.kind === 'group' || (node.kind === 'widget' && !widgetLabelBox(node))) return false;
+  // Strokes draw no label; a generated diagram's frame is named in its source or with F2/Enter, never by a stray letter.
+  if (STROKE_KINDS.has(node.kind)) return false;
+  if (node.kind === 'frame' && Object.keys(dslFrameRaw(node)).length > 0) return false;
+  return typeof node.content.label !== 'string' || node.content.label.trim() === '';
 }
 
 // In-place label editing owns keyboard input while open (I-02, I-06).

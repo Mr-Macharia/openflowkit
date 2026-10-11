@@ -36,7 +36,8 @@ import { resolveWidgetInks, widgetBackdrop, widgetLabelBox } from '../../domain/
 import { connectorLabelOnCanvas, connectorLabelPlate, resolveConnectorLabelStyle } from '../../domain/connectors/labelStyle';
 import { projectPageConnectors } from '../../domain/connectors/routeProjection';
 import { semanticDetailLevel } from '../../infrastructure/pixi/viewportProjection';
-import { V2ContextBar, contextBarStyle, sameRect, unionScreenBounds, visibleCanvasEdges } from './V2ContextBar';
+import { selectionAnnouncement } from './selectionAnnouncement';
+import { V2ContextBar, contextBarEdges, contextBarStyle, sameRect, unionScreenBounds } from './V2ContextBar';
 import type { ContextMenuTarget } from './V2ContextMenu';
 import { useV2Pointer } from './useV2Pointer';
 import type { StylePresets, V2GestureApi } from './v2PointerGestures';
@@ -149,10 +150,10 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
   // component's props. The equality bail-out below is what terminates it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    const next = visibleCanvasEdges(props.sectionRef.current?.closest<HTMLElement>('.ofk-v2') ?? null);
+    const next = contextBarEdges(props.sectionRef.current?.closest<HTMLElement>('.ofk-v2') ?? null);
     setEdges((current) => (current.left === next.left && current.right === next.right ? current : next));
   });
-  const barLayout = (bar: HTMLElement) => ({ width: bar.offsetWidth, ...visibleCanvasEdges(bar.closest<HTMLElement>('.ofk-v2')) });
+  const barLayout = (bar: HTMLElement) => ({ width: bar.offsetWidth, ...contextBarEdges(bar.closest<HTMLElement>('.ofk-v2')) });
   // Sticky defaults live with the host for the session: what you last styled
   // is what the next shape/text/connector gets.
   const stylePresetsRef = useRef<StylePresets>({ shape: {}, text: {}, connector: {}, ink: {} });
@@ -599,20 +600,15 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
             : {})}
           {...(props.zoomInto && props.selection.nodeIds.length === 1 ? { zoomInto: props.zoomInto } : {})}
           onInspect={props.onInspect}
-          onOpenMenu={(x, y) => props.onContextMenu(props.selectedConnectorId
-            ? { kind: 'connector', id: props.selectedConnectorId, x, y }
-            : { kind: 'nodes', x, y })}
+          onOpenMenu={(rect) => {
+            const at = { x: rect.left, y: rect.bottom + 6, trigger: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+            props.onContextMenu(props.selectedConnectorId ? { kind: 'connector', id: props.selectedConnectorId, ...at } : { kind: 'nodes', ...at });
+          }}
         />
       ) : null}
       {props.children}
       <p className="sr-only" aria-live="polite">
-        {props.selection.nodeIds.length === 0 && props.selectedConnectorIds.length === 0
-          ? 'Nothing selected.'
-          : props.selectedConnectorId
-            ? `Connector ${props.selectedConnectorId} selected.`
-            : [props.selection.nodeIds.length ? `${props.selection.nodeIds.length} shapes` : '',
-              props.selectedConnectorIds.length ? `${props.selectedConnectorIds.length} connectors` : '']
-              .filter(Boolean).join(' and ') + ' selected.'}
+        {selectionAnnouncement(props.page, props.selection.nodeIds, props.selectedConnectorIds)}
       </p>
     </section>
   );

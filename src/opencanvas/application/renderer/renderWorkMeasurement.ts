@@ -8,7 +8,7 @@ export const OPEN_CANVAS_RENDER_WORK_MEASURE = 'openflowkit:opencanvas-render-wo
  * misses budget. These name the work between a camera change and that submit,
  * so the expensive phase is attributable instead of invisible.
  */
-export const OPEN_CANVAS_CAMERA_PHASE_MEASURES = {
+const OPEN_CANVAS_CAMERA_PHASE_MEASURES = {
   total: 'openflowkit:opencanvas-camera-total',
   projection: 'openflowkit:opencanvas-camera-projection',
   rebuild: 'openflowkit:opencanvas-camera-rebuild',
@@ -16,7 +16,7 @@ export const OPEN_CANVAS_CAMERA_PHASE_MEASURES = {
   connectorOverlay: 'openflowkit:opencanvas-camera-connector-overlay',
 } as const;
 
-export type OpenCanvasCameraPhase = keyof typeof OPEN_CANVAS_CAMERA_PHASE_MEASURES;
+type OpenCanvasCameraPhase = keyof typeof OPEN_CANVAS_CAMERA_PHASE_MEASURES;
 
 export function recordOpenCanvasCameraPhase(
   timeline: PerformanceMeasurePort,

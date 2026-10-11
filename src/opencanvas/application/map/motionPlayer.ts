@@ -22,7 +22,7 @@ export interface MotionJob {
   readonly camTo: CanvasCamera | null;
 }
 
-export interface MotionStats {
+interface MotionStats {
   running: boolean;
   frames: number;
   /** Time spent drawing a frame (not waiting for the GPU), ms. */

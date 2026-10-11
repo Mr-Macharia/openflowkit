@@ -3,10 +3,10 @@ import type { V2DocumentSummary } from '../../../services/storage/v2/v2Repositor
 
 export type HomeView = 'recents' | 'starred' | 'templates' | 'archive' | 'news';
 export type HomeSort = 'edited' | 'name';
-export type HomeLayout = 'grid' | 'list';
+type HomeLayout = 'grid' | 'list';
 
 /** Home's own memory: starred ids, how the list is shown, the last news item seen. Per browser, like the diagrams. */
-export interface HomeState {
+interface HomeState {
   readonly starred: readonly string[];
   readonly sort: HomeSort;
   readonly layout: HomeLayout;

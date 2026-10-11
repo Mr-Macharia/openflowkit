@@ -12,7 +12,7 @@ import type { ArchElement, ArchModel, ArchView, ProjectedRelation, ViewRule, Vie
  * forms are reported so the serializer can keep them verbatim (W160).
  */
 
-export interface ViewSelection {
+interface ViewSelection {
   readonly shown: ReadonlySet<string>;
   readonly unsupported: readonly ViewRule[];
 }
@@ -35,7 +35,7 @@ function matchesWhere(element: ArchElement, where: ViewRuleWhere | undefined): b
 }
 
 /** The implicit `include *` scope for a view kind. */
-export function defaultScope(index: ArchIndex, view: ArchView): string[] {
+function defaultScope(index: ArchIndex, view: ArchView): string[] {
   const model = index.model;
   const ids = model.elements.map((element) => element.id);
   const byId = index.byId;
