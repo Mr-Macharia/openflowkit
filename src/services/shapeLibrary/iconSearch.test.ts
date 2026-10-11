@@ -25,6 +25,43 @@ describe('searchIcons', () => {
     expect(searchIcons(query).icons[0]?.shapeId).toBe(shapeId);
   });
 
+  it.each([
+    ['bigquery', 'core-bigquery'],
+    ['cloud run', 'core-cloud-run'],
+    ['gke', 'core-gke'],
+    ['cloud sql', 'core-cloud-sql'],
+    ['vertex', 'core-vertex-ai'],
+    ['cloud functions', 'general-serverless-computing'],
+    ['gcs', 'core-cloud-storage'],
+    ['gcp storage', 'general-storage'],
+  ])('finds Google Cloud by product name: %s', (query, shapeId) => {
+    const top = searchIcons(query).icons[0];
+    expect(`${top?.provider}/${top?.shapeId}`).toBe(`gcp/${shapeId}`);
+  });
+
+  it.each([
+    ['core-gke', 'GKE'], ['core-cloud-sql', 'Cloud SQL'], ['core-vertex-ai', 'Vertex AI'], ['core-bigquery', 'BigQuery'],
+    ['core-alloydb', 'AlloyDB'], ['core-pubsub', 'Pub/Sub'], ['core-cloud-spanner', 'Cloud Spanner'],
+    ['core-ai-hypercomputer', 'AI Hypercomputer'], ['core-google-distributed-cloud', 'Google Distributed Cloud'],
+    ['general-ai-machine-learning', 'AI & Machine Learning'], ['general-hybrid-multicloud', 'Hybrid & Multicloud'],
+    ['general-security-identity', 'Security & Identity'],
+  ])('names Google Cloud icon %s the way Google does: %s', (shapeId, label) => {
+    expect(searchIcons(shapeId, 'gcp').icons.find((icon) => icon.shapeId === shapeId)?.label).toBe(label);
+  });
+
+  it.each([
+    ['Pub/Sub', 'core-pubsub'], ['Vertex AI', 'core-vertex-ai'], ['AlloyDB', 'core-alloydb'], ['Cloud SQL', 'core-cloud-sql'],
+    ['AI & Machine Learning', 'general-ai-machine-learning'], ['Security & Identity', 'general-security-identity'],
+  ])('finds a Google Cloud icon by its proper name: %s', (query, shapeId) => {
+    expect(searchIcons(query, 'gcp').icons[0]?.shapeId).toBe(shapeId);
+  });
+
+  it('lists the Google Cloud category icons under the GCP pack', () => {
+    const ids = searchIcons('ai', 'gcp').icons.map((icon) => icon.shapeId);
+    expect(ids).toEqual(expect.arrayContaining(['general-ai-machine-learning', 'general-ai-applications-agents', 'core-vertex-ai']));
+    expect(searchIcons('pub/sub', 'gcp').icons.slice(0, 2).map((icon) => icon.shapeId)).toEqual(['core-pubsub', 'general-data-analytics']);
+  });
+
   it('keeps an alias hit inside the chosen pack', () => {
     expect(searchIcons('eks', 'azure').icons.every((icon) => icon.provider === 'azure')).toBe(true);
   });

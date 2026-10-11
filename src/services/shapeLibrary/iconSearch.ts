@@ -3,7 +3,7 @@ import type { IconChoice } from '@/opencanvas/domain/nodes/iconNode';
 import { SVG_SOURCES } from './providerCatalog';
 import { TABLER_PROVIDER } from './tablerIcons';
 
-export interface IconPack {
+interface IconPack {
   readonly id: string;
   readonly label: string;
 }
@@ -30,7 +30,7 @@ function inScope(provider: string, scope: string): boolean {
   return scope === 'all' || provider === scope || (scope === 'cloud' && CLOUD_IDS.has(provider));
 }
 
-export interface IconSearchResult {
+interface IconSearchResult {
   readonly icons: readonly IconChoice[];
   readonly total: number;
 }

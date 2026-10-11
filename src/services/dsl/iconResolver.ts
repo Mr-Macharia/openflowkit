@@ -1,7 +1,7 @@
 import { matchIconId, type IconResolution } from '../../dsl/iconMatch';
 import { SVG_SOURCES } from '../shapeLibrary/providerCatalog';
 
-export type DslIconResolution = IconResolution;
+type DslIconResolution = IconResolution;
 
 let byProvider: Map<string, string[]> | null = null;
 

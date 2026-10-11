@@ -1,10 +1,10 @@
 import type { DomainLibraryCategory, DomainLibraryItem } from '@/services/domainLibrary';
 import { ICON_PACK_IDS } from '@/dsl/iconMatch';
 import { loadTablerIconUrl, TABLER_ICON_NAMES, TABLER_PACK_ID, TABLER_PROVIDER } from './tablerIcons';
-import { PROVIDER_ICON_MANIFEST } from './providerIconManifest';
+import { PROVIDER_ICON_LABELS, PROVIDER_ICON_MANIFEST } from './providerIconManifest';
 import { loadProviderIconUrl } from './providerIconUrls';
 
-export interface ProviderShapePreview {
+interface ProviderShapePreview {
   packId: string;
   shapeId: string;
   label: string;
@@ -12,7 +12,7 @@ export interface ProviderShapePreview {
   previewUrl: string;
 }
 
-export interface SvgSource {
+interface SvgSource {
   provider: string;
   packId: string;
   shapeId: string;
@@ -92,7 +92,7 @@ function providerSource(folder: string, iconPath: string): SvgSource {
     provider,
     packId: getPackIdForProvider(provider),
     shapeId,
-    label: iconLabel(pathParts[pathParts.length - 1]!),
+    label: PROVIDER_ICON_LABELS[folder]?.[iconPath] ?? iconLabel(pathParts[pathParts.length - 1]!),
     category,
     previewLoader: async () => (await loadProviderIconUrl(folder, iconPath)) ?? '',
   };

@@ -1,6 +1,7 @@
 // Writes src/services/shapeLibrary/providerIconManifest.ts: every bundled provider icon, by provider and
-// category, so the editor knows the catalog without bundling a loader per icon. Re-run after adding or
-// removing an SVG under assets/third-party-icons/*/processed (providerIconManifest.test.ts fails until you do).
+// category (plus the names a pack's labels.json gives them), so the editor knows the catalog without bundling
+// a loader per icon. Re-run after adding or removing an SVG under assets/third-party-icons/*/processed, or
+// editing a labels.json (providerIconManifest.test.ts fails until you do).
 // node scripts/gen-icon-manifest.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +29,26 @@ export function readIconManifest(iconsDir = ICONS) {
   return manifest;
 }
 
-export function renderIconManifest(manifest) {
+/**
+ * provider → icon path → the vendor's name for it, from an optional `<provider>/labels.json`
+ * ({ "Core/gke": "GKE" }), for packs whose lowercase file names can't spell "GKE" or "Pub/Sub".
+ * A key with no SVG on disk is an error, so the map can't silently go stale.
+ */
+export function readIconLabels(iconsDir = ICONS, manifest = readIconManifest(iconsDir)) {
+  const labels = {};
+  for (const provider of Object.keys(manifest)) {
+    const file = path.join(iconsDir, provider, 'labels.json');
+    if (!fs.existsSync(file)) continue;
+    const paths = new Set(Object.entries(manifest[provider]).flatMap(([category, names]) => names.map((name) => (category ? `${category}/${name}` : name))));
+    const map = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const stale = Object.keys(map).filter((key) => !paths.has(key));
+    if (stale.length) throw new Error(`${path.relative(ROOT, file)}: no SVG for ${stale.join(', ')}`);
+    labels[provider] = Object.fromEntries(Object.entries(map).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  return labels;
+}
+
+export function renderIconManifest(manifest, labels = {}) {
   const lines = Object.entries(manifest).map(([provider, categories]) => [
     `  ${JSON.stringify(provider)}: {`,
     ...Object.entries(categories).map(([category, names]) => `    ${JSON.stringify(category)}: ${JSON.stringify(names)},`),
@@ -39,10 +59,14 @@ export function renderIconManifest(manifest) {
 export const PROVIDER_ICON_MANIFEST: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
 ${lines.join('\n')}
 };
+
+// provider → icon path → the vendor's own name for the icon, where the file name can't say it.
+export const PROVIDER_ICON_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = ${JSON.stringify(labels, null, 2)};
 `;
 }
 
 if (process.argv[1] === import.meta.filename) {
-  fs.writeFileSync(OUT, renderIconManifest(readIconManifest()));
+  const manifest = readIconManifest();
+  fs.writeFileSync(OUT, renderIconManifest(manifest, readIconLabels(ICONS, manifest)));
   console.log(`wrote ${path.relative(ROOT, OUT)}`);
 }

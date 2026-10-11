@@ -49,7 +49,7 @@ export function matchIconId(id: string, shapeIds: (provider: string) => readonly
   return shapeId ? { packId, shapeId } : null;
 }
 
-export interface IconFields {
+interface IconFields {
   readonly provider: string;
   readonly id: string;
   readonly label: string;

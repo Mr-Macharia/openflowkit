@@ -29,3 +29,24 @@ test('icon library inserts an icon node; the style bar swaps its icon as one und
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
   await expect.poll(() => icons(page)).toEqual(['architecture:aws/compute-lambda']);
 });
+
+test('the GCP tab finds Google Cloud products by name and draws the official icons', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForSelector('[data-testid="v2-canvas"]');
+  await page.locator('[data-testid="v2-canvas"]').focus();
+  await page.keyboard.press('i');
+  await page.getByRole('tab', { name: 'Cloud', exact: true }).click();
+  await page.getByRole('tab', { name: 'GCP', exact: true }).click();
+  const search = page.getByRole('searchbox', { name: 'Search icons' });
+  await search.fill('');
+  // Every tile of the pack resolves its art (tiles load lazily, so only the URL is checked here).
+  const tiles = page.locator('.ofk-icon-picker-cell[data-provider="gcp"] img');
+  await expect.poll(() => tiles.evaluateAll((imgs) => imgs.length > 50 && imgs.every((img) => (img as HTMLImageElement).src !== ''))).toBe(true);
+  await search.fill('cloud functions');
+  await expect(page.getByRole('option').first()).toHaveAttribute('title', 'Serverless Computing');
+  await search.fill('cloud run');
+  const first = page.getByRole('option').first();
+  await expect.poll(() => first.locator('img').evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await first.click();
+  await expect.poll(() => icons(page)).toEqual(['architecture:gcp/core-cloud-run']);
+});

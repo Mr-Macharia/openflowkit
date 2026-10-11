@@ -18,6 +18,9 @@ describe('inferIcon', () => {
     ['.NET service', 'developer/backend-dotnet'],
     ['Cache (Redis).', 'developer/database-redis'],
     ['Google Pub/Sub', 'gcp/core-pubsub'],
+    ['Cloud Run API', 'gcp/core-cloud-run'],
+    ['Orders on Cloud SQL', 'gcp/core-cloud-sql'],
+    ['Google Kubernetes Engine', 'gcp/core-gke'],
     ['S3 bucket', 'aws/storage-simple-storage-service'],
   ])('%s → %s', (label, icon) => {
     expect(inferIcon(label)).toBe(icon);
@@ -64,6 +67,14 @@ describe('inferIcon', () => {
     expect(inferIcon('Orders store', 'PostgreSQL 16')).toBe('developer/database-postgresql');
     expect(inferIcon('Redis cache', 'custom')).toBe('developer/database-redis');
   });
+
+  // U3 2026-10-11: `Orders [tech: Go]` got the shopping cart; the explicit technology must win.
+  it('reads a short technology name in tech: that a label could not claim', () => {
+    expect(inferIcon('Orders', 'Go')).toBe('developer/others-go');
+    expect(inferIcon('Orders', 'Go 1.22')).toBe('developer/others-go');
+    expect(inferIcon('Go to checkout')).not.toBe('developer/others-go');
+    expect(inferIcon('Go')).toBeNull();
+  });
 });
 
 describe('iconAliases', () => {
@@ -73,6 +84,20 @@ describe('iconAliases', () => {
     expect(iconAliases('route53')).toEqual(['aws/networking-content-delivery-route-53']);
     expect(iconAliases('ALB')).toEqual(['aws/networking-content-delivery-elastic-load-balancing']);
     expect(iconAliases('kubernetes pod')).toEqual(['developer/devops-ai-ml-kubernetes']);
+  });
+
+  it('finds a Google Cloud product by the icon the guide gives it, its own icon first', () => {
+    expect(iconAliases('Cloud Functions')).toEqual(['gcp/general-serverless-computing']);
+    expect(iconAliases('memorystore')).toEqual(['gcp/general-databases']);
+    expect(iconAliases('pub/sub')).toEqual(['gcp/core-pubsub', 'gcp/general-data-analytics']);
+    expect(iconAliases('persistent disk')).toEqual(['gcp/core-hyperdisk', 'gcp/general-storage']);
+    // Words every vendor uses stay with the catalogue search.
+    expect(iconAliases('workflows')).toEqual([]);
+    expect(iconAliases('key management service')).toEqual([]);
+  });
+
+  it('gives a label no icon from the guide general products', () => {
+    expect(inferIcon('Cloud Functions')).not.toMatch(/^gcp\//);
   });
 
   it('leaves concepts and partial words to the catalogue search', () => {

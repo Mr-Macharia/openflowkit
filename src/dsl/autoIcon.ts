@@ -6,6 +6,8 @@
 // ponytail: hand-curated table, ~200 names — grow it from real misses, or back
 // it with the catalog's label index once the table stops being enough.
 
+import { GCP_PRODUCT_ICONS } from './gcpProducts';
+
 /**
  * Tiers, strongest first: a concrete technology ("Postgres") beats the
  * platform it runs on ("on AWS"), which beats a concept ("database"), which
@@ -223,6 +225,21 @@ const TECH: readonly (readonly string[])[] = [
   ['gcp/core-dataproc', 'dataproc'],
   ['gcp/core-cloud-composer', 'cloud composer'],
   ['gcp/core-looker', 'looker'],
+  ['gcp/core-cloud-run', 'cloud run', 'google cloud run'],
+  ['gcp/core-cloud-sql', 'cloud sql', 'google cloud sql'],
+  ['gcp/core-gke', 'gke', 'google kubernetes engine'],
+  ['gcp/core-compute-engine', 'compute engine', 'google compute engine', 'gce'],
+  ['gcp/core-alloydb', 'alloydb'],
+  ['gcp/core-vertex-ai', 'vertex ai'],
+  ['gcp/core-apigee', 'apigee'],
+  ['gcp/core-anthos', 'anthos'],
+  ['gcp/core-hyperdisk', 'hyperdisk'],
+  ['gcp/core-ai-hypercomputer', 'ai hypercomputer'],
+  ['gcp/core-google-distributed-cloud', 'google distributed cloud'],
+  ['gcp/core-security-command-center', 'security command center'],
+  ['gcp/core-security-operations', 'google security operations', 'google secops'],
+  ['gcp/core-threat-intelligence', 'google threat intelligence'],
+  ['gcp/core-mandiant', 'mandiant'],
 ];
 
 const PLATFORM: readonly (readonly string[])[] = [
@@ -308,14 +325,24 @@ const CONCEPT_MAX_WORDS = 4;
 
 interface Rule { readonly icon: string; readonly name: string; readonly tier: Tier }
 
-const RULES: readonly Rule[] = ([[TECH, 0], [PLATFORM, 1], [CONCEPT, 2], [GENERIC, 3]] as const).flatMap(([table, tier]) =>
+const rulesOf = (tables: readonly (readonly [readonly (readonly string[])[], Tier])[]): readonly Rule[] => tables.flatMap(([table, tier]) =>
   table.flatMap(([icon, ...names]) => names.map((name) => ({ icon: icon!, name, tier }))));
+const RULES: readonly Rule[] = rulesOf([[TECH, 0], [PLATFORM, 1], [CONCEPT, 2], [GENERIC, 3]]);
+
+// Technology names too common as words to read from a label ("Go to checkout"), but unambiguous in `tech:`.
+const TECH_HINT_ONLY: readonly (readonly string[])[] = [
+  ['developer/others-go', 'go'],
+];
+const HINT_RULES: readonly Rule[] = [...rulesOf([[TECH_HINT_ONLY, 0]]), ...RULES];
 
 /**
- * Shapes that stand for a thing (a service, a store). Decisions, terminals,
- * people and notes keep their shape: an icon card would erase what it says.
+ * Shapes that stand for a thing (a service, a store). Decisions, terminals
+ * and notes keep their shape: an icon card would erase what it says.
  */
 export const AUTO_ICON_SHAPES: ReadonlySet<string> = new Set(['rect', 'rounded', 'cylinder', 'queue', 'component', 'hexagon', 'cloud']);
+
+/** A person draws as this icon card, never the blank silhouette (`icon: none` opts back out). */
+export const PERSON_ICON = 'tabler/user';
 
 /** Every icon id the table can produce, so a test can prove each still resolves. */
 export const AUTO_ICON_IDS: readonly string[] = [...new Set(RULES.map((rule) => rule.icon))];
@@ -323,7 +350,8 @@ export const AUTO_ICON_IDS: readonly string[] = [...new Set(RULES.map((rule) => 
 // "Route 53", "route53" and "route-53" are one name to someone typing it.
 const compact = (text: string): string => text.toLowerCase().replace(/[\s._-]+/g, '');
 const ALIASES = new Map<string, string[]>();
-for (const rule of RULES) {
+// After the tables above, so a name both know (`pubsub`) resolves to the product's own icon first.
+for (const rule of [...RULES, ...rulesOf([[GCP_PRODUCT_ICONS, 0]])]) {
   if (rule.tier > 1) continue;
   const key = compact(rule.name);
   const icons = ALIASES.get(key) ?? [];
@@ -353,14 +381,10 @@ function words(text: string): string[] {
  * text (a `tech:` value) checked first.
  */
 export function inferIcon(label: string, hint?: string): string | null {
-  for (const text of hint ? [hint, label] : [label]) {
-    const found = bestMatch(text);
-    if (found) return found;
-  }
-  return null;
+  return (hint ? bestMatch(hint, HINT_RULES) : null) ?? bestMatch(label, RULES);
 }
 
-function bestMatch(text: string): string | null {
+function bestMatch(text: string, rules: readonly Rule[]): string | null {
   const tokens = words(text);
   if (!tokens.length) return null;
   const haystack = ` ${tokens.join(' ')} `;
@@ -370,7 +394,7 @@ function bestMatch(text: string): string | null {
     || RULES.some((rule) => rule.tier >= 2 && rule.name.includes(' ') && haystack.startsWith(` ${rule.name} `));
   const conceptsAllowed = tokens.length <= CONCEPT_MAX_WORDS && nounLed;
   let best: { rule: Rule; at: number } | null = null;
-  for (const rule of RULES) {
+  for (const rule of rules) {
     if (rule.tier >= 2 && !conceptsAllowed) continue;
     const found = haystack.indexOf(` ${rule.name} `);
     if (found < 0) continue;

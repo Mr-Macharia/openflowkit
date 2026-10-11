@@ -93,6 +93,8 @@ async function main() {
   for (const provider of providers) {
     const processedDir = join(ICONS_ROOT, provider, 'processed');
     const svgs = await walkSvgs(processedDir);
+    // The vendor's own names where lowercase file names can't spell them ("GKE", "Pub/Sub"); see scripts/gen-icon-manifest.mjs.
+    const labels = JSON.parse(await readFile(join(ICONS_ROOT, provider, 'labels.json'), 'utf8').catch(() => '{}'));
     const art = {};
     for (const filePath of svgs) {
       const rel = relative(processedDir, filePath).replace(/\\/g, '/').replace(/\.svg$/i, '');
@@ -102,7 +104,7 @@ async function main() {
       manifest.push({
         provider: provider.toLowerCase(),
         slug,
-        label: humanize(slug),
+        label: labels[rel] ?? humanize(slug),
         category,
       });
       art[slug] = compactSvg(await readFile(filePath, 'utf8'));
