@@ -1,0 +1,35 @@
+name: Release
+
+# Pushing vX.Y.Z (app) or mcp-vX.Y.Z (MCP server) publishes a GitHub release. The tag must match the
+# package version, and an app tag needs its CHANGELOG.md section (scripts/release-notes.mjs checks both).
+on:
+  push:
+    tags: [ 'v*.*.*', 'mcp-v*.*.*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Notes from the changelog
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            mcp-v*) title="MCP server ${GITHUB_REF_NAME#mcp-v}"; latest=false ;;
+            *)      title="OpenFlowKit ${GITHUB_REF_NAME#v}";     latest=true ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" --title "$title" --notes-file release-notes.md --latest="$latest"

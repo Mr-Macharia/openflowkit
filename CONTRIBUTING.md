@@ -62,6 +62,14 @@ CI runs lint, the unit tests, the build, the MCP tests and the browser suite in 
 
 The [PR template](.github/pull_request_template.md) has the checklist.
 
+## Releases and versions
+
+The app follows [Semantic Versioning](https://semver.org/): a patch (2.1.1) for fixes, a minor (2.2.0) for
+features, a major only when old files or links stop working. Every change people will notice adds one line
+under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). A maintainer releases by bumping `package.json`, renaming
+that section to the version and date, and pushing a `vX.Y.Z` tag; the release workflow checks the two match and
+publishes the GitHub release from the changelog. The MCP server versions on its own (`mcp-vX.Y.Z` tags, npm).
+
 ## Code rules
 
 The full rules are in [AGENTS.md](AGENTS.md#code-rules), which the maintainers' coding agents

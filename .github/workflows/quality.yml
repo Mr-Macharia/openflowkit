@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Release notes script
+        run: node scripts/release-notes.mjs --self-check
+
       # action/*.integration.test.mjs runs the built MCP CLI against a real git repo.
       - name: Build the agent bundle and the MCP CLI
         run: npm run build:agent && npm --prefix mcp-server run build
