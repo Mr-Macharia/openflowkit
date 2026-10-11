@@ -3,7 +3,7 @@
 // `tokens` are the raw event.key / event.code literals the handler reads.
 export interface ShortcutRow {
   readonly label: string;
-  /** Display form, already platform-aware via COMMAND. */
+  /** Display form, already platform-aware via `platformKeys`. */
   readonly keys: string;
   readonly tokens: readonly string[];
 }
@@ -19,107 +19,129 @@ export const isApplePlatform = (): boolean =>
 /** `⌘` on Apple platforms, `Ctrl` everywhere else. */
 export const COMMAND = (): string => (isApplePlatform() ? '⌘' : 'Ctrl');
 
-const PC_KEYS: Readonly<Record<string, string>> = { '⌘': 'Ctrl+', '⌥': 'Alt+', '⇧': 'Shift+', '⌫': 'Backspace', '↵': 'Enter' };
-/** A hint written in Mac glyphs (`⌘⌥]`), as this platform names the keys: unchanged on Apple, `Ctrl+Alt+]` elsewhere. */
-export const platformKeys = (glyphs: string, apple = isApplePlatform()): string =>
-  (apple ? glyphs : glyphs.replace(/[⌘⌥⇧⌫↵]/g, (glyph) => PC_KEYS[glyph]!));
+const MAC_ORDER = '⌃⌥⇧⌘';
+const PC_NAMES: Readonly<Record<string, string>> = { '⌃': 'Ctrl', '⌘': 'Ctrl', '⌥': 'Alt', '⇧': 'Shift' };
+const PC_ORDER = ['Ctrl', 'Alt', 'Shift'];
+const PC_KEYS: Readonly<Record<string, string>> = { '⌫': 'Backspace', '↵': 'Enter' };
+/**
+ * The one shortcut formatter. Hints are written in Mac glyphs, alternatives split by " / " (`⌘Z / ⇧⌘Z`).
+ * Apple: glyphs in Apple's order ⌃⌥⇧⌘, no "+". Elsewhere: `Ctrl+Shift+Z`, `Backspace`, `Enter`.
+ */
+export function platformKeys(glyphs: string, apple = isApplePlatform()): string {
+  return glyphs.split(' / ').map((chord) => {
+    const [, modifiers = '', key = ''] = /^([⌃⌥⇧⌘]*)(.*)$/su.exec(chord) ?? [];
+    if (apple) return [...modifiers].sort((a, b) => MAC_ORDER.indexOf(a) - MAC_ORDER.indexOf(b)).join('') + key;
+    const names = [...new Set([...modifiers].map((glyph) => PC_NAMES[glyph]!))].sort((a, b) => PC_ORDER.indexOf(a) - PC_ORDER.indexOf(b));
+    return [...names, ...(key ? [PC_KEYS[key] ?? key] : [])].join('+');
+  }).join(' / ');
+}
 
-export function shortcutGroups(command = COMMAND()): readonly ShortcutGroup[] {
-  const meta = command === '⌘' ? 'meta' : 'ctrl';
-  return [
+type GlyphRow = readonly [label: string, glyphs: string, tokens: readonly string[]];
+
+/** Rows are written in Mac glyphs once and formatted for this platform by `platformKeys`. */
+export function shortcutGroups(apple = isApplePlatform()): readonly ShortcutGroup[] {
+  const meta = apple ? 'meta' : 'ctrl';
+  const groups: readonly { title: string; rows: readonly GlyphRow[] }[] = [
     {
       title: 'Tools',
       rows: [
-        { label: 'Select', keys: 'V', tokens: ['v'] },
-        { label: 'Hand', keys: 'H', tokens: ['h'] },
-        { label: 'Rectangle', keys: 'R', tokens: ['r'] },
-        { label: 'Ellipse', keys: 'O', tokens: ['o'] },
-        { label: 'Shapes', keys: 'S', tokens: ['s'] },
-        { label: 'Connector', keys: 'A', tokens: ['a'] },
-        { label: 'Text', keys: 'T', tokens: ['t'] },
-        { label: 'Pen', keys: 'P', tokens: ['p'] },
-        { label: 'Highlighter', keys: 'Shift + P', tokens: ['KeyP'] },
-        { label: 'Eraser', keys: 'X', tokens: ['x'] },
-        { label: 'Laser pointer', keys: 'K', tokens: ['k'] },
-        { label: 'Frame', keys: 'F', tokens: ['f'] },
-        { label: 'Sticky note', keys: 'N', tokens: ['n'] },
-        { label: 'Place the armed shape at the centre', keys: 'Enter', tokens: [] },
-        { label: 'Connect two selected shapes', keys: 'A', tokens: [] },
-        { label: 'Insert: media, charts, frames, wireframe', keys: 'Shift + S', tokens: ['KeyS'] },
-        { label: 'Icons and emoji', keys: 'I / E', tokens: ['i', 'e'] },
-        { label: 'Image', keys: 'Shift + I', tokens: ['KeyI'] },
+        ['Select', 'V', ['v']],
+        ['Hand', 'H', ['h']],
+        ['Rectangle', 'R', ['r']],
+        ['Ellipse', 'O', ['o']],
+        ['Shapes', 'S', ['s']],
+        ['Connector', 'A', ['a']],
+        ['Text', 'T', ['t']],
+        ['Pen', 'P', ['p']],
+        ['Highlighter', '⇧P', ['KeyP']],
+        ['Eraser', 'X', ['x']],
+        ['Laser pointer', 'K', ['k']],
+        ['Frame', 'F', ['f']],
+        ['Sticky note', 'N', ['n']],
+        ['Place the armed shape at the centre', '↵', []],
+        ['Connect two selected shapes', 'A', []],
+        ['Insert: media, charts, frames, wireframe', '⇧S', ['KeyS']],
+        ['Icons and emoji', 'I / E', ['i', 'e']],
+        ['Image', '⇧I', ['KeyI']],
       ],
     },
     {
       title: 'Canvas',
       rows: [
-        { label: 'Pan', keys: 'Space + drag', tokens: [' '] },
-        { label: 'Zoom to fit', keys: `${command} + 0`, tokens: ['0', meta] },
-        { label: 'Zoom to selection', keys: 'Shift + 2', tokens: ['Digit2'] },
-        { label: 'Zoom to fit (Shift)', keys: 'Shift + 1', tokens: ['Digit1'] },
-        { label: 'Zoom to 100%', keys: `${command} + 1`, tokens: ['1', meta] },
-        { label: 'Zoom in / out', keys: `${command} + = / −`, tokens: ['=', '+', '-'] },
-        { label: 'Find on canvas', keys: `${command} + F`, tokens: ['f', meta] },
-        { label: 'Layers', keys: 'L', tokens: ['l'] },
-        { label: 'Canvas / Map', keys: 'M', tokens: ['m'] },
-        { label: 'Move between boxes (Map)', keys: 'Arrows', tokens: [] },
-        { label: 'Edit map as drawing (Map)', keys: 'Shift + M', tokens: ['KeyM'] },
+        ['Pan (hold, then drag)', 'Space', [' ']],
+        ['Zoom to fit', '⇧1', ['Digit1']],
+        ['Zoom to selection', '⇧2', ['Digit2']],
+        ['Zoom to 100%', '⇧0 / ⌘0 / ⌘1', ['0', '1', 'Digit0', meta]],
+        ['Zoom in / out', '⌘= / ⌘−', ['=', '+', '-']],
+        ['Find on canvas', '⌘F', ['f', meta]],
+        ['Layers', 'L', ['l']],
+        ['Canvas / Map', 'M', ['m']],
+        ['Move between boxes (Map)', 'Arrows', []],
+        ['Edit map as drawing (Map)', '⇧M', ['KeyM']],
         // The dispatcher reads metaKey/ctrlKey for this, never altKey: Alt is
         // taken by resize-from-centre.
-        { label: 'Snap bypass while dragging', keys: command, tokens: [] },
-        { label: 'Resize from the centre', keys: 'Alt + drag a handle', tokens: [] },
+        ['Snap bypass (hold while dragging)', '⌘', []],
+        // Held at the press or pressed mid-drag, the same as Figma: the drag updates the moment it changes.
+        ['Keep proportions, one axis, 45° lines, 15° turns (hold while dragging)', '⇧', []],
+        ['From the centre (resize, draw); a copy (move) — hold while dragging', '⌥', []],
+        ['Add to / remove from the selection', '⇧Click / ⌘Click', []],
+        ['Select inside a group (Esc: back to the group)', 'Double-click', []],
       ],
     },
     {
       title: 'Edit',
       rows: [
-        { label: 'Undo / redo', keys: `${command} + Z / Shift + Z`, tokens: ['z', 'y'] },
-        { label: 'Copy / cut / paste', keys: `${command} + C / X / V`, tokens: ['c', 'x', 'KeyC'] },
-        { label: 'Copy / paste style', keys: `${command} + Alt + C / V`, tokens: [] },
-        { label: 'Duplicate', keys: `${command} + D`, tokens: ['d'] },
-        { label: 'Delete / unplace', keys: 'Backspace', tokens: ['Delete', 'Backspace'] },
-        { label: 'Remove from model', keys: `${command} + Shift + Backspace`, tokens: [] },
-        { label: 'Nudge (10 px with Shift)', keys: 'Arrows', tokens: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] },
-        { label: 'Edit label', keys: 'Enter / F2', tokens: ['Enter', 'F2'] },
-        { label: 'With one shape selected, typing edits its label', keys: 'Any letter', tokens: [] },
-        { label: 'Select all', keys: `${command} + A`, tokens: [] },
-        { label: 'Lock / unlock', keys: `${command} + L`, tokens: [] },
-        { label: 'Bold / italic / underline', keys: `${command} + B / I / U`, tokens: ['b', 'i', 'u'] },
-        { label: 'Bring forward / send backward', keys: `${command} + ] / [`, tokens: ['BracketRight', 'BracketLeft'] },
-        { label: 'Bring to front / send to back', keys: '] / [', tokens: [']', '['] },
-        { label: 'Bring to front / back (group)', keys: `${command} + Alt + ] / [`, tokens: [] },
+        ['Undo / redo', '⌘Z / ⇧⌘Z', ['z', 'y']],
+        ['Copy / cut / paste', '⌘C / ⌘X / ⌘V', ['c', 'x', 'KeyC']],
+        ['Copy / paste style', '⌥⌘C / ⌥⌘V', []],
+        ['Duplicate', '⌘D', ['d']],
+        ['Delete / unplace', '⌫', ['Delete', 'Backspace']],
+        ['Remove from model', '⇧⌘⌫', []],
+        ['Nudge (10 px with Shift)', 'Arrows', ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']],
+        ['Edit label', '↵ / F2', ['Enter', 'F2']],
+        ['Name a blank selected shape by typing', 'Any letter', []],
+        ['Select all', '⌘A', []],
+        ['Lock / unlock', '⌘L', []],
+        ['Bold / italic / underline', '⌘B / ⌘I / ⌘U', ['b', 'i', 'u']],
+        ['Bring forward / send backward', '⌘] / ⌘[', ['BracketRight', 'BracketLeft']],
+        // ⌥⌘] / ⌥⌘[ is the same reorder as ] / [ (the menus show it): one row, not a second "group" action.
+        ['Bring to front / send to back', '] / [ / ⌥⌘] / ⌥⌘[', [']', '[']],
       ],
     },
     {
       title: 'Arrange',
       rows: [
-        { label: 'Group / ungroup', keys: `${command} + G / Shift + G`, tokens: ['g', 'KeyG'] },
-        { label: 'Wrap in a section', keys: `${command} + Alt + G`, tokens: [] },
-        { label: 'Align left/right/top/bottom', keys: 'Alt + A / D / W / S', tokens: ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'alt'] },
-        { label: 'Align centre', keys: 'Alt + H / V', tokens: ['KeyH', 'KeyV'] },
-        { label: 'Distribute', keys: 'Alt + Shift + H / V', tokens: [] },
-        { label: 'Flip horizontal / vertical', keys: 'Shift + H / V', tokens: [] },
+        ['Group / ungroup', '⌘G / ⇧⌘G', ['g', 'KeyG']],
+        ['Wrap in a section', '⌥⌘G', []],
+        ['Align left/right/top/bottom', '⌥A / ⌥D / ⌥W / ⌥S', ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'alt']],
+        ['Align centre', '⌥H / ⌥V', ['KeyH', 'KeyV']],
+        ['Distribute', '⌥⇧H / ⌥⇧V', []],
+        ['Flip horizontal / vertical', '⇧H / ⇧V', []],
       ],
     },
     {
       title: 'Architecture',
       rows: [
-        { label: 'Open element view', keys: 'Enter', tokens: [] },
-        { label: 'Step through a flow', keys: '← / → / Space', tokens: [] },
+        ['Open element view', '↵', []],
+        ['Step through a flow', '← / → / Space', []],
       ],
     },
     {
       title: 'Panels',
       rows: [
-        { label: 'Architecture model', keys: 'Alt + M', tokens: ['KeyM'] },
-        { label: 'Diagram as code', keys: 'Alt + C', tokens: ['KeyC'] },
-        { label: 'Convert pasted Mermaid / Structurizr / D2 (code panel)', keys: `${command} + Shift + M`, tokens: [] },
-        { label: 'Inspect selection', keys: 'Alt + I', tokens: ['KeyI'] },
-        { label: 'AI assistant', keys: `${command} + J`, tokens: ['j'] },
-        { label: 'This cheatsheet', keys: '?', tokens: ['?'] },
-        { label: 'Dismiss panel', keys: 'Esc', tokens: ['Escape'] },
-        { label: 'Leave the code editor (again: close it)', keys: 'Esc', tokens: [] },
+        ['Architecture model', '⌥M', ['KeyM']],
+        ['Diagram as code', '⌥C', ['KeyC']],
+        ['Convert pasted Mermaid / Structurizr / D2 (code panel)', '⇧⌘M', []],
+        ['Inspect selection', '⌥I', ['KeyI']],
+        ['AI assistant', '⌘J', ['j']],
+        ['This cheatsheet', '?', ['?']],
+        ['Dismiss panel', 'Esc', ['Escape']],
+        ['Leave the code editor (again: close it)', 'Esc', []],
       ],
     },
   ];
+  return groups.map(({ title, rows }) => ({
+    title,
+    rows: rows.map(([label, glyphs, tokens]) => ({ label, keys: platformKeys(glyphs, apple), tokens })),
+  }));
 }

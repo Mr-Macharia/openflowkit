@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { IconStack2, IconMaximize, IconArrowBackUp, IconArrowForwardUp } from '@tabler/icons-react';
-import { COMMAND, platformKeys } from './v2Shortcuts';
+import { platformKeys } from './v2Shortcuts';
 import {
   Button,
   ColorPicker,
@@ -75,7 +75,7 @@ export function V2CameraControls(props: V2CameraControlsProps): React.JSX.Elemen
             </Button>
           </Tooltip>
           <span className="ofk-v2-divider" aria-hidden="true" />
-          <Tooltip content="Zoom to fit" shortcut={platformKeys('⌘0')}><IconButton variant="quiet" label="Zoom to fit" icon={<Icon icon={IconMaximize} />} onClick={props.onFitView} /></Tooltip>
+          <Tooltip content="Zoom to fit" shortcut={platformKeys('⇧1')}><IconButton variant="quiet" label="Zoom to fit" icon={<Icon icon={IconMaximize} />} onClick={props.onFitView} /></Tooltip>
           <span className="ofk-v2-divider" aria-hidden="true" />
           <Tooltip content="Undo" shortcut={platformKeys('⌘Z')}><IconButton variant="quiet" label="Undo" icon={<Icon icon={IconArrowBackUp} />} disabled={!props.canUndo} onClick={props.onUndo} /></Tooltip>
           <Tooltip content="Redo" shortcut={platformKeys('⇧⌘Z')}><IconButton variant="quiet" label="Redo" icon={<Icon icon={IconArrowForwardUp} />} disabled={!props.canRedo} onClick={props.onRedo} /></Tooltip>
@@ -84,7 +84,7 @@ export function V2CameraControls(props: V2CameraControlsProps): React.JSX.Elemen
       </FloatingRegion>
       <Popover role="dialog" aria-label="Canvas background" open={colorOpen} anchorRef={colorRef}
         onClose={() => setColorOpen(false)} placement="top-start">
-        <PopoverHeader title="Canvas background" close={<Button variant="quiet" onClick={() => setColorOpen(false)}>Done</Button>} />
+        <PopoverHeader title="Canvas background" onClose={() => setColorOpen(false)} />
         <div className="ofk-v2-properties">
           <ColorPicker value={canvasColor} allowAlpha={false}
             presets={['#f7f7f5', '#ffffff', '#f5f1e8', '#eaf2ef', '#191b19', '#20242b']}
@@ -101,16 +101,16 @@ export function V2CameraControls(props: V2CameraControlsProps): React.JSX.Elemen
         label="Zoom"
         placement="top-start"
       >
-        <MenuItem onSelect={props.onZoomIn} shortcut={[COMMAND(), '+']}>Zoom in</MenuItem>
-        <MenuItem onSelect={props.onZoomOut} shortcut={[COMMAND(), '−']}>Zoom out</MenuItem>
-        <MenuItem onSelect={props.onFitView} shortcut={[COMMAND(), '0']}>Zoom to fit</MenuItem>
+        <MenuItem onSelect={props.onZoomIn} shortcut={platformKeys('⌘+')}>Zoom in</MenuItem>
+        <MenuItem onSelect={props.onZoomOut} shortcut={platformKeys('⌘−')}>Zoom out</MenuItem>
+        <MenuItem onSelect={props.onFitView} shortcut={platformKeys('⇧1')}>Zoom to fit</MenuItem>
         <MenuSeparator />
         {ZOOM_PRESETS.map((percent) => (
           <MenuItem
             key={percent}
             onSelect={() => props.onZoomTo(percent)}
             checked={props.zoomPercent === percent}
-            shortcut={percent === 100 ? [COMMAND(), '1'] : undefined}
+            shortcut={percent === 100 ? platformKeys('⌘0') : undefined}
           >
             Zoom to {percent}%
           </MenuItem>

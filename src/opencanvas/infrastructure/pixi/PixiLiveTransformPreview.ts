@@ -43,12 +43,13 @@ export class PixiLiveTransformPreview {
   }
 
   constructor() {
-    this.container.addChild(this.containers.graphics, this.connectors.container, this.nodes.graphics,
+    this.container.addChild(this.containers.graphics, this.nodes.backdrop, this.connectors.container, this.nodes.graphics,
       this.nodes.media, this.nodes.labels, this.containers.labels, this.frame);
     this.container.visible = false;
   }
 
-  draw(page: ScenePage, index: SceneIndex, result: TransformResult, zoom: number, canvasColor: number): void {
+  /** `withConnectors` false: a copy is being dragged, and the lines stay with the originals. */
+  draw(page: ScenePage, index: SceneIndex, result: TransformResult, zoom: number, canvasColor: number, withConnectors = true): void {
     const replacements = new Map(result.nodes.map((node) => [node.id, node]));
     const context = this.context(page, index, result.nodes);
     const preview = { ...context, nodes: context.nodes.map((node) => replacements.get(node.id) ?? node) };
@@ -60,7 +61,7 @@ export class PixiLiveTransformPreview {
     this.containers.draw(selectedPage, previewIndex, null, canvasColor);
     this.nodes.draw(selectedPage, previewIndex, null, 'full', canvasColor);
     this.connectors.setZoom(zoom);
-    this.connectors.draw(preview, true);
+    this.connectors.draw(withConnectors ? preview : { ...preview, connectors: [] }, true);
     this.frame.clear();
     drawTransformFrame(this.frame, result.bounds, zoom);
     this.container.visible = true;

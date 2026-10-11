@@ -71,6 +71,16 @@ export function normalizeVector(vector: Vector2d, epsilon = GEOMETRY_EPSILON): V
   return scaleVector(vector, 1 / length);
 }
 
+/** `point` turned about `origin` onto the nearest multiple of `step` radians (⇧ on a line), its length projected onto it. */
+export function snapToAngle(origin: Point2d, point: Point2d, step: number): Point2d {
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+  if (dx === 0 && dy === 0) return origin;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  const length = dx * Math.cos(angle) + dy * Math.sin(angle);
+  return createPoint2d(origin.x + length * Math.cos(angle), origin.y + length * Math.sin(angle));
+}
+
 export function lerpPoint(start: Point2d, end: Point2d, ratio: number): Point2d {
   const safeRatio = requireFiniteNumber(ratio, 'ratio');
   return createPoint2d(

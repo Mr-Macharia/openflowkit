@@ -7,7 +7,7 @@ import type { TransformResult } from './types';
 
 export type AlignMode = 'bottom' | 'center-x' | 'center-y' | 'left' | 'right' | 'top';
 export type DistributeAxis = 'horizontal' | 'vertical';
-export type StackAxis = 'horizontal' | 'vertical';
+type StackAxis = 'horizontal' | 'vertical';
 
 interface ArrangedNode {
   readonly node: SceneNode;

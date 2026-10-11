@@ -1,4 +1,4 @@
-import { buildNodeStateMap } from '../../domain/scene/nodeState';
+import { buildNodeStateMap, connectorVisible } from '../../domain/scene/nodeState';
 import { Container, Graphics, Text } from 'pixi.js';
 import { pixiPaintColor } from './pixiColor';
 import { decoratePixiText, pixiTextStyle } from './pixiText';
@@ -10,6 +10,7 @@ import type { Point2d } from '../../domain/geometry/types';
 import { isDarkCanvas } from '../../domain/color/adaptiveColor';
 import { LABEL_WRAP_WIDTH, connectorLabelOnCanvas } from '../../domain/connectors/labelStyle';
 import { projectConnectors } from '../../domain/connectors/routeProjection';
+import { connectorMarkerShapes, markerOutward } from '../../domain/connectors/markers';
 import type {
   ConnectorMarkerGlyph,
   ConnectorStrokePresentation,
@@ -38,11 +39,12 @@ function drawOpenPolygon(
   graphics: Graphics,
   points: readonly Point2d[],
   color: string,
-  width: number
+  width: number,
+  surface: number
 ): void {
   graphics
     .poly(points.flatMap((point) => [point.x, point.y]))
-    .fill({ color: 0xffffff })
+    .fill({ color: surface })
     .stroke({ color, width });
 }
 
@@ -52,7 +54,9 @@ function drawMarker(
   endpoint: Point2d,
   outward: Point2d,
   offset: number,
-  stroke: ConnectorStrokePresentation
+  stroke: ConnectorStrokePresentation,
+  /** Hollow glyphs (circle, open triangle/diamond) fill with the canvas, as the export fills them with its page. */
+  surface: number
 ): void {
   const tip = offsetPoint(endpoint, outward, -offset);
   const back = offsetPoint(tip, outward, -9);
@@ -68,7 +72,7 @@ function drawMarker(
         .stroke({ color: stroke.color, alpha: stroke.opacity, width: stroke.width });
       break;
     case 'triangle-open':
-      drawOpenPolygon(graphics, [tip, left, right], stroke.color, stroke.width);
+      drawOpenPolygon(graphics, [tip, left, right], stroke.color, stroke.width, surface);
       break;
     case 'triangle-filled':
       graphics.poly([tip.x, tip.y, left.x, left.y, right.x, right.y]).fill({
@@ -84,7 +88,7 @@ function drawMarker(
       const diamondRight = offsetPoint(middle, normal, -4.5);
       const points = [tip, diamondLeft, far, diamondRight];
       if (glyph === 'diamond-open') {
-        drawOpenPolygon(graphics, points, stroke.color, stroke.width);
+        drawOpenPolygon(graphics, points, stroke.color, stroke.width, surface);
       } else {
         graphics.poly(points.flatMap((point) => [point.x, point.y])).fill({ color: stroke.color });
       }
@@ -94,7 +98,7 @@ function drawMarker(
       const center = offsetPoint(tip, outward, -5);
       graphics
         .circle(center.x, center.y, 4)
-        .fill({ color: 0xffffff })
+        .fill({ color: surface })
         .stroke({ color: stroke.color, width: stroke.width });
       break;
     }
@@ -119,15 +123,12 @@ function drawMarker(
       break;
     }
     case 'crow-foot': {
-      const root = offsetPoint(tip, outward, -9);
-      graphics
-        .moveTo(root.x, root.y)
-        .lineTo(tip.x, tip.y)
-        .moveTo(root.x, root.y)
-        .lineTo(left.x, left.y)
-        .moveTo(root.x, root.y)
-        .lineTo(right.x, right.y)
-        .stroke({ color: stroke.color, width: stroke.width });
+      // The export's geometry, so a fork on screen is the fork in the file.
+      for (const shape of connectorMarkerShapes(glyph, endpoint, outward, offset)) {
+        if (shape.kind !== 'polygon') continue;
+        for (const [from, to] of shape.subpaths) graphics.moveTo(from!.x, from!.y).lineTo(to!.x, to!.y);
+      }
+      graphics.stroke({ color: stroke.color, alpha: stroke.opacity, width: stroke.width });
       break;
     }
   }
@@ -182,12 +183,7 @@ export function drawDashedPath(
 /** The page with the connectors that draw: not hidden, and both ends visible. One definition for the renderer and the focus overlay's dashes. */
 export function visibleConnectorPage(page: ScenePage): ScenePage {
   const nodeStates = buildNodeStateMap(page);
-  return {
-    ...page,
-    connectors: page.connectors.filter((connector) => connector.metadata.hidden !== true
-      && (connector.source.nodeId === null || nodeStates.get(connector.source.nodeId)?.visible === true)
-      && (connector.target.nodeId === null || nodeStates.get(connector.target.nodeId)?.visible === true)),
-  };
+  return { ...page, connectors: page.connectors.filter((connector) => connectorVisible(connector, nodeStates)) };
 }
 
 export class PixiConnectorRenderer {
@@ -237,6 +233,7 @@ export class PixiConnectorRenderer {
       ? projectConnectors(visiblePage, visiblePage.connectors).filter(wanted)
       : projectConnectors(visiblePage, visiblePage.connectors.filter(wanted));
     const onDark = isDarkCanvas(canvasColor);
+    const surface = pixiPaintColor(canvasColor ?? '#ffffff', 0xffffff).color;
     let labelCount = 0;
     let markerCount = 0;
     this.widestLabel = 0;
@@ -257,16 +254,16 @@ export class PixiConnectorRenderer {
       const first = samples[0];
       const last = samples.at(-1);
       if (first && samples[1]) {
-        const outward = normalizedDirection(samples[1], first);
+        const outward = markerOutward(samples, 'source');
         connector.presentation.sourceMarkers.forEach((glyph, index) =>
-          drawMarker(this.paths, glyph, first, outward, index * 9, presentation.stroke)
+          drawMarker(this.paths, glyph, first, outward, index * 9, presentation.stroke, surface)
         );
         markerCount += connector.presentation.sourceMarkers.length;
       }
       if (last && samples.at(-2)) {
-        const outward = normalizedDirection(samples.at(-2)!, last);
+        const outward = markerOutward(samples, 'target');
         connector.presentation.targetMarkers.forEach((glyph, index) =>
-          drawMarker(this.paths, glyph, last, outward, index * 9, presentation.stroke)
+          drawMarker(this.paths, glyph, last, outward, index * 9, presentation.stroke, surface)
         );
         markerCount += connector.presentation.targetMarkers.length;
       }

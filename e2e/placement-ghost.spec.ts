@@ -15,7 +15,7 @@ const api = (page: import('@playwright/test').Page) =>
 test('shape tools ghost under the pointer and drop at the shape size', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('v2-canvas').focus();
-  const shapes = page.getByRole('button', { name: 'Shapes' });
+  const shapes = page.getByRole('button', { name: 'Shapes options' });
   await shapes.click();
   await page.getByRole('option', { name: 'Star' }).click();
   await expect.poll(async () => (await api(page)).state.tool).toBe('shape');

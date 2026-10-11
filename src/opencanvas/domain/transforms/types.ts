@@ -33,6 +33,8 @@ export interface TransformResult {
 export interface MoveTransformOptions {
   readonly gridSize?: number;
   readonly snap?: boolean;
+  /** ⇧: only the dominant axis of the drag moves (Figma, tldraw, Excalidraw). */
+  readonly axisLock?: boolean;
   /** World bounds of non-selected nodes to snap against (after the grid). */
   readonly objects?: readonly Bounds2d[];
   readonly objectThreshold?: number;

@@ -67,10 +67,13 @@ export function moveTransform(
   options: MoveTransformOptions = {}
 ): TransformResult {
   const gridSize = options.gridSize ?? DEFAULT_GRID_SIZE;
-  const rawX = snapshot.bounds.x + delta.x;
-  const rawY = snapshot.bounds.y + delta.y;
-  const gridX = options.snap === false ? rawX : snapValue(rawX, gridSize);
-  const gridY = options.snap === false ? rawY : snapValue(rawY, gridSize);
+  // ⇧ pins the axis the drag has moved less along; it never snaps off its line.
+  const lockX = options.axisLock === true && Math.abs(delta.x) < Math.abs(delta.y);
+  const lockY = options.axisLock === true && !lockX;
+  const rawX = snapshot.bounds.x + (lockX ? 0 : delta.x);
+  const rawY = snapshot.bounds.y + (lockY ? 0 : delta.y);
+  const gridX = options.snap === false || lockX ? rawX : snapValue(rawX, gridSize);
+  const gridY = options.snap === false || lockY ? rawY : snapValue(rawY, gridSize);
   const object = options.objects
     ? snapBoundsToObjects(
         createBounds2d(gridX, gridY, snapshot.bounds.width, snapshot.bounds.height),
@@ -78,11 +81,11 @@ export function moveTransform(
         options.objectThreshold
       )
     : null;
-  const x = object?.bounds.x ?? gridX;
-  const y = object?.bounds.y ?? gridY;
+  const x = lockX ? rawX : object?.bounds.x ?? gridX;
+  const y = lockY ? rawY : object?.bounds.y ?? gridY;
   const applied = { x: x - snapshot.bounds.x, y: y - snapshot.bounds.y };
   return {
-    ...(object ? { guideX: object.guideX, guideY: object.guideY } : {}),
+    ...(object ? { guideX: lockX ? null : object.guideX, guideY: lockY ? null : object.guideY } : {}),
     nodes: snapshot.nodes.map((node) => ({
       ...node,
       transform: {

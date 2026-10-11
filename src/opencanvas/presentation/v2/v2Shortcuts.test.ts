@@ -23,24 +23,21 @@ describe('keyboard cheatsheet', () => {
       expect(tokens.size, modifier).toBeGreaterThan(0);
     }
     // The panel is rendered with platform-aware keys.
-    expect(shortcutGroups('Ctrl').some(({ rows }) => rows.some(({ keys }) => keys.startsWith('Ctrl')))).toBe(true);
+    expect(shortcutGroups(false).some(({ rows }) => rows.some(({ keys }) => keys.startsWith('Ctrl+')))).toBe(true);
   });
 
   it('binds each key combination to one action', () => {
     // These keys mean different things by context, by design: Enter opens a model view, renames or places the
     // armed shape; the arrows nudge, step a playing flow or move on Map; Space pans or steps a flow; A arms the
     // connector or connects two selected shapes; Esc leaves the code editor, then closes the panel.
-    const contextual = new Set(['enter', 'arrows', '←', '→', 'space', 'a', 'esc']);
+    const contextual = new Set(['↵', 'arrows', '←', '→', 'space', 'a', 'esc']);
     const owner = new Map<string, string>();
     const clashes: string[] = [];
-    for (const { label, keys } of shortcutGroups('⌘').flatMap(({ rows }) => rows)) {
-      const [first, ...rest] = keys.split(' / ');
-      const shared = first!.split(' + ').slice(0, -1);
-      for (const alternative of [first!.split(' + ').at(-1)!, ...rest]) {
-        const parts = alternative.split(' + ');
-        const key = parts.at(-1)!.toLowerCase();
-        if (contextual.has(key)) continue;
-        const combo = [...new Set([...shared, ...parts.slice(0, -1)])].sort().concat(key).join(' + ');
+    for (const { label, keys } of shortcutGroups(true).flatMap(({ rows }) => rows)) {
+      for (const chord of keys.split(' / ')) {
+        const [, modifiers = '', key = ''] = /^([⌃⌥⇧⌘]*)(.*)$/su.exec(chord) ?? [];
+        if (contextual.has(key.toLowerCase())) continue;
+        const combo = `${[...modifiers].sort().join('')}${key.toLowerCase()}`;
         if (owner.has(combo)) clashes.push(`${combo}: ${owner.get(combo)} / ${label}`);
         owner.set(combo, label);
       }
@@ -63,10 +60,25 @@ describe('keyboard cheatsheet', () => {
     }
   });
 
-  it('writes Mac glyph hints the way other platforms name the keys', () => {
-    expect(platformKeys('⌘⌥]', true)).toBe('⌘⌥]');
+  it('writes Mac glyph hints the way each platform names the keys', () => {
+    // Apple: glyphs in Apple's order ⌃⌥⇧⌘, no "+".
+    expect(platformKeys('⌘⌥]', true)).toBe('⌥⌘]');
+    expect(platformKeys('⌘⇧Z', true)).toBe('⇧⌘Z');
+    expect(platformKeys('⌘Z / ⌘⇧Z', true)).toBe('⌘Z / ⇧⌘Z');
+    // Elsewhere: Ctrl, Alt, Shift, joined by "+", keys by name.
     expect(platformKeys('⌘⌥]', false)).toBe('Ctrl+Alt+]');
-    expect(platformKeys('⇧⌘Z', false)).toBe('Shift+Ctrl+Z');
+    expect(platformKeys('⇧⌘Z', false)).toBe('Ctrl+Shift+Z');
     expect(platformKeys('⌘⇧⌫', false)).toBe('Ctrl+Shift+Backspace');
+    expect(platformKeys('↵ / F2', false)).toBe('Enter / F2');
+    expect(platformKeys('⌥', false)).toBe('Alt');
+  });
+
+  it('writes redo and ungroup in full, never as a bare Shift letter', () => {
+    const keys = (apple: boolean, label: string) =>
+      shortcutGroups(apple).flatMap(({ rows }) => rows).find((row) => row.label === label)?.keys;
+    expect(keys(true, 'Undo / redo')).toBe('⌘Z / ⇧⌘Z');
+    expect(keys(false, 'Undo / redo')).toBe('Ctrl+Z / Ctrl+Shift+Z');
+    expect(keys(true, 'Group / ungroup')).toBe('⌘G / ⇧⌘G');
+    expect(shortcutGroups(true).flatMap(({ rows }) => rows).some(({ keys }) => keys.includes(' + '))).toBe(false);
   });
 });

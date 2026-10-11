@@ -3,6 +3,7 @@ import type { ScenePage } from '../../domain/document/types';
 import {
   buildPasteProductionSelectionCommand,
   copyProductionSelection,
+  pastePlacement,
   type ProductionClipboardSnapshot,
 } from '../../application/selection/clipboard';
 import {
@@ -19,6 +20,7 @@ import {
   type CanvasSelection,
 } from '../../application/selection/selection';
 import type { DocumentCommand } from '../../domain/commands/types';
+import type { Bounds2d } from '../../domain/geometry/types';
 import {
   buildDeleteSelectionCommand,
   buildDuplicateSelectionCommand,
@@ -47,6 +49,8 @@ interface V2EditActionsOptions {
   readonly applySelection: (selection: CanvasSelection) => void;
   readonly applyConnectorSelection: (connectorIds: readonly string[]) => void;
   readonly announce: (message: string) => void;
+  /** The canvas's visible world area: a paste whose spot is out of it lands in its middle. */
+  readonly viewWorldBounds?: () => Bounds2d | null;
 }
 
 // Commits scoped to the current selection: the context bar and keyboard
@@ -55,6 +59,7 @@ interface V2EditActionsOptions {
 export function useV2EditActions(options: V2EditActionsOptions) {
   const { pageRef, selectionRef, selectedConnectorIds, readOnly } = options;
   const clipboardRef = useRef<ProductionClipboardSnapshot | null>(null);
+  const writingRef = useRef(false);
   const styleClipboardRef = useRef<StyleClipboard>({});
   // Style copy/paste wants one subject; delete and duplicate take them all.
   const selectedConnectorId = selectedConnectorIds.length === 1 ? selectedConnectorIds[0]! : null;
@@ -132,7 +137,12 @@ export function useV2EditActions(options: V2EditActionsOptions) {
     if (!page || selectionRef.current.nodeIds.length === 0) return false;
     const snapshot = copyProductionSelection(page, selectionRef.current.nodeIds);
     clipboardRef.current = snapshot;
-    void navigator.clipboard?.writeText(JSON.stringify({ format: CLIPBOARD_FORMAT, ...snapshot })).catch(() => undefined);
+    // Until the system clipboard has it, a ⌘V reads the clipboard from before: the copy just made wins.
+    const write = navigator.clipboard?.writeText(JSON.stringify({ format: CLIPBOARD_FORMAT, ...snapshot }));
+    if (write) {
+      writingRef.current = true;
+      void write.catch(() => undefined).finally(() => { writingRef.current = false; });
+    }
     options.announce(`${snapshot.nodes.length} copied.`);
     return true;
   };
@@ -140,9 +150,11 @@ export function useV2EditActions(options: V2EditActionsOptions) {
   /** ⌘V hands over the paste event's text: shapes when it is our JSON. With no text (the menu), the in-memory copy. True when it pasted. */
   const pasteShapes = (text?: string): boolean => {
     const page = editablePage();
-    const snapshot = text === undefined ? clipboardRef.current : parseClipboard(text);
+    const snapshot = text === undefined || writingRef.current ? clipboardRef.current : parseClipboard(text);
     if (!page || !snapshot || snapshot.nodes.length === 0) return false;
-    const { command, pastedNodeIds } = buildPasteProductionSelectionCommand(page, snapshot, (kind) => options.mintId(kind));
+    const view = options.viewWorldBounds?.();
+    const { command, pastedNodeIds } = buildPasteProductionSelectionCommand(page, snapshot, (kind) => options.mintId(kind),
+      ...(view ? [pastePlacement(snapshot, view)] : []));
     options.commit(command);
     options.applyConnectorSelection([]);
     options.applySelection(replaceSelection(pastedNodeIds));

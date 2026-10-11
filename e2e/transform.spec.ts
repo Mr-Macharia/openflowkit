@@ -32,8 +32,7 @@ test('the south-east handle resizes, and Shift keeps the aspect ratio', async ({
   const square = (await rect(page, id))!;
   const ratio = square.width / square.height;
   const corner2 = { x: box.x + square.x + square.width, y: box.y + square.y + square.height };
-  // Shift goes down after the grab: held at pointer-down it means "add to
-  // selection", so the drag would never start.
+  // Shift goes down after the grab here; held before it, see manipulation.spec.ts.
   await page.mouse.move(corner2.x, corner2.y);
   await page.mouse.down();
   await page.keyboard.down('Shift');

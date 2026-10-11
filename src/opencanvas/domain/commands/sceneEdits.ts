@@ -11,6 +11,7 @@ import type {
   SetNodeCommand,
 } from './types';
 import type { JsonObject } from '../document/json';
+import { refitIconCard } from '../nodes/iconCardLayout';
 import { resolveNodeStyle, type NodeStyle } from '../nodes/nodeStyle';
 import { descendantIds } from '../scene/queries';
 import { buildNodeStateMap } from '../scene/nodeState';
@@ -35,12 +36,13 @@ import {
 import { planQuickCreate } from '../connectors/quickCreate';
 import { resolveBasicNodePresentation } from '../nodes/basicNodePresentation';
 import { adoptOnInsert } from '../transforms/containment';
+import { refitGroups } from './groupNodes';
 import { measurePortableText } from '../text/measurement';
 import type { ConnectSide } from '../connectors/connectHandles';
 
 export type V2ShapeKind = ShapeKind;
 
-export interface V2CreateShapeOptions {
+interface V2CreateShapeOptions {
   readonly kind: V2ShapeKind;
   readonly id: string;
   readonly at: Point2d;
@@ -94,11 +96,11 @@ export function buildSetNodeLabelCommand(
     label: 'Edit label',
     pageId: page.id,
     before: node,
-    after: {
+    after: refitIconCard({
       ...node,
       content: { ...node.content, label },
       size: node.kind === 'text' ? textNodeSize(label, resolveNodeStyle(node)) : node.size,
-    },
+    }, node),
   };
 }
 
@@ -115,7 +117,8 @@ export function buildMoveNodesCommand(
   if (movable.length === 0) return null;
   const snapshot = createTransformSnapshot(page, movable);
   const result = moveTransform(snapshot, delta, { snap: false });
-  return createTransformCommand(page.id, transformBefore(snapshot), result.nodes, 'Move selection');
+  const fitted = refitGroups(page, transformBefore(snapshot), result.nodes);
+  return createTransformCommand(page.id, fitted.before, fitted.after, 'Move selection');
 }
 
 function removeNodeCommands(
@@ -208,10 +211,11 @@ export function buildDuplicateSelectionCommand(
     const copyId = idMap.get(node.id);
     if (!copyId) continue;
     const copiedParent = (node.parentId && idMap.get(node.parentId)) || null;
+    // A root copy stays in its original's container: its translation is local to that parent.
     const copy: SceneNode = {
       ...node,
       id: copyId,
-      parentId: copiedParent,
+      parentId: copiedParent ?? node.parentId,
       zIndex: zIndex++,
       transform: {
         ...node.transform,
@@ -314,9 +318,9 @@ export function buildToggleLockCommand(
 }
 
 /** A connector end: bound to a shape, or a free page-space point (ADR-001). */
-export type V2ConnectorEnd = { readonly nodeId: string } | { readonly point: Point2d };
+type V2ConnectorEnd = { readonly nodeId: string } | { readonly point: Point2d };
 
-export interface V2ConnectorOptions {
+interface V2ConnectorOptions {
   readonly id: string;
   readonly source: V2ConnectorEnd;
   readonly target: V2ConnectorEnd;
@@ -363,7 +367,7 @@ export function buildInsertConnectorCommand(
   };
 }
 
-export interface QuickCreateOptions {
+interface QuickCreateOptions {
   readonly sourceNodeId: string;
   readonly sourceSide: ConnectSide;
   readonly newNodeId: string;

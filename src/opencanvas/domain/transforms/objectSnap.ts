@@ -4,7 +4,7 @@ import { createBounds2d } from '../geometry/bounds';
 import type { Bounds2d } from '../geometry/types';
 import { computeAlignmentSnap } from './alignmentGuides';
 
-export interface ObjectSnapResult {
+interface ObjectSnapResult {
   readonly bounds: Bounds2d;
   readonly guideX: number | null;
   readonly guideY: number | null;

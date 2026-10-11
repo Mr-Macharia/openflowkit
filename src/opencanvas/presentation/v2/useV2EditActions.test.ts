@@ -35,6 +35,18 @@ describe('useV2EditActions paste', () => {
     expect(target.applySelection).toHaveBeenCalledWith(expect.objectContaining({ nodeIds: [expect.stringMatching(/^node-/)] }));
   });
 
+  it('a paste that beats the copy\'s clipboard write pastes what was just copied, not the older clipboard', () => {
+    const t = setup(['a']);
+    // The system clipboard write is still in flight when ⌘V's paste event reads the previous contents.
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(() => new Promise(() => undefined)) } });
+    t.actions.copySelection();
+    const stale = JSON.stringify({ format: 'openflowkit.selection', version: 1, connectors: [],
+      nodes: [createTestNode('old-1'), createTestNode('old-2')] });
+    expect(t.actions.pasteShapes(stale)).toBe(true);
+    const command = t.commit.mock.calls[0]![0];
+    expect(command.kind === 'batch' ? command.commands.length : 0).toBe(1);
+  });
+
   it('pastes the in-memory copy when no text is given (the menu, or a clipboard that is not ours)', () => {
     const t = setup(['a']);
     expect(t.actions.pasteShapes()).toBe(false);

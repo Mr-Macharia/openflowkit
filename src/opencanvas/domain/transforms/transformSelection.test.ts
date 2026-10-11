@@ -57,6 +57,16 @@ describe('selection transforms', () => {
     expect(moveTransform(snapshot, { x: 5, y: 7 }).guideX).toBeUndefined();
   });
 
+  it('⇧ locks a move to its dominant axis, live as the drag turns', () => {
+    const page = createTestDocument({ nodes: [createTestNode('a')] }).pages[0];
+    const snapshot = createTransformSnapshot(page, ['a']);
+    expect(moveTransform(snapshot, { x: 30, y: 10 }, { snap: false, axisLock: true }).bounds).toMatchObject({ x: 30, y: 0 });
+    expect(moveTransform(snapshot, { x: 5, y: -40 }, { snap: false, axisLock: true }).bounds).toMatchObject({ x: 0, y: -40 });
+    // The locked axis stays put even with object snapping on.
+    const other = { x: 33, y: 3, width: 40, height: 40 };
+    expect(moveTransform(snapshot, { x: 30, y: 10 }, { snap: false, axisLock: true, objects: [other], objectThreshold: 6 }).bounds.y).toBe(0);
+  });
+
   it('resizes around the opposite corner and enforces a minimum', () => {
     const node = createTestNode('a');
     const page = createTestDocument({ nodes: [node] }).pages[0];

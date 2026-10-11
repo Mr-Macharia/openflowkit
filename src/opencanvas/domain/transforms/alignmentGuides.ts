@@ -1,6 +1,6 @@
 import type { Bounds2d } from '../geometry/types';
 
-export interface AlignmentSnap {
+interface AlignmentSnap {
   /** World x of the vertical guide the selection snapped to, if any. */
   readonly x: number | null;
   /** World y of the horizontal guide the selection snapped to, if any. */

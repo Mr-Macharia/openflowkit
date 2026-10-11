@@ -13,8 +13,10 @@ import type { TransformHandle, TransformResult } from '../../domain/transforms/t
 import type { Bounds2d, Matrix2d, Point2d } from '../../domain/geometry/types';
 import { areStructurallyEqual } from '../../domain/commands/equality';
 import { addToSelection, clearSelection, replaceSelection, type CanvasSelection } from '../../application/selection/selection';
+import { snapToAngle } from '../../domain/geometry/point';
 import { createTransformCommand, transformBefore } from '../../domain/transforms/transformSelection';
 import { reparentByPosition } from '../../domain/transforms/containment';
+import { refitGroups } from '../../domain/commands/groupNodes';
 import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
 import { boundsBetween, selectionAfterClick, transformLabel, updateTransformOperation, type PixiPointerOperation, type TransformModifiers } from './pointerOperations';
 import { pickConnectHandle, type ConnectSide } from '../../domain/connectors/connectHandles';
@@ -29,7 +31,7 @@ import { buildNodeWorldMatrices, nodeWorldBounds } from '../../domain/scene/worl
 import { clearance, panToUncover } from './map/mapMode';
 import { applyMatrixToPoint } from '../../domain/geometry/matrix';
 import type { FreeformPreviewFrame } from '../../infrastructure/pixi/PixiFreeformPreview';
-import { buildDeleteSelectionCommand } from '../../domain/commands/sceneEdits';
+import { buildDeleteSelectionCommand, buildDuplicateSelectionCommand } from '../../domain/commands/sceneEdits';
 import { CONNECTOR_ROUTE, type V2ToolConfig } from './v2ToolCatalog';
 
 
@@ -39,6 +41,45 @@ const HANDLE_SEARCH_RADIUS_PX = 40;
 // Object-snap reach in screen pixels; divided by zoom before it meets world units.
 export const OBJECT_SNAP_PX = 6;
 export const MIN_CREATE_SIZE = 8;
+/** What a click with the Square tool places: a 1:1 rectangle. */
+export const SQUARE_SIZE = 120;
+
+/** The shape a tool draws, or null when it draws none. Square is a rectangle; only its box differs. */
+export function toolShape(tool: V2Tool, config: V2ToolConfig): V2ShapeKind | null {
+  return tool === 'shape' ? config.shape : tool === 'square' ? 'rectangle'
+    : tool === 'rectangle' || tool === 'ellipse' || tool === 'text' ? tool : null;
+}
+
+/**
+ * The box a drag from `start` to `world` draws: `square` (the Square tool, or ⇧) keeps both sides at the larger
+ * extent, anchored at `start`; `fromCenter` (⌥) makes `start` the middle, so the box is twice the drag.
+ */
+export function dragBox(
+  start: Point2d, world: Point2d, square: boolean, fromCenter = false,
+): { at: Point2d; size: { width: number; height: number } } {
+  const grow = fromCenter ? 2 : 1;
+  const dx = Math.abs(world.x - start.x) * grow;
+  const dy = Math.abs(world.y - start.y) * grow;
+  const width = Math.max(MIN_CREATE_SIZE, square ? Math.max(dx, dy) : dx);
+  const height = Math.max(MIN_CREATE_SIZE, square ? Math.max(dx, dy) : dy);
+  if (fromCenter) return { at: { x: start.x - width / 2, y: start.y - height / 2 }, size: { width, height } };
+  return {
+    at: { x: world.x < start.x ? start.x - width : start.x, y: world.y < start.y ? start.y - height : start.y },
+    size: { width, height },
+  };
+}
+/**
+ * The ⌘G group the selection sits directly in, so is "inside" (Figma): clicks pick among its members and Escape
+ * climbs back out to it. Null when the selection is not all in one group.
+ */
+export function enteredGroup(page: ScenePage, nodeIds: readonly string[]): string | null {
+  if (nodeIds.length === 0) return null;
+  const byId = new Map(page.nodes.map((node) => [node.id, node]));
+  const parentId = byId.get(nodeIds[0]!)?.parentId ?? null;
+  if (!parentId || byId.get(parentId)?.kind !== 'group') return null;
+  return nodeIds.every((id) => byId.get(id)?.parentId === parentId) ? parentId : null;
+}
+
 export const HANDLE_CURSORS: Record<TransformHandle, string> = {
   north: 'ns-resize', south: 'ns-resize', east: 'ew-resize', west: 'ew-resize',
   'north-east': 'nesw-resize', 'south-west': 'nesw-resize',
@@ -49,6 +90,7 @@ interface V2CreateOperation {
   readonly kind: 'create';
   readonly pointerId: number;
   readonly shape: V2ShapeKind;
+  readonly square: boolean;
   readonly page: ScenePage;
   readonly startWorld: Point2d;
   readonly startScreen: Point2d;
@@ -103,7 +145,7 @@ export type V2Operation =
 export interface V2GestureApi {
   readonly cancelGesture: () => boolean;
   /** The keyboard's click on the canvas: `shape` (else the armed tool's) centred on `at`. False when nothing was placed. */
-  readonly placeShape: (at: Point2d, shape?: V2ShapeKind) => boolean;
+  readonly placeShape: (at: Point2d, shape?: V2ShapeKind, square?: boolean) => boolean;
   /** Exactly two shapes selected: a connector from the first-selected to the second. False otherwise. */
   readonly connectSelection: () => boolean;
 }
@@ -254,9 +296,10 @@ export function connectorPreview(options: V2PointerOptions, ends: {
 function placeShape(
   opts: V2PointerOptions, page: ScenePage, shape: V2ShapeKind, centre: Point2d,
   box?: { readonly at: Point2d; readonly size: { readonly width: number; readonly height: number } },
+  square = false,
 ): void {
   const id = opts.mintId('node');
-  const size = box?.size ?? defaultShapeSize(shape);
+  const size = box?.size ?? (square ? { width: SQUARE_SIZE, height: SQUARE_SIZE } : defaultShapeSize(shape));
   opts.commit(buildInsertShapeCommand(page, {
     kind: shape, id, size, appearance: stickyAppearance(opts, shape),
     at: box?.at ?? { x: centre.x - size.width / 2, y: centre.y - size.height / 2 },
@@ -284,19 +327,19 @@ function connectNodes(opts: V2PointerOptions, page: ScenePage, sourceNodeId: str
 export function keyboardGestures(opts: () => V2PointerOptions): Pick<V2GestureApi, 'placeShape' | 'connectSelection'> {
   const writablePage = () => (opts().readOnlyRef.current ? null : opts().pageRef.current);
   return {
-    placeShape: (at, shape) => {
+    placeShape: (at, shape, squareArg) => {
       const page = writablePage();
       const tool = opts().toolRef.current;
-      const placed = shape ?? (tool === 'shape' ? opts().toolConfigRef.current.shape
-        : tool === 'rectangle' || tool === 'ellipse' || tool === 'text' ? tool : null);
+      const placed = shape ?? toolShape(tool, opts().toolConfigRef.current);
+      const square = squareArg ?? tool === 'square';
       if (!page || !placed) return false;
       // Enter, Enter: each shape steps down-right off the last, never stacked out of sight on it.
-      const size = defaultShapeSize(placed);
+      const size = square ? { width: SQUARE_SIZE, height: SQUARE_SIZE } : defaultShapeSize(placed);
       let centre = at;
       const taken = (point: Point2d) => page.nodes.some(({ transform: { translation } }) =>
         translation.x === point.x - size.width / 2 && translation.y === point.y - size.height / 2);
       while (taken(centre)) centre = { x: centre.x + 24, y: centre.y + 24 };
-      placeShape(opts(), page, placed, centre);
+      placeShape(opts(), page, placed, centre, undefined, square);
       return true;
     },
     connectSelection: () => {
@@ -472,6 +515,17 @@ function commitQuickCreateDelivery(
   options.openEditor(nodeId, { isNew: true });
 }
 
+/** ⌥-drag: the originals stay, a copy lands `delta` away, as one step; the copies (their roots) end up selected. */
+function altDragCopy(opts: V2PointerOptions, page: ScenePage, nodeIds: readonly string[], delta: Point2d): void {
+  // ponytail: the copy keeps its original's parent, like ⌘D; a drop into another section is a second move.
+  const command = buildDuplicateSelectionCommand(page, nodeIds, opts.selectedConnectorIdsRef.current, opts.mintId, delta);
+  opts.commit(command);
+  const inserted = command.commands.flatMap((child) => (child.kind === 'insert-node' ? [child.node] : []));
+  const copies = new Set(inserted.map(({ id }) => id));
+  opts.applySelection(replaceSelection(inserted.filter((node) => !copies.has(node.parentId ?? '')).map(({ id }) => id)));
+  opts.applyConnectorSelection(command.commands.flatMap((child) => (child.kind === 'insert-connector' ? [child.connector.id] : [])));
+}
+
 /**
  * A released gesture becomes its one command (or a selection): the release point is
  * authoritative, so a fast flick that never painted a preview still commits.
@@ -495,7 +549,8 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
         ? [...new Set([...opts.selectedConnectorIdsRef.current, ...connectorIds])]
         : connectorIds);
     } else {
-      const nodeId = host.pickNode(point);
+      const page = opts.pageRef.current;
+      const nodeId = host.pickNode(point, page ? enteredGroup(page, opts.selectionRef.current.nodeIds) : null);
       const connectorId = nodeId ? null : host.pickConnector(point);
       if (connectorId) {
         opts.applySelection(clearSelection());
@@ -521,7 +576,14 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
     host.setTransformPreview(null);
     host.setAlignmentGuides(null);
     opts.onTransformPreview?.(null);
-    if (final.result) {
+    if (!final.result && operation.clickSelects) {
+      opts.applyConnectorSelection([]);
+      opts.applySelection(replaceSelection(operation.clickSelects));
+    } else if (final.result && operation.transformKind === 'move' && event.altKey) {
+      altDragCopy(opts, operation.page, operation.snapshot.nodes.map(({ id }) => id), {
+        x: final.result.bounds.x - operation.snapshot.bounds.x, y: final.result.bounds.y - operation.snapshot.bounds.y,
+      });
+    } else if (final.result) {
       const before = transformBefore(operation.snapshot);
       // A move can drop nodes into or out of a section (FigJam); the
       // reparent rides in the same undo step.
@@ -529,14 +591,9 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
         ? reparentByPosition(operation.page, final.result.nodes) : final.result.nodes;
       const changed = after.some((node, index) => !areStructurallyEqual(node, before[index]));
       if (changed) {
-        opts.commit(
-          createTransformCommand(
-            operation.page.id,
-            before,
-            after,
-            transformLabel(operation.transformKind)
-          )
-        );
+        // A member edited inside a group: the group re-fits in the same step.
+        const fitted = refitGroups(operation.page, before, after);
+        opts.commit(createTransformCommand(operation.page.id, fitted.before, fitted.after, transformLabel(operation.transformKind)));
       }
     }
   } else if (operation.kind === 'create') {
@@ -547,13 +604,9 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
       point.y - operation.startScreen.y
     );
     // A click places the default size centred on it; a drag commits the box it drew.
-    placeShape(opts, operation.page, operation.shape, world, moved < CLICK_THRESHOLD_PX ? undefined : {
-      at: { x: Math.min(world.x, operation.startWorld.x), y: Math.min(world.y, operation.startWorld.y) },
-      size: {
-        width: Math.max(MIN_CREATE_SIZE, Math.abs(world.x - operation.startWorld.x)),
-        height: Math.max(MIN_CREATE_SIZE, Math.abs(world.y - operation.startWorld.y)),
-      },
-    });
+    placeShape(opts, operation.page, operation.shape, world,
+      moved < CLICK_THRESHOLD_PX ? undefined : dragBox(operation.startWorld, world, operation.square || event.shiftKey, event.altKey),
+      operation.square);
   } else if (operation.kind === 'ink') {
     host.setFreeformPreview(null);
     const command = buildInkCommand(opts, operation);
@@ -601,7 +654,8 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
       point.x - operation.startScreen.x,
       point.y - operation.startScreen.y
     );
-    const targetId = host.pickNode(point);
+    const free = event.shiftKey && !operation.sourceSide;
+    const targetId = free ? null : host.pickNode(point);
     if (operation.sourceSide && operation.sourceNodeId) {
       const sourceNodeId = operation.sourceNodeId;
       const sourceSide = operation.sourceSide;
@@ -622,7 +676,8 @@ export function finishGesture(operation: V2Operation, opts: V2PointerOptions, ho
         source: operation.sourceNodeId
           ? { nodeId: operation.sourceNodeId }
           : { point: operation.fromWorld },
-        target: targetId ? { nodeId: targetId } : { point: host.screenToWorld(point) },
+        target: targetId ? { nodeId: targetId }
+          : { point: free ? snapToAngle(operation.fromWorld, host.screenToWorld(point), Math.PI / 4) : host.screenToWorld(point) },
         route: connectorRoute(opts), appearance: connectorAppearance(opts),
       });
       opts.commit(

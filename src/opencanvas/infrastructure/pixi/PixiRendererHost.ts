@@ -64,7 +64,7 @@ export type PixiRendererStatus =
   | 'context-lost'
   | 'destroyed';
 
-export interface PixiRenderDiagnostics {
+interface PixiRenderDiagnostics {
   readonly renderCount: number;
   readonly renderRequests: number;
   readonly coalescedRequests: number;
@@ -92,7 +92,7 @@ const SELECTION_STROKE = CHROME_ACCENT;
 // Short on purpose: arrows must be fully back <= 200 ms after a move ends, even when a frame takes a while.
 const ARROW_FADE_MS = 100;
 
-export interface PlacementGhost {
+interface PlacementGhost {
   readonly shape: BasicNodeShape | 'text';
   /** World bounds of the node a click (or the current drag) would create. */
   readonly bounds: Bounds2d;
@@ -115,6 +115,8 @@ export class PixiRendererHost {
   private readonly app = new Application();
   private readonly livePreview: PixiLiveTransformPreview | null;
   private previewResult: TransformResult | null = null;
+  /** The preview is a copy (⌥-drag): the originals stay drawn, their lines stay put. */
+  private previewCopy = false;
   private previewFrame: number | null = null;
   private readonly world = new Container();
   private readonly dotGrid = new PixiDotGrid();
@@ -216,6 +218,7 @@ export class PixiRendererHost {
     this.world.addChild(
       this.precisionGrid,
       this.containerRenderer.graphics,
+      this.nodeRenderer.backdrop,
       this.connectorRenderer.container,
       this.nodeRenderer.graphics,
       this.nodeRenderer.media,
@@ -237,6 +240,7 @@ export class PixiRendererHost {
     canvas.className = 'pixi-spike__canvas';
     canvas.setAttribute('aria-label', 'Diagram drawing surface');
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.watchResolution();
     canvas.addEventListener('webglcontextlost', this.handleContextLost);
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     container.appendChild(canvas);
@@ -386,7 +390,7 @@ export class PixiRendererHost {
 
   /** Hides or shows what setPage draws (boxes, titles, arrows, selection) without touching what `visible` means to their owners. */
   private setSceneRenderable(shown: boolean): void {
-    for (const part of [this.containerRenderer.graphics, this.containerRenderer.labels, this.nodeRenderer.graphics,
+    for (const part of [this.containerRenderer.graphics, this.containerRenderer.labels, this.nodeRenderer.backdrop, this.nodeRenderer.graphics,
       this.nodeRenderer.media, this.nodeRenderer.labels, this.connectorRenderer.container, this.selectionOverlay.graphics,
       this.focusOverlay.veil, this.focusOverlay.content]) {
       part.renderable = shown;
@@ -483,7 +487,7 @@ export class PixiRendererHost {
     if (!this.page) return null;
     const connector = this.page.connectors.find((candidate) => candidate.id === connectorId);
     if (!connector) return null;
-    if (!this.previewResult) return inspectConnectorSamples(this.page, connectorId);
+    if (!this.previewResult || this.previewCopy) return inspectConnectorSamples(this.page, connectorId);
     const replacements = new Map(this.previewResult.nodes.map((node) => [node.id, node]));
     const previewPage = {
       ...this.page,
@@ -508,7 +512,8 @@ export class PixiRendererHost {
     return screenToWorld(this.camera, point);
   }
 
-  pickNode(screenPoint: Point2d): string | null {
+  /** `scope`: a group the selection is inside; a hit within it resolves to its member, not to the group. */
+  pickNode(screenPoint: Point2d, scope: string | null = null): string | null {
     if (!this.index) return null;
     const point = this.screenToWorld(screenPoint);
     // Containers are pickable too, but ordering puts them under their
@@ -521,23 +526,23 @@ export class PixiRendererHost {
     const hit = [...hits].reverse().find((hit) => hit.visible) ?? null;
     // A frame's name sits above its box: over it, the frame is what's under the pointer (a line drawn across it still wins).
     const named = hit?.kind === 'node' ? null : frameNameAt(this.index, point);
-    if (named && !this.pickConnector(screenPoint)) return this.outermostGroup(named);
+    if (named && !this.pickConnector(screenPoint)) return this.outermostGroup(named, scope);
     if (!hit) return null;
     // A connector drawn across a container is painted on top of it, so a click
     // on the line belongs to the line. Without this, nothing inside a section
     // or frame — every imported diagram — could ever select its own arrows.
     if (hit.kind === 'container' && this.pickConnector(screenPoint)) return null;
-    return this.outermostGroup(hit.id);
+    return this.outermostGroup(hit.id, scope);
   }
 
-  // ⌘G groups select as one: a click on a member picks the top-most group.
-  // ponytail: no double-click "enter group"; ungroup to reach a member.
-  private outermostGroup(nodeId: string): string {
+  // ⌘G groups select as one: a click on a member picks the top-most group,
+  // or the top-most below `scope` once the selection is inside one (double-click enters).
+  private outermostGroup(nodeId: string, scope: string | null): string {
     let result = nodeId;
     let parentId = this.index?.nodesById.get(nodeId)?.parentId ?? null;
     while (parentId) {
       const parent = this.index?.nodesById.get(parentId);
-      if (!parent || parent.kind !== 'group') break;
+      if (!parent || parent.kind !== 'group' || parent.id === scope) break;
       result = parent.id;
       parentId = parent.parentId;
     }
@@ -659,12 +664,14 @@ export class PixiRendererHost {
     return bounds ? pickHandle(bounds, screenPoint, this.camera) : null;
   }
 
-  setTransformPreview(result: TransformResult | null): void {
+  setTransformPreview(result: TransformResult | null, copy = false): void {
     if (this.livePreview) {
       const started = !this.previewResult && result !== null;
       const ended = this.previewResult !== null && !result;
+      const copyChanged = this.previewCopy !== (copy && result !== null);
       this.previewResult = result;
-      if (started || ended) this.rebuildScene();
+      this.previewCopy = copy && result !== null;
+      if (started || ended || copyChanged) this.rebuildScene();
       this.selectionOverlay.graphics.visible = result === null;
       if (!result) {
         if (this.previewFrame !== null) cancelAnimationFrame(this.previewFrame);
@@ -675,7 +682,7 @@ export class PixiRendererHost {
         this.previewFrame = requestAnimationFrame(() => {
           this.previewFrame = null;
           if (this.page && this.index && this.previewResult) {
-            this.livePreview?.draw(this.page, this.index, this.previewResult, this.camera.zoom, this.backgroundColor);
+            this.livePreview?.draw(this.page, this.index, this.previewResult, this.camera.zoom, this.backgroundColor, !this.previewCopy);
             this.renderNow();
           }
         });
@@ -755,6 +762,25 @@ export class PixiRendererHost {
   }
 
   private readonly onVisibility = (): void => { if (!document.hidden) this.syncFlow(); };
+
+  // Pixi reads the pixel ratio once, at init: a window moved between a 1x and a Retina screen kept the old one (U4-05).
+  private resolutionQuery: MediaQueryList | null = null;
+  private watchResolution(): void {
+    this.resolutionQuery?.removeEventListener('change', this.onResolutionChange);
+    this.resolutionQuery = typeof matchMedia === 'function' ? matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`) : null;
+    this.resolutionQuery?.addEventListener('change', this.onResolutionChange);
+  }
+  private readonly onResolutionChange = (): void => {
+    this.watchResolution();
+    if (this.destroyed || !this.app.renderer) return;
+    const ratio = window.devicePixelRatio || 1;
+    this.app.renderer.resolution = Math.min(ratio, 2);
+    this.resize();
+    const text = textResolutionForZoom(this.camera.zoom, ratio);
+    applyTextResolution(this.world, text);
+    applyTextResolution(this.focusOverlay.content, text);
+    this.requestRender();
+  };
 
   setFreeformPreview(frame: FreeformPreviewFrame | null): void {
     if (frame) this.freeformPreview.draw(frame);
@@ -904,6 +930,7 @@ export class PixiRendererHost {
     if (this.arrowFade !== null) cancelAnimationFrame(this.arrowFade);
     if (this.flowFrame !== null) cancelAnimationFrame(this.flowFrame);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.resolutionQuery?.removeEventListener('change', this.onResolutionChange);
     if (this.app.renderer) {
       const canvas = this.app.canvas as HTMLCanvasElement;
       canvas.removeEventListener('webglcontextlost', this.handleContextLost);
@@ -917,7 +944,7 @@ export class PixiRendererHost {
     if (!this.page || !this.index) return;
     this.drawPrecisionGrid();
     // Preview nodes and everything under them draw in the live preview layer.
-    const excluded = new Set(this.previewResult?.nodes.flatMap((node) =>
+    const excluded = new Set(this.previewCopy ? [] : this.previewResult?.nodes.flatMap((node) =>
       [node.id, ...getDescendantNodeIds(this.index!, node.id)]));
     const renderedNodeIds = excluded.size
       ? new Set(this.page.nodes.filter((node) => !excluded.has(node.id)
@@ -988,7 +1015,6 @@ export class PixiRendererHost {
       this.selectedNodeIds,
       this.primaryNodeId,
       this.camera.zoom,
-      this.livePreview !== null,
       this.hoveredNodeId ? { nodeId: this.hoveredNodeId, side: this.hoveredSide } : null,
       this.dropTargetId,
       this.hoveredConnectorId && !this.selectedConnectorIds.includes(this.hoveredConnectorId)

@@ -25,13 +25,13 @@ test('draws a library shape, connects it, restyles it and undoes', async ({ page
   await page.getByTestId('v2-canvas').focus();
 
   // Pick the star from the flyout, then place it.
-  await page.getByRole('button', { name: 'Shapes' }).click();
+  await page.getByRole('button', { name: 'Shapes options' }).click();
   await page.getByRole('option', { name: 'Star' }).click();
   await page.mouse.click(420, 320);
   await expect.poll(async () => (await state(page)).nodes.length).toBe(1);
   expect((await doc(page)).pages[0].nodes[0]!.content.shape).toBe('star');
 
-  // Two more shapes with the plain tools (Escape first: a selected shape would
+  // Two more shapes with the plain tools (Escape first: a selected blank shape would
   // swallow the tool letter as type-to-edit).
   await page.keyboard.press('Escape');
   await page.keyboard.press('r');
@@ -70,4 +70,45 @@ test('draws a library shape, connects it, restyles it and undoes', async ({ page
   await expect.poll(async () => (await state(page)).connectors.length).toBe(0);
   await page.keyboard.press('Meta+z');
   await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
+});
+
+test('Square is the first Basic shape: a rectangle drawn 1:1 @gate', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('v2-canvas').focus();
+  await page.getByRole('button', { name: 'Shapes options' }).click();
+  const basic = page.getByRole('option');
+  await expect(basic.first()).toHaveAccessibleName('Square');
+  await basic.first().click();
+
+  // Click: 120×120, same kind and content as the Rectangle tool's node.
+  await page.mouse.click(500, 400);
+  await expect.poll(async () => (await state(page)).nodes.length).toBe(1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('r');
+  await page.mouse.click(900, 400);
+  await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
+  const [square, rectangle] = (await doc(page)).pages[0].nodes as unknown as
+    { content: Record<string, unknown>; appearance: Record<string, unknown>; size: { width: number; height: number } }[];
+  expect(square!.size).toEqual({ width: 120, height: 120 });
+  expect(square!.content).toEqual(rectangle!.content);
+  expect(square!.appearance).toEqual(rectangle!.appearance);
+
+  // The rail now offers Square: its button shows the square glyph, one click re-arms it.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Shapes options' }).click();
+  await page.getByRole('option', { name: 'Square' }).click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('v');
+  await expect(page.getByRole('button', { name: 'Shapes', exact: true }).locator('path')).toHaveAttribute('d', 'M4.75 4.75h14.5v14.5H4.75z');
+  await page.getByRole('button', { name: 'Shapes', exact: true }).click();
+
+  // Drag: equal sides, the larger extent, anchored at the start corner.
+  await page.mouse.move(300, 600);
+  await page.mouse.down();
+  await page.mouse.move(380, 640, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await state(page)).nodes.length).toBe(3);
+  const drawn = (await doc(page)).pages[0].nodes[2] as unknown as { size: { width: number; height: number } };
+  expect(drawn.size.width).toBeGreaterThan(40);
+  expect(drawn.size.width).toBe(drawn.size.height);
 });

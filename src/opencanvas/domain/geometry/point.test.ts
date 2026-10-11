@@ -13,6 +13,7 @@ import {
   lerpPoint,
   normalizeVector,
   scaleVector,
+  snapToAngle,
   subtractPoints,
   vectorLength,
 } from './point';
@@ -74,5 +75,17 @@ describe('points and vectors', () => {
       y: 12.5,
     });
     expect(arePointsNearlyEqual({ x: 1, y: 2 }, { x: 1.001, y: 2.001 }, 0.001)).toBe(true);
+  });
+
+  it('⇧ snaps a direction to the nearest 45°, keeping the length projected onto it', () => {
+    const origin = { x: 10, y: 10 };
+    // 20° off the x axis lands on it.
+    const flat = snapToAngle(origin, { x: 110, y: 10 + 100 * Math.tan(Math.PI / 9) }, Math.PI / 4);
+    expect(flat.x).toBeCloseTo(110);
+    expect(flat.y).toBeCloseTo(10);
+    // 40° lands on the diagonal.
+    const diagonal = snapToAngle(origin, { x: 10 + 100 * Math.cos(0.7), y: 10 - 100 * Math.sin(0.7) }, Math.PI / 4);
+    expect(diagonal.x - 10).toBeCloseTo(-(diagonal.y - 10));
+    expect(snapToAngle(origin, origin, Math.PI / 4)).toEqual(origin);
   });
 });

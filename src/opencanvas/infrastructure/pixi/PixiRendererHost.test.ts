@@ -54,4 +54,29 @@ describe('Pixi renderer host lifecycle', () => {
     frames.mockRestore();
     vi.useRealTimers();
   });
+
+  // Found 2026-10-11 (U4-05): moving the window to a Retina screen left the canvas drawn at 1x until a reload.
+  it('follows a device pixel ratio change: renderer resolution, size and text resolution', () => {
+    const listeners: Array<() => void> = [];
+    const queries: string[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => {
+      queries.push(query);
+      return { matches: false, addEventListener: (_: string, listener: () => void) => listeners.push(listener), removeEventListener: vi.fn() };
+    });
+    vi.stubGlobal('devicePixelRatio', 1);
+    const host = new PixiRendererHost();
+    const renderer = { resolution: 1 };
+    (host as unknown as { app: { renderer: unknown } }).app.renderer = renderer;
+    const resize = vi.spyOn(host, 'resize').mockImplementation(() => undefined);
+    (host as unknown as { watchResolution(): void }).watchResolution();
+    expect(queries.at(-1)).toBe('(resolution: 1dppx)');
+    vi.stubGlobal('devicePixelRatio', 2);
+    listeners.at(-1)!();
+    expect(renderer.resolution).toBe(2);
+    expect(resize).toHaveBeenCalledOnce();
+    expect(queries.at(-1)).toBe('(resolution: 2dppx)');
+    (host as unknown as { app: { renderer: unknown } }).app.renderer = undefined;
+    host.destroy();
+    vi.unstubAllGlobals();
+  });
 });

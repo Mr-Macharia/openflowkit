@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestDocument, createTestNode } from '../../testing/builders/documentBuilder';
 import { applyDocumentCommand } from './execute';
 import { createEmptyV2Document } from '../../presentation/v2/v2Document';
-import { buildGroupCommand, buildUngroupCommand, buildWrapCommand } from './groupNodes';
+import { buildGroupCommand, buildUngroupCommand, buildWrapCommand, refitGroups } from './groupNodes';
 import { descendantIds } from '../scene/queries';
 import { buildDeleteSelectionCommand, buildDuplicateSelectionCommand } from './sceneEdits';
 import { buildNodeWorldMatrices, nodeWorldBounds } from '../scene/worldGeometry';
@@ -78,5 +78,28 @@ describe('wrap in section', () => {
     expect(section?.size).toEqual({ width: 148, height: 130 });
     const wrapped = { ...page, nodes: [...page.nodes.map((node) => node.id === 'a' ? { ...node, parentId: 's1' } : node), section!] };
     expect(buildUngroupCommand(wrapped, ['s1'])?.commands.map((command) => command.kind)).toEqual(['set-node', 'remove-node']);
+  });
+});
+
+describe('a group hugs its members', () => {
+  it('re-fits when a member moves out of it; every member keeps its place on the canvas', () => {
+    const grouped = run(page(), buildGroupCommand(page(), ['a', 'b'], 'g')).document.pages[0];
+    const worldOf = (p: ScenePage, id: string) => nodeWorldBounds(p.nodes.find((n) => n.id === id)!, buildNodeWorldMatrices(p).get(id)!);
+    const a = grouped.nodes.find((node) => node.id === 'a')!;
+    // a (local 16,16) moves 100 left and 50 up: past the group's top-left corner.
+    const movedA = { ...a, transform: { ...a.transform, translation: { x: -84, y: -34 } } };
+    const { before, after } = refitGroups(grouped, [a], [movedA]);
+    expect(before.map((node) => node.id)).toEqual(['a', 'g', 'b']);
+    const next = { ...grouped, nodes: grouped.nodes.map((node) => after.find((record) => record.id === node.id) ?? node) };
+    expect(worldOf(next, 'a')).toMatchObject({ x: 0, y: 50 });
+    expect(worldOf(next, 'b')).toMatchObject({ x: 300, y: 200 });
+    expect(worldOf(next, 'g')).toEqual({ x: -16, y: 34, width: 432, height: 232 });
+  });
+
+  it('leaves records outside a group, and a moved group itself, as they are', () => {
+    const grouped = run(page(), buildGroupCommand(page(), ['a', 'b'], 'g')).document.pages[0];
+    const g = grouped.nodes.find((node) => node.id === 'g')!;
+    const movedG = { ...g, transform: { ...g.transform, translation: { x: 0, y: 0 } } };
+    expect(refitGroups(grouped, [g], [movedG])).toEqual({ before: [g], after: [movedG] });
   });
 });

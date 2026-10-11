@@ -26,11 +26,11 @@ export function isBounds2d(value: unknown): value is Bounds2d {
   );
 }
 
-export function boundsMinX(bounds: Bounds2d): number {
+function boundsMinX(bounds: Bounds2d): number {
   return bounds.x;
 }
 
-export function boundsMinY(bounds: Bounds2d): number {
+function boundsMinY(bounds: Bounds2d): number {
   return bounds.y;
 }
 

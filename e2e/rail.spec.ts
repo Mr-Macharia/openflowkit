@@ -28,18 +28,27 @@ test('the rail opens flyouts by mouse and keyboard, picks a shape, locks and und
   await page.goto('/');
   await page.getByTestId('v2-canvas').focus();
 
-  const shapes = page.getByRole('button', { name: 'Shapes' });
-  await expect(shapes).toHaveAttribute('aria-expanded', 'false');
+  const shapes = page.getByRole('button', { name: 'Shapes', exact: true });
+  const corner = page.getByRole('button', { name: 'Shapes options', exact: true });
+  await expect(corner).toHaveAttribute('aria-expanded', 'false');
 
-  // Mouse: a click opens the grid (the rail icon never changes), Esc closes,
-  // focus returns to the opener, and nothing was armed.
+  // One click arms the last-used shape (a square at first), with no grid in the way (U1-05).
   await shapes.click();
-  await expect(shapes).toHaveAttribute('aria-expanded', 'true');
+  await expect.poll(async () => (await state(page)).tool).toBe('square');
+  await expect(page.getByRole('option')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  expect((await state(page)).tool).toBe('select');
+
+  // The corner opens the grid (the rail icon never changes), Esc closes,
+  // focus returns to the opener, and nothing was armed.
+  await corner.click();
+  await expect(corner).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('option', { name: 'Diamond' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(shapes).toHaveAttribute('aria-expanded', 'false');
-  await expect(shapes).toBeFocused();
+  await expect(corner).toHaveAttribute('aria-expanded', 'false');
+  await expect(corner).toBeFocused();
   expect((await state(page)).tool).toBe('select');
+  await shapes.focus();
 
   // Keyboard: ArrowRight opens the grid with focus on the current pick, arrows
   // move between cells, Enter places that shape at the view centre — the
@@ -49,15 +58,15 @@ test('the rail opens flyouts by mouse and keyboard, picks a shape, locks and und
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('option', { name: 'Triangle' })).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(shapes).toHaveAttribute('aria-expanded', 'false');
+  await expect(corner).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(async () => (await state(page)).nodes.length).toBe(1);
   expect(String((await doc(page)).pages[0].nodes[0]?.content.shape)).toBe('triangle');
   expect((await state(page)).tool).toBe('select');
 
   // Mouse: a click on a cell arms the tool, and the picked variant is what it draws.
-  await shapes.click();
+  await corner.click();
   await page.getByRole('option', { name: 'Diamond' }).click();
-  await expect(shapes).toHaveAttribute('aria-expanded', 'false');
+  await expect(corner).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(async () => (await state(page)).tool).toBe('shape');
   await page.mouse.click(420, 520);
   await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
@@ -82,7 +91,7 @@ test('the connector flyout picks a route kind used by the next connector', async
   await placeShape(page, 360, 300);
   await placeShape(page, 760, 300);
 
-  const connector = page.getByRole('button', { name: 'Connector' });
+  const connector = page.getByRole('button', { name: 'Connector options' });
   await connector.click();
   await page.getByRole('option', { name: 'Curve' }).click();
   await expect(connector).toHaveAttribute('aria-expanded', 'false');

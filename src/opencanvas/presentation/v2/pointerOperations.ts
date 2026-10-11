@@ -32,7 +32,7 @@ export type PixiPointerOperation =
   | V2ConnectorOperation
   | TransformPointerOperation;
 
-export interface TransformPointerOperation {
+interface TransformPointerOperation {
   readonly kind: 'transform';
   readonly pointerId: number;
   readonly transformKind: 'move' | 'resize' | 'rotate';
@@ -43,6 +43,11 @@ export interface TransformPointerOperation {
   /** World bounds of every non-selected node, computed once per drag (O(n) at begin). */
   readonly others: readonly Bounds2d[];
   readonly result: TransformResult | null;
+  /**
+   * What a click (no drag) leaves selected, when that differs from the press: the one shape clicked out of a
+   * multi-selection, or the selection without a shape ⇧/⌘ pressed on again (Figma, tldraw, Excalidraw).
+   */
+  readonly clickSelects?: readonly string[];
 }
 
 export interface AnchoredMarqueePointerOperation {
@@ -125,15 +130,16 @@ export function beginTransformOperation(
   };
 }
 
-// Figma/tldraw modifier set: ⌘ suspends snapping, ⇧ locks aspect (resize)
-// or steps rotation by 15°, ⌥ resizes from the centre.
+// Figma/tldraw modifier set: ⌘ suspends snapping, ⇧ locks a move to one axis,
+// the aspect of a resize, or steps rotation by 15°; ⌥ resizes from the centre
+// (and makes a move a copy: see finishGesture).
 export interface TransformModifiers {
   readonly shiftKey: boolean;
   readonly altKey: boolean;
   readonly metaKey: boolean;
 }
 
-export const NO_MODIFIERS: TransformModifiers = { shiftKey: false, altKey: false, metaKey: false };
+const NO_MODIFIERS: TransformModifiers = { shiftKey: false, altKey: false, metaKey: false };
 
 /** `objectThreshold` in world units enables object snapping for moves; omit for grid only. */
 export function updateTransformOperation(
@@ -151,8 +157,8 @@ export function updateTransformOperation(
         operation.snapshot,
         { x: pointer.x - operation.start.x, y: pointer.y - operation.start.y },
         objectThreshold === undefined || modifiers.metaKey
-          ? { snap }
-          : { snap, objects: operation.others, objectThreshold }
+          ? { snap, axisLock: modifiers.shiftKey }
+          : { snap, axisLock: modifiers.shiftKey, objects: operation.others, objectThreshold }
       );
       break;
     case 'resize':

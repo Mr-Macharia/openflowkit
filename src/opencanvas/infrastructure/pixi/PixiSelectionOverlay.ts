@@ -28,7 +28,7 @@ export function selectionWorldBounds(
   );
 }
 
-export interface ConnectHover {
+interface ConnectHover {
   readonly nodeId: string;
   readonly side: ConnectSide | null;
 }
@@ -90,7 +90,6 @@ export class PixiSelectionOverlay {
     selectedNodeIds: readonly string[],
     primaryNodeId: string | null,
     zoom: number,
-    cleanFrame = false,
     hover: ConnectHover | null = null,
     dropTarget: string | null = null,
     connectorHalo: readonly Point2d[] | null = null,
@@ -103,10 +102,10 @@ export class PixiSelectionOverlay {
       for (const point of connectorHalo.slice(1)) this.graphics.lineTo(point.x, point.y);
       this.graphics.stroke({ color: SELECTION_STROKE, alpha: 0.28, width: 6 / zoom, cap: 'round', join: 'round' });
     }
-    // One frame for one node; members of a group get a hairline each so the
-    // union frame stays the only heavy line on screen.
+    // One frame for one node; each item of a multi-selection gets a hairline under the union frame, so a marquee
+    // shows what it caught (U4-07) and the union frame stays the only heavy line on screen.
     if (selectedNodeIds.length > 1) {
-      for (const nodeId of cleanFrame ? [] : selectedNodeIds) {
+      for (const nodeId of selectedNodeIds) {
         const bounds = this.nodeBounds(index, nodeId);
         if (!bounds) continue;
         this.graphics

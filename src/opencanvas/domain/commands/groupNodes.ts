@@ -2,11 +2,13 @@ import type { BatchDocumentCommand, DocumentCommand } from './types';
 import type { SceneNode, ScenePage } from '../document/types';
 import { unionBounds } from '../geometry/bounds';
 import { buildNodeWorldMatrices, nodeWorldBounds } from '../scene/worldGeometry';
+import { transformToMatrix } from '../geometry/transform';
+import { applyMatrixToPoint } from '../geometry/matrix';
 
 const GROUP_PADDING = 16;
 
 /** Selected ids whose ancestors are not selected. */
-export function selectedRootIds(page: ScenePage, nodeIds: readonly string[]): string[] {
+function selectedRootIds(page: ScenePage, nodeIds: readonly string[]): string[] {
   const selected = new Set(nodeIds);
   const byId = new Map(page.nodes.map((node) => [node.id, node]));
   return nodeIds.filter((id) => {
@@ -69,6 +71,46 @@ export function buildWrapCommand(page: ScenePage, nodeIds: readonly string[], id
     })),
   ];
   return { kind: 'batch', id: `${kind}:${id}`, label, commands };
+}
+
+/**
+ * A ⌘G group hugs its members (Figma): when members are edited (`before` → `after`, parallel), each group they sit
+ * directly in is re-fitted to them plus padding, and every member shifts by the same amount so nothing moves on the
+ * canvas. Returns the pairs to write: the edited ones, then each group and its other members that changed.
+ * ponytail: one level — a group inside a group is not re-fitted in turn.
+ */
+export function refitGroups(
+  page: ScenePage, before: readonly SceneNode[], after: readonly SceneNode[],
+): { readonly before: readonly SceneNode[]; readonly after: readonly SceneNode[] } {
+  const edited = new Map(after.map((node) => [node.id, node]));
+  const byId = new Map(page.nodes.map((node) => [node.id, node]));
+  const groups = [...new Set(after.flatMap((node) => {
+    const parent = node.parentId ? byId.get(node.parentId) : undefined;
+    return parent?.kind === 'group' && !edited.has(parent.id) ? [parent] : [];
+  }))];
+  const pairs = { before: [...before], after: [...after] };
+  for (const group of groups) {
+    const members = page.nodes.filter((node) => node.parentId === group.id).map((node) => edited.get(node.id) ?? node);
+    const boxes = members.map((node) => nodeWorldBounds(node, transformToMatrix(node.transform)));
+    const union = boxes.slice(1).reduce(unionBounds, boxes[0]!);
+    const shift = { x: union.x - GROUP_PADDING, y: union.y - GROUP_PADDING };
+    const size = { width: union.width + GROUP_PADDING * 2, height: union.height + GROUP_PADDING * 2 };
+    if (shift.x === 0 && shift.y === 0 && size.width === group.size.width && size.height === group.size.height) continue;
+    pairs.before.push(group);
+    pairs.after.push({
+      ...group, size,
+      transform: { ...group.transform, translation: applyMatrixToPoint(transformToMatrix(group.transform), shift) },
+    });
+    for (const member of members) {
+      const moved = { ...member, transform: { ...member.transform, translation: {
+        x: member.transform.translation.x - shift.x, y: member.transform.translation.y - shift.y,
+      } } };
+      const at = pairs.after.findIndex((node) => node.id === member.id);
+      if (at >= 0) pairs.after[at] = moved;
+      else { pairs.before.push(byId.get(member.id)!); pairs.after.push(moved); }
+    }
+  }
+  return pairs;
 }
 
 export function buildGroupCommand(page: ScenePage, nodeIds: readonly string[], groupId: string): DocumentCommand | null {

@@ -25,6 +25,8 @@ import { WIDGETS, type WidgetKind } from '../../domain/nodes/widgetNodePresentat
 export type V2Tool =
   | 'select' | 'hand'
   | 'rectangle' | 'ellipse'
+  /** A rectangle drawn 1:1: not a node kind, only a gesture that keeps the sides equal. */
+  | 'square'
   | 'shape'
   | 'connector'
   | 'text'
@@ -92,12 +94,16 @@ export const DRAW_OPTIONS: readonly ToolOption<V2Tool>[] = [
   { id: 'laser', label: 'Laser pointer', icon: IconFlare, shortcut: 'K' },
 ];
 
+/** A 1:1 box in the outline stroke of its siblings (the Rectangle icon is wider than tall). */
+const SquareIcon = pathIcon('M4.75 4.75h14.5v14.5H4.75z');
+
 /** Shapes flyout: R and O arm their own tools; the library grid arms the shape tool. */
-export type V2ShapePick = ShapeKind | 'tool:rectangle' | 'tool:ellipse';
+type V2ShapePick = ShapeKind | 'tool:square' | 'tool:rectangle' | 'tool:ellipse';
 export const SHAPE_SECTIONS: readonly ToolSection<V2ShapePick>[] = [
   {
     title: 'Basic',
     options: [
+      { id: 'tool:square', label: 'Square', icon: SquareIcon },
       { id: 'tool:rectangle', label: 'Rectangle', icon: shapeIcon('rectangle'), shortcut: 'R' },
       { id: 'tool:ellipse', label: 'Ellipse', icon: shapeIcon('ellipse'), shortcut: 'O' },
     ],
@@ -128,7 +134,7 @@ export const CONNECTOR_ROUTE: Readonly<Record<V2ConnectorTool, ConnectorRouteKin
 
 /** An Insert pick names its group, so one panel can hold media, charts, frames and widgets. */
 export type V2MoreItem = `frame:${FramePreset}` | `widget:${WidgetKind}` | `chart:${V2ChartKind}` | 'insert:sticky';
-export type V2InsertPick = V2MoreItem | 'insert:image';
+type V2InsertPick = V2MoreItem | 'insert:image';
 
 /** A progress bar: Tabler's progress icons are spinners. */
 const IconProgressBar = pathIcon('M5 9h14a3 3 0 0 1 0 6H5a3 3 0 0 1 0-6zM6 12h7');

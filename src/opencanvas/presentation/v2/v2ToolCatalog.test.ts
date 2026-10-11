@@ -19,6 +19,13 @@ describe('v2 tool catalog', () => {
     for (const gone of ['cube', 'prism', 'layer-stack', 'heart', 'pin', 'actor', 'brace', 'arrow-up']) expect(ids).not.toContain(gone);
   });
 
+  it('Basic lists Square first, then Rectangle (R) and Ellipse (O); Square has no key', () => {
+    const basic = SHAPE_SECTIONS[0]!.options;
+    expect(basic.map((option) => [option.id, option.label, option.shortcut])).toEqual([
+      ['tool:square', 'Square', undefined], ['tool:rectangle', 'Rectangle', 'R'], ['tool:ellipse', 'Ellipse', 'O'],
+    ]);
+  });
+
   it('maps connector picks onto routes', () => {
     expect(CONNECTOR_OPTIONS.map((option) => option.id)).toEqual(['arrow', 'elbow', 'curve']);
     expect(CONNECTOR_ROUTE.arrow).toBe('direct');
@@ -48,6 +55,6 @@ describe('v2 tool catalog', () => {
     const tools = [...POINTER_OPTIONS, ...DRAW_OPTIONS].map((option) => option.id);
     expect(tools.sort()).toEqual(['eraser', 'hand', 'highlighter', 'laser', 'pen', 'select']);
     const shapes = SHAPE_SECTIONS.flatMap((section) => section.options.map((option) => option.id));
-    expect(shapes).toEqual(['tool:rectangle', 'tool:ellipse', ...SHAPE_OPTIONS.map((option) => option.id)]);
+    expect(shapes).toEqual(['tool:square', 'tool:rectangle', 'tool:ellipse', ...SHAPE_OPTIONS.map((option) => option.id)]);
   });
 });

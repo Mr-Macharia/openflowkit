@@ -3,15 +3,6 @@ import { GEOMETRY_EPSILON, requireFiniteNumber, requireNonNegativeNumber } from 
 import { createPoint2d } from './point';
 import type { Bounds2d, Matrix2d, Point2d } from './types';
 
-export const IDENTITY_MATRIX_2D: Matrix2d = Object.freeze({
-  a: 1,
-  b: 0,
-  c: 0,
-  d: 1,
-  tx: 0,
-  ty: 0,
-});
-
 export function createMatrix2d(
   a: number,
   b: number,
@@ -48,7 +39,7 @@ export function applyMatrixToPoint(matrix: Matrix2d, point: Point2d): Point2d {
   );
 }
 
-export function matrixDeterminant(matrix: Matrix2d): number {
+function matrixDeterminant(matrix: Matrix2d): number {
   return matrix.a * matrix.d - matrix.b * matrix.c;
 }
 

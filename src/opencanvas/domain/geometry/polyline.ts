@@ -10,7 +10,7 @@ import {
 } from './point';
 import type { Bounds2d, Point2d } from './types';
 
-export interface ClosestPolylinePoint {
+interface ClosestPolylinePoint {
   readonly point: Point2d;
   readonly distance: number;
   readonly segmentIndex: number;

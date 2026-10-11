@@ -3,7 +3,7 @@ export interface CanvasSelection {
   readonly primaryNodeId: string | null;
 }
 
-export const EMPTY_CANVAS_SELECTION: CanvasSelection = { nodeIds: [], primaryNodeId: null };
+const EMPTY_CANVAS_SELECTION: CanvasSelection = { nodeIds: [], primaryNodeId: null };
 
 function uniqueIds(ids: readonly string[]): readonly string[] {
   return [...new Set(ids)];

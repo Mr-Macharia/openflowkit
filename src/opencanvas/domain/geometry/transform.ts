@@ -3,7 +3,7 @@ import { createMatrix2d } from './matrix';
 import { createPoint2d, createVector2d, isPoint2d, isVector2d } from './point';
 import type { Matrix2d, Transform2d } from './types';
 
-export const IDENTITY_TRANSFORM_2D: Transform2d = Object.freeze({
+const IDENTITY_TRANSFORM_2D: Transform2d = Object.freeze({
   translation: Object.freeze({ x: 0, y: 0 }),
   rotationRadians: 0,
   scale: Object.freeze({ x: 1, y: 1 }),

@@ -237,6 +237,14 @@ test('a whole import is one undo step', async ({ page }) => {
   await expect.poll(async () => (await state(page)).nodes.length).toBe(0);
 });
 
+// U1-07: OpenFlowKit's own warnings on Mermaid text were false alarms; the banner is the one message.
+test('pasted Mermaid shows the banner, not OpenFlowKit warnings', async ({ page }) => {
+  const source = await openCodePanel(page);
+  await source.fill('graph LR\n  Web --> Api');
+  await expect(page.getByText('Mermaid detected.')).toBeVisible();
+  await expect(page.locator('#v2-code-diagnostics')).toBeHidden();
+});
+
 test('a reserved family reports an error instead of half a diagram', async ({ page }) => {
   const source = await openCodePanel(page);
   await source.fill(`journey
@@ -329,7 +337,7 @@ test('a complex import is fully editable: rename, drag, resize, connect, delete,
 
   // A 14-node import overflows the viewport; fit it so every node is clickable.
   await page.getByTestId('v2-canvas').focus();
-  await page.keyboard.press(`${META}+0`);
+  await page.keyboard.press('Shift+Digit1');
 
   // Rename a node that came out of a nested subgraph.
   const worker = await idForLabel(page, 'Worker');
@@ -371,7 +379,7 @@ test('a complex import is fully editable: rename, drag, resize, connect, delete,
   await page.keyboard.press('Escape');
   // The longest imported connector: a short one's midpoint sits on a node's quick-create
   // handle, and a click there adds a node instead of selecting the line.
-  // Screen samples already carry the camera, which ⌘0 left at an odd zoom.
+  // Screen samples already carry the camera, which the fit left at an odd zoom.
   const lanes = await page.evaluate((ids: string[]) => ids.map((id) => ({
     id,
     lane: (window as unknown as { __V2__: { getConnectorScreenSamples(id: string): { x: number; y: number }[] | null } })
@@ -399,7 +407,7 @@ test('a complex import keeps its groups: moving a group carries its members', as
   await importMermaid(page, source, COMPLEX_FLOW);
   await page.getByRole('button', { name: 'Close' }).first().click();
   await page.getByTestId('v2-canvas').focus();
-  await page.keyboard.press(`${META}+0`);
+  await page.keyboard.press('Shift+Digit1');
   const group = await idForLabel(page, 'Service Layer');
   const member = await idForLabel(page, 'Order Service');
   expect((await node(page, member)).parentId).toBe(group);
@@ -559,7 +567,7 @@ for (const { family, source: mermaid, labels: wanted, minConnectors } of COMPLEX
     expect((await state(page)).connectors.length).toBeGreaterThanOrEqual(minConnectors);
     await page.getByRole('button', { name: 'Close' }).first().click();
     await page.getByTestId('v2-canvas').focus();
-    await page.keyboard.press(`${META}+0`);
+    await page.keyboard.press('Shift+Digit1');
 
     // The busiest node of each family renames, moves and undoes like any other.
     const target = await idForLabel(page, wanted[wanted.length - 1]!);

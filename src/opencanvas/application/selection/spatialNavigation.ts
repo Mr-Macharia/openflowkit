@@ -1,7 +1,7 @@
 import type { SceneNode, ScenePage } from '../../domain/document/types';
 import { buildNodeWorldMatrices, nodeWorldCenter } from '../../domain/scene/worldGeometry';
 
-export type SpatialDirection = 'left' | 'right' | 'up' | 'down';
+type SpatialDirection = 'left' | 'right' | 'up' | 'down';
 
 function directionVector(direction: SpatialDirection): { x: number; y: number } {
   switch (direction) {

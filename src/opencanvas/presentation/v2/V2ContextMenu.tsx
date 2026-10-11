@@ -6,9 +6,12 @@ import { buildStyleConnectorCommand } from '../../domain/commands/styleConnector
 import type { useV2EditActions } from './useV2EditActions';
 import { platformKeys } from './v2Shortcuts';
 
+/** The button that opened the menu (the selection bar's ⋯): the menu hangs off it, right-aligned, and flips above it. */
+interface MenuTrigger { readonly left: number; readonly top: number; readonly width: number; readonly height: number }
+
 export type ContextMenuTarget =
-  | { readonly kind: 'nodes'; readonly x: number; readonly y: number }
-  | { readonly kind: 'connector'; readonly id: string; readonly x: number; readonly y: number }
+  | { readonly kind: 'nodes'; readonly x: number; readonly y: number; readonly trigger?: MenuTrigger }
+  | { readonly kind: 'connector'; readonly id: string; readonly x: number; readonly y: number; readonly trigger?: MenuTrigger }
   | { readonly kind: 'canvas'; readonly x: number; readonly y: number };
 
 interface V2ContextMenuProps {
@@ -55,6 +58,8 @@ export function V2ContextMenu(props: V2ContextMenuProps): React.JSX.Element | nu
   const anchorRef = useRef<HTMLDivElement>(null);
   const { target, actions, readOnly } = props;
   if (!target) return null;
+  // A menu from the selection bar never covers the bar: a point anchor flipped up over it (U4-17).
+  const trigger = target.kind === 'canvas' ? undefined : target.trigger;
   const many = props.selectionCount > 1;
   const edit = !readOnly;
   const selectedFrame = target.kind === 'nodes' && props.selectionCount === 1
@@ -62,16 +67,17 @@ export function V2ContextMenu(props: V2ContextMenuProps): React.JSX.Element | nu
     : undefined;
   return (
     <>
-      <div ref={anchorRef} aria-hidden="true" style={{ position: 'fixed', left: target.x, top: target.y, width: 1, height: 1, pointerEvents: 'none' }} />
-      <Menu open anchorRef={anchorRef} onClose={props.onClose} label="Canvas actions" placement="bottom-start"
+      <div ref={anchorRef} aria-hidden="true" style={{ position: 'fixed', pointerEvents: 'none',
+        ...(trigger ? trigger : { left: target.x, top: target.y, width: 1, height: 1 }) }} />
+      <Menu open anchorRef={anchorRef} onClose={props.onClose} label="Canvas actions" placement={trigger ? 'bottom-end' : 'bottom-start'}
         data-context-menu onPointerDown={(event) => event.stopPropagation()}>
         {target.kind === 'canvas' ? (
           <>
             <MenuItem onSelect={() => { actions.pasteShapes(); }} shortcut={platformKeys('⌘V')} disabled={!edit || !actions.hasClipboard()}>Paste</MenuItem>
             <MenuItem onSelect={props.onSelectAll} shortcut={platformKeys('⌘A')}>Select all</MenuItem>
             <MenuSeparator />
-            <MenuItem onSelect={props.onZoomToFit} shortcut={platformKeys('⌘0')}>Zoom to fit</MenuItem>
-            <MenuItem onSelect={props.onZoomTo100} shortcut={platformKeys('⌘1')}>Zoom to 100%</MenuItem>
+            <MenuItem onSelect={props.onZoomToFit} shortcut={platformKeys('⇧1')}>Zoom to fit</MenuItem>
+            <MenuItem onSelect={props.onZoomTo100} shortcut={platformKeys('⌘0')}>Zoom to 100%</MenuItem>
             <MenuSeparator />
             <MenuItem onSelect={props.onToggleGrid} checked={props.showGrid} keepOpen>Show grid</MenuItem>
             <MenuItem onSelect={props.onToggleSnap} checked={props.snapToGrid} keepOpen>Snap to grid</MenuItem>

@@ -21,6 +21,23 @@ import type { V2ShapeKind } from '../../domain/commands/sceneEdits';
 
 type V2FlyoutId = 'pointer' | 'shapes' | 'connector' | 'draw';
 
+/**
+ * Up/Down on the rail go tool to tool: a tool's "… options" corner is a pointer target (ArrowRight or a long press opens
+ * the same grid from the keyboard), so the roving order skips it. Home/End and the rest stay with Toolbar.
+ */
+function skipCorners(event: React.KeyboardEvent<HTMLDivElement>): void {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !(event.target instanceof HTMLButtonElement)) return;
+  const tools = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'))
+    .filter((button) => !button.classList.contains('ofk-v2-flyout-corner') && button.closest('[role="toolbar"]') === event.currentTarget);
+  const from = event.target.classList.contains('ofk-v2-flyout-corner')
+    ? event.target.parentElement?.querySelector<HTMLButtonElement>('button:not(.ofk-v2-flyout-corner)') ?? null : event.target;
+  const index = from ? tools.indexOf(from) : -1;
+  if (index < 0) return;
+  event.preventDefault();
+  tools[(index + (event.key === 'ArrowDown' ? 1 : tools.length - 1)) % tools.length]?.focus();
+}
+
 export type { V2Tool, V2ToolConfig, V2ConnectorTool };
 
 const POINTER_TOOLS = new Set<V2Tool>(['select', 'hand']);
@@ -34,7 +51,7 @@ export function V2CreationToolbar(props: {
   readonly onToolChange: (tool: V2Tool) => void;
   readonly onPickShape: (shape: ShapeKind) => void;
   /** A keyboard pick in Shapes places the shape at the view centre: the keyboard has no canvas to click. */
-  readonly onPlaceShape: (shape: V2ShapeKind) => void;
+  readonly onPlaceShape: (shape: V2ShapeKind, square?: boolean) => void;
   readonly onPickConnector: (kind: V2ConnectorTool) => void;
   /** Icon library pick: the page inserts the icon node and opens its label. */
   readonly onInsertIcon: (icon: IconChoice) => void;
@@ -64,29 +81,45 @@ export function V2CreationToolbar(props: {
   };
   const { tool } = props;
   // The grid opens on the last shape picked, as S re-arms it; R and O mark their own cells while armed.
-  const shapePick = tool === 'rectangle' ? 'tool:rectangle' : tool === 'ellipse' ? 'tool:ellipse' : props.toolConfig.shape;
-  const shapeArmed = tool === 'rectangle' || tool === 'ellipse' || tool === 'shape';
+  const shapePick = tool === 'square' ? 'tool:square' : tool === 'rectangle' ? 'tool:rectangle' : tool === 'ellipse' ? 'tool:ellipse' : props.toolConfig.shape;
+  const shapeArmed = tool === 'square' || tool === 'rectangle' || tool === 'ellipse' || tool === 'shape';
+  // A rail click re-arms the group's last-used tool, as its letter does, and the button shows that tool (Figma):
+  // a click never arms something the rail does not show. The grid is one corner away.
+  const [lastUsed, setLastUsed] = useState<{ pointer: V2Tool; shapes: V2Tool; draw: V2Tool }>({ pointer: 'select', shapes: 'square', draw: 'pen' });
+  const group = POINTER_TOOLS.has(tool) ? 'pointer' : shapeArmed ? 'shapes' : DRAW_TOOLS.has(tool) ? 'draw' : null;
+  if (group && lastUsed[group] !== tool) setLastUsed({ ...lastUsed, [group]: tool });
+  const shapeVariant = lastUsed.shapes === 'square' ? 'tool:square' : lastUsed.shapes === 'rectangle' ? 'tool:rectangle' : lastUsed.shapes === 'ellipse' ? 'tool:ellipse' : props.toolConfig.shape;
+  const variants = {
+    pointer: POINTER_OPTIONS.find((option) => option.id === lastUsed.pointer),
+    shapes: SHAPE_SECTIONS.flatMap((section) => section.options).find((option) => option.id === shapeVariant),
+    connector: CONNECTOR_OPTIONS.find((option) => option.id === props.toolConfig.connector),
+    draw: DRAW_OPTIONS.find((option) => option.id === lastUsed.draw),
+  };
 
   return (
     <FloatingRegion ref={toolsRef} slot="top-start" className="ofk-v2-tools">
-      <Toolbar label="Create" orientation="vertical">
+      <Toolbar label="Create" orientation="vertical" onKeyDown={skipCorners}>
         <FlyoutButton label="Pointer" shortcut="V / H" icon={<Icon icon={IconPointer} />}
           selected={POINTER_TOOLS.has(tool)} open={flyout === 'pointer'}
+          onActivate={() => props.onToolChange(lastUsed.pointer)} variant={variants.pointer}
           onOpenChange={setFlyoutOpen('pointer')} options={POINTER_OPTIONS} columns={2}
           selectedId={POINTER_TOOLS.has(tool) ? tool : null} onPick={props.onToolChange} />
         <span className="ofk-v2-tools-separator" aria-hidden="true" />
         <FlyoutButton label="Shapes" shortcut="R / O / S" icon={<Icon icon={IconSquare} />}
           selected={shapeArmed} open={flyout === 'shapes'}
+          onActivate={() => props.onToolChange(lastUsed.shapes)} variant={variants.shapes}
           onOpenChange={setFlyoutOpen('shapes')} options={SHAPE_SECTIONS} columns={6}
           selectedId={shapePick}
           onPick={(id, keyboard) => {
-            if (id === 'tool:rectangle') props.onToolChange('rectangle');
+            if (id === 'tool:square') props.onToolChange('square');
+            else if (id === 'tool:rectangle') props.onToolChange('rectangle');
             else if (id === 'tool:ellipse') props.onToolChange('ellipse');
             else props.onPickShape(id);
-            if (keyboard) props.onPlaceShape(id === 'tool:rectangle' ? 'rectangle' : id === 'tool:ellipse' ? 'ellipse' : id);
+            if (keyboard) props.onPlaceShape(id === 'tool:square' || id === 'tool:rectangle' ? 'rectangle' : id === 'tool:ellipse' ? 'ellipse' : id, id === 'tool:square');
           }} />
         <FlyoutButton label="Connector" shortcut="A" icon={<Icon icon={IconArrowUpRight} />}
           selected={tool === 'connector'} open={flyout === 'connector'}
+          onActivate={() => props.onToolChange('connector')} variant={variants.connector}
           onOpenChange={setFlyoutOpen('connector')} options={CONNECTOR_OPTIONS} columns={3}
           selectedId={props.toolConfig.connector} onPick={props.onPickConnector} />
         <Tooltip content="Text" shortcut="T">
@@ -96,6 +129,7 @@ export function V2CreationToolbar(props: {
         <span className="ofk-v2-tools-separator" aria-hidden="true" />
         <FlyoutButton label="Draw" shortcut="P" icon={<Icon icon={IconPencil} />}
           selected={DRAW_TOOLS.has(tool)} open={flyout === 'draw'}
+          onActivate={() => props.onToolChange(lastUsed.draw)} variant={variants.draw}
           onOpenChange={setFlyoutOpen('draw')} options={DRAW_OPTIONS} columns={4}
           selectedId={DRAW_TOOLS.has(tool) ? tool : null} onPick={props.onToolChange} />
         <Tooltip content="Icons and emoji" shortcut="I / E">

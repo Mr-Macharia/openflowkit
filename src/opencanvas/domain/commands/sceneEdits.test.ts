@@ -105,6 +105,18 @@ describe('v2 label edit command', () => {
     expect(undone.document.pages[0].nodes[0].content.label).toBe('Draft');
   });
 
+  it('refits an icon tile to its new caption: height only, width and corner kept', () => {
+    const tile = createTestNode('tile', {
+      kind: 'architecture', size: { width: 148, height: 107 }, transform: { translation: { x: 40, y: 60 }, rotationRadians: 0, scale: { x: 1, y: 1 } },
+      content: { label: 'API', assetPresentation: 'icon', icon: 'tabler/server' },
+    });
+    const page = { ...pageWithTwoNodes(), nodes: [tile] };
+    const after = buildSetNodeLabelCommand(page, 'tile', 'Primary\ndatabase\ncluster').after;
+    expect(after.size).toEqual({ width: 148, height: Math.ceil(88 + 3 * 14.4 + 4) });
+    expect(after.transform.translation).toEqual({ x: 40, y: 60 });
+    expect(buildSetNodeLabelCommand(page, 'tile', 'API').after.size).toEqual({ width: 148, height: 107 });
+  });
+
   it('restores the pre-edit text on undo', () => {
     const page = pageWithTwoNodes();
     const labeled = applyDocumentCommand(
@@ -237,6 +249,16 @@ describe('v2 duplicate command', () => {
     );
     expect(applied.document.pages[0].nodes).toHaveLength(3);
     expect(applied.document.pages[0].connectors).toHaveLength(1);
+  });
+
+  it('keeps a copied member in its group, beside the original (it left for the page origin)', () => {
+    const group = createTestNode('group', { kind: 'group', transform: { translation: { x: 400, y: 300 }, rotationRadians: 0, scale: { x: 1, y: 1 } } });
+    const member = createTestNode('member', { parentId: 'group', transform: { translation: { x: 22, y: 54 }, rotationRadians: 0, scale: { x: 1, y: 1 } } });
+    const page = createTestDocument({ nodes: [group, member] }).pages[0]!;
+    const command = buildDuplicateSelectionCommand(page, ['member'], [], () => 'copy');
+    const copy = command.commands[0]!.kind === 'insert-node' ? command.commands[0]!.node : null;
+    expect(copy?.parentId).toBe('group');
+    expect(copy?.transform.translation).toEqual({ x: 42, y: 74 });
   });
 });
 

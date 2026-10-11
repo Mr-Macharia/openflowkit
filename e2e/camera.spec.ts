@@ -74,8 +74,8 @@ test('camera stays anchored and answers its shortcuts', async ({ page }) => {
   expect(drift).toBeLessThanOrEqual(1);
   expect((await state(page)).revision).toBe(rev0);
 
-  // ⌘1 resets to 100 % after a pinch.
-  await page.keyboard.press('ControlOrMeta+1');
+  // ⌘0 resets to 100 % after a pinch (Excalidraw, the browser; ⇧0 and ⌘1 too).
+  await page.keyboard.press('ControlOrMeta+0');
   await expect(page.getByRole('button', { name: 'Zoom 100%', exact: true })).toBeVisible();
   expect((await state(page)).revision).toBe(rev0);
 
@@ -93,13 +93,13 @@ test('camera stays anchored and answers its shortcuts', async ({ page }) => {
   expect(Math.hypot(r2.x - r1.x, r2.y - r1.y)).toBeLessThan(41);
   expect((await state(page)).revision).toBe(rev0);
 
-  // ⌘0 fits: a far second node lands inside the canvas afterwards.
+  // ⇧1 fits: a far second node lands inside the canvas afterwards.
   await page.keyboard.press('r');
   const p2 = await emptyPoint(900, 500);
   await page.mouse.click(p2.x, p2.y);
   await expect.poll(async () => (await state(page)).nodes.length).toBe(2);
   await page.keyboard.press('Escape');
-  await page.keyboard.press('ControlOrMeta+0');
+  await page.keyboard.press('Shift+Digit1');
   await page.waitForTimeout(300);
   for (const nodeId of (await state(page)).nodes) {
     const r = (await rect(page, nodeId))!;
