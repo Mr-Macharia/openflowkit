@@ -17,7 +17,7 @@ OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 The server is a stdio process on your machine. It needs no API key of its own and returns
 deterministic results: your MCP client's model does the thinking. A chat-app endpoint
 (`render_diagram`, drawn inline in the chat) is in the package too; to run it yourself, see
-[the server README](https://github.com/Vrun-design/openflowkit/tree/main/mcp-server#readme).
+[the server README](https://github.com/openflowkit/openflowkit/tree/main/mcp-server#readme).
 
 ## Connect your client
 
@@ -37,7 +37,7 @@ claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp
 Or install the plugin, which adds the server and the skill together:
 
 ```bash
-claude plugin marketplace add Vrun-design/openflowkit
+claude plugin marketplace add openflowkit/openflowkit
 claude plugin install openflowkit@openflowkit
 ```
 
@@ -54,7 +54,7 @@ args = ["-y", "@vrun-design/openflowkit-mcp"]
 Or install the plugin, then pick **OpenFlowKit** in the Plugins Directory:
 
 ```bash
-codex plugin marketplace add Vrun-design/openflowkit
+codex plugin marketplace add openflowkit/openflowkit
 ```
 
 ### Claude Desktop, Windsurf and other clients

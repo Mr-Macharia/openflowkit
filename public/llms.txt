@@ -1,7 +1,7 @@
 # OpenFlowKit
 
 > Diagrams agents write, kept valid, editable and saved next to the code.
-> Install as a skill: skills/openflowkit/SKILL.md in https://github.com/Vrun-design/openflowkit
+> Install as a skill: skills/openflowkit/SKILL.md in https://github.com/openflowkit/openflowkit
 
 Write Mermaid or OpenFlow DSL, hand it to the `openflowkit` MCP server, and save the result as a
 `.openflow.json` beside the code it explains: it opens at app.openflowkit.com (Open file) and reads back.

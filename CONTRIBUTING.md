@@ -2,9 +2,9 @@
 
 Thanks for helping. Bug reports, ideas, docs fixes and code are all welcome.
 
-- **A bug:** open an [issue](https://github.com/Vrun-design/openflowkit/issues/new/choose). The
+- **A bug:** open an [issue](https://github.com/openflowkit/openflowkit/issues/new/choose). The
   smallest DSL or Mermaid text that shows it is worth more than a long description.
-- **An idea or a question:** start a [Discussion](https://github.com/Vrun-design/openflowkit/discussions).
+- **An idea or a question:** start a [Discussion](https://github.com/openflowkit/openflowkit/discussions).
 - **Code:** look for issues labelled `good first issue` or `help wanted`, or say in an issue
   what you plan to change before a large PR.
 - **A security problem:** report it privately, as [SECURITY.md](SECURITY.md) describes, not in an issue.
@@ -14,7 +14,7 @@ Thanks for helping. Bug reports, ideas, docs fixes and code are all welcome.
 You need Node **22.22+** and git. Everything else is in `package.json`.
 
 ```bash
-git clone https://github.com/Vrun-design/openflowkit.git
+git clone https://github.com/openflowkit/openflowkit.git
 cd openflowkit
 npm install                       # also installs the pre-commit hook (husky + lint-staged)
 npx playwright install chromium   # once, for the browser tests

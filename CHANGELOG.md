@@ -165,8 +165,13 @@ The first public release of the new editor, shipping as **2.1.0** when `v2` merg
 - The Slides workspace button: it opened a mock-up that saved nothing. It returns when slides are real.
 - The `gh-pages` deploy script and `public/CNAME`; the app deploys on Cloudflare Pages.
 
-### For developers: MCP server 0.2.0 and the CLI
+### For developers: MCP server 0.2.2 and the CLI
 
+- **`npx openflowkit`.** The CLI has its own short npm name, `openflowkit` (the same command as
+  `@vrun-design/openflowkit-mcp`). Run with no command at a terminal, it shows a welcome screen
+  and three commands to try; scripts and pipes still get the usage text and exit 2.
+- The repository moved to [github.com/openflowkit/openflowkit](https://github.com/openflowkit/openflowkit);
+  old links redirect. The MCP registry name is now `io.github.openflowkit/openflowkit-mcp`.
 - CLI: `openflowkit map <dir> [--depth overview|detailed|everything]` prints a repository's parts, files, lines, resolved and unresolved imports, and the folders that import each other. `--html out.html` writes the interactive map as one offline page (no network; evidence links to GitHub only for a github.com checkout root, at the commit HEAD). In a git checkout only tracked files are mapped.
 - MCP (0.2.0): remote MCP Apps endpoint (`start:http`) with render_diagram + inline viewer; stores nothing.
 - **MCP: Mermaid, Structurizr and D2 in.** `create_diagram`, `update_diagram` and

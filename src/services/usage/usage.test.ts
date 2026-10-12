@@ -14,7 +14,7 @@ describe('sourceOf', () => {
     ['https://x.com/someone', 'x'],
     ['https://mobile.twitter.com/', 'x'],
     ['https://old.reddit.com/r/programming', 'reddit'],
-    ['https://github.com/Vrun-design/openflowkit', 'github'],
+    ['https://github.com/openflowkit/openflowkit', 'github'],
     ['https://www.google.com/', 'google'],
     ['https://www.google.co.uk/', 'google'],
     ['https://www.linkedin.com/feed', 'linkedin'],

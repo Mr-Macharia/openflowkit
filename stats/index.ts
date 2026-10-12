@@ -105,7 +105,7 @@ export function accessToken(request: Request): string | null {
 // ---- growth -----------------------------------------------------------------------------------------------------
 
 export const GROWTH_SOURCES = {
-  stars: { url: 'https://api.github.com/repos/Vrun-design/openflowkit', pick: (body: Record<string, unknown>) => body.stargazers_count },
+  stars: { url: 'https://api.github.com/repos/openflowkit/openflowkit', pick: (body: Record<string, unknown>) => body.stargazers_count },
   npm: { url: 'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp', pick: (body: Record<string, unknown>) => body.downloads },
 } as const;
 export type Growth = Record<keyof typeof GROWTH_SOURCES, number | null>;
@@ -295,7 +295,7 @@ export function renderPage(stats: Stats, growth: Growth): string {
         label: named(PAY_NAMES, option), value: n, display: `${pct(n / stats.pro.joined, 0)} · ${int(n)}`,
       }))) : empty('No one yet.')}`, `Last ${days} days. A waitlist, not sales: nobody has paid. The fair-price slider is optional, so it can sum below joins.`),
     section('Growth outside the app', `<div class="tiles">${[
-      tile('GitHub stars', int(growth.stars), 'Vrun-design/openflowkit'),
+      tile('GitHub stars', int(growth.stars), 'openflowkit/openflowkit'),
       tile('npm downloads', int(growth.npm), 'MCP server, last week'),
     ].join('')}</div>`, 'Fetched server-side, cached for an hour. — means the source did not answer.'),
     section('Health', `<div class="tiles">${tile('Errors per 1k sessions', fixed(stats.errorsPer1k), `last ${days} days`)}</div>`

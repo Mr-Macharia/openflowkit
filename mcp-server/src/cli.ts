@@ -18,12 +18,15 @@ import {
 import { renderMapHtml } from './lib/mapHtml.js';
 import { MAP_DEPTHS, MapInputError, buildRepoMap, summarizeMap } from './lib/repoMap.js';
 import { MCP_SERVER_VERSION } from './lib/version.js';
+import { welcome } from './lib/welcome.js';
 
 export interface CliIo {
   out(message: string): void;
   err(message: string): void;
   /** Piped input for `-`; absent on a terminal. */
   stdin?: () => Promise<string>;
+  /** Set when stdout is a terminal a person reads: bare `openflowkit` greets instead of failing. */
+  terminal?: { readonly columns: number; readonly color: boolean };
 }
 
 const USAGE = `openflowkit — diagrams agents write, kept valid, editable and next to the code
@@ -628,6 +631,7 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
   if (command === '--help' || command === '-h' || command === 'help') { io.out(USAGE); return 0; }
   if (command === '--version' || command === '-v') { io.out(`openflowkit ${MCP_SERVER_VERSION}`); return 0; }
   if (!command) {
+    if (io.terminal) { io.out(welcome({ ...io.terminal, version: MCP_SERVER_VERSION })); return 0; }
     io.err(USAGE);
     return 2;
   }
@@ -648,6 +652,7 @@ if (isMain(import.meta.url)) {
   main(process.argv.slice(2), {
     out: (message) => process.stdout.write(`${message}\n`),
     err: (message) => process.stderr.write(`${message}\n`),
+    ...(process.stdout.isTTY ? { terminal: { columns: process.stdout.columns || 80, color: !('NO_COLOR' in process.env) && process.env.TERM !== 'dumb' } } : {}),
     ...(process.stdin.isTTY ? {} : {
       stdin: async () => {
         // Whole bytes first: a UTF-8 character split across two chunks must not decode as two halves.

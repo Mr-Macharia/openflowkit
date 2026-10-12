@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
-export const REPO_URL = 'https://github.com/Vrun-design/openflowkit';
+export const REPO_URL = 'https://github.com/openflowkit/openflowkit';
 /** The docs site, as App.tsx forwards old `#/docs` links to it. */
 export const DOCS_URL = 'https://docs.openflowkit.com/';
-const API_URL = 'https://api.github.com/repos/Vrun-design/openflowkit';
+const API_URL = 'https://api.github.com/repos/openflowkit/openflowkit';
 const KEY = 'openflowkit-v2-stars';
 const DAY = 86_400_000;
 

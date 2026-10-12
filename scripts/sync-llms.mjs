@@ -4,7 +4,7 @@
 // src/agent/skill.test.ts fails when they drift; run `npm run skill:sync` after editing the skill.
 import { readFileSync, writeFileSync } from 'node:fs';
 
-export const LLMS_HEADER = '# OpenFlowKit\n\n> Diagrams agents write, kept valid, editable and saved next to the code.\n> Install as a skill: skills/openflowkit/SKILL.md in https://github.com/Vrun-design/openflowkit\n';
+export const LLMS_HEADER = '# OpenFlowKit\n\n> Diagrams agents write, kept valid, editable and saved next to the code.\n> Install as a skill: skills/openflowkit/SKILL.md in https://github.com/openflowkit/openflowkit\n';
 
 export function llmsText(skill) {
   return `${LLMS_HEADER}${skill.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^\n*# [^\n]*\n/, '')}`;

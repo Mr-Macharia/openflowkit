@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.Vrun-design/openflowkit-mcp",
+  "name": "io.github.openflowkit/openflowkit-mcp",
   "description": "Architecture diagrams for your agent: draw on the live OpenFlowKit canvas or edit diagram files.",
   "repository": {
-    "url": "https://github.com/Vrun-design/openflowkit",
+    "url": "https://github.com/openflowkit/openflowkit",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@vrun-design/openflowkit-mcp",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "transport": {
         "type": "stdio"
       }

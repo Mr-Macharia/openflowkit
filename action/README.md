@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: Vrun-design/openflowkit/action@<tag>
+      - uses: openflowkit/openflowkit/action@<tag>
 ```
 
 `<tag>` is a release tag on `main` that contains `action/` (inside this repository, `uses: ./action` works too). A branch name works but moves under you; a tag or a commit SHA does not.
@@ -25,14 +25,14 @@ jobs:
 | Input | Default | |
 |---|---|---|
 | `github-token` | `${{ github.token }}` | comments and pushes |
-| `cli` | `npx -y -p @vrun-design/openflowkit-mcp@0.2.1 openflowkit` | command that runs the CLI (the CLI never sees the token) |
+| `cli` | `npx -y -p @vrun-design/openflowkit-mcp@0.2.2 openflowkit` | command that runs the CLI (the CLI never sees the token) |
 | `refresh-svg` | `false` | refresh a stale committed `<name>.svg` on same-repo PRs |
 | `comment-author` | `github-actions[bot]` | login whose comment is updated (set it when using a PAT or App token) |
 | `paths` | `.openflow.json,.ofk` | extensions (start with `.`) or globs, comma-separated |
 
 ## Requirements
 
-The default `cli` is pinned to `@vrun-design/openflowkit-mcp@0.2.1`. Any CLI you point `cli` at must be at least 0.2.0: older ones lack `render`, `convert` and `op`.
+The default `cli` is pinned to `@vrun-design/openflowkit-mcp@0.2.2`. Any CLI you point `cli` at must be at least 0.2.0: older ones lack `render`, `convert` and `op`.
 
 ## What it posts
 

@@ -113,7 +113,7 @@ const fetcher: typeof fetch = async (input) => {
   if (!answer) throw new TypeError('fetch failed');
   return answer();
 };
-const STARS = 'https://api.github.com/repos/Vrun-design/openflowkit';
+const STARS = 'https://api.github.com/repos/openflowkit/openflowkit';
 const NPM = 'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp';
 beforeEach(() => {
   fetched = [];

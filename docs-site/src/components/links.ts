@@ -1,7 +1,7 @@
 // The site's outbound and cross-page links, shared by the landing page, the
 // docs header and the footer so they cannot disagree.
 export const APP_URL = 'https://app.openflowkit.com';
-export const REPO_URL = 'https://github.com/Vrun-design/openflowkit';
+export const REPO_URL = 'https://github.com/openflowkit/openflowkit';
 export const NPM_URL = 'https://www.npmjs.com/package/@vrun-design/openflowkit-mcp';
 export const MCP_COMMAND = 'npx -y @vrun-design/openflowkit-mcp';
 /** A small public repo whose map shows services and their evidence well. */

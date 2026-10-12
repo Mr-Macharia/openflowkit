@@ -3,19 +3,22 @@ title: Command line (CLI)
 description: Render, convert and validate diagram text, run any agent op on a file, map a repository, and check architecture drift in CI — from one command.
 ---
 
-The `openflowkit` command ships in the same npm package as the [MCP server](/mcp-server/),
-`@vrun-design/openflowkit-mcp`. It runs the same parser, compiler, layout engine and ops as the
-app, with no editor and no network. Output is plain text, or JSON with `--json`, so agents
-and scripts can read it.
-
-The CLI needs version **0.2.0 or newer** of the package; older versions have no `openflowkit`
-command. It needs Node 20.11 or newer.
+The `openflowkit` command runs the same parser, compiler, layout engine and ops as the app,
+with no editor and no network. Output is plain text, or JSON with `--json`, so agents and
+scripts can read it. It needs Node 20.11 or newer.
 
 ```sh
-npx -y -p @vrun-design/openflowkit-mcp@0.2.1 openflowkit --help
+npx openflowkit            # the welcome screen and three commands to try
+npx openflowkit --help     # every command
 # or install it once
-npm install -g @vrun-design/openflowkit-mcp
+npm install -g openflowkit
 ```
+
+<img src="/screens/cli-welcome.png" width="1200" height="1003" loading="lazy" alt="Running npx openflowkit: a welcome box, OPEN FLOWKIT in orange block letters, and three commands to try" />
+
+`openflowkit` on npm is a short name for `@vrun-design/openflowkit-mcp`, which also ships the
+[MCP server](/mcp-server/); either package gives you the same `openflowkit` command. Pin a
+version in CI, for example `npx -y openflowkit@0.2.2 validate diagram.ofk`.
 
 ## Commands
 

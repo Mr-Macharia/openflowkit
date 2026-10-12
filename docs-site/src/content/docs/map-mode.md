@@ -80,7 +80,7 @@ means private repositories cannot be read here.
 For a private repo, or no rate limit, map a local checkout with the CLI in the MCP server package:
 
 ```text
-npx -p @vrun-design/openflowkit-mcp openflowkit map . [--depth overview|detailed|everything] [--html map.html]
+npx openflowkit map . [--depth overview|detailed|everything] [--html map.html]
 ```
 
 It prints the parts, files, lines and imports; `--html` also writes the interactive map as one

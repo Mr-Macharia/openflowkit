@@ -13,12 +13,12 @@
   <a href="https://app.openflowkit.com"><b>Open the app</b></a> &nbsp;·&nbsp;
   <a href="https://docs.openflowkit.com/">Docs</a> &nbsp;·&nbsp;
   <a href="#connect-your-agent">MCP setup</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Vrun-design/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Vrun-design/openflowkit/issues">Issues</a>
+  <a href="https://github.com/openflowkit/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
+  <a href="https://github.com/openflowkit/openflowkit/issues">Issues</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml"><img src="https://github.com/Vrun-design/openflowkit/actions/workflows/quality.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml"><img src="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml/badge.svg" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <a href="https://www.npmjs.com/package/@vrun-design/openflowkit-mcp"><img src="https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?label=mcp%20server" alt="MCP server version on npm"></a>
 </p>
@@ -68,7 +68,7 @@ Type `owner/repo` into the box on an empty canvas and press **Map repo**, or ope
 ([try a sample](https://app.openflowkit.com/#/map/github/dockersamples/example-voting-app)).
 Your browser reads the public repo from GitHub and draws its parts. Boxes open in place, and every
 arrow lists the `file:line` behind it, linked to the code. No key and no install. For a private
-repo, map a checkout: `npx -p @vrun-design/openflowkit-mcp openflowkit map . --html map.html`.
+repo, map a checkout: `npx openflowkit map . --html map.html`.
 
 <p align="center">
   <picture>
@@ -138,10 +138,12 @@ assistant, the MCP tools and the CLI.
 
 **In the browser:** [app.openflowkit.com](https://app.openflowkit.com). Nothing to install, no account.
 
+**In a terminal:** `npx openflowkit` (Node 20.11+).
+
 **Run it locally** (Node 22.22+):
 
 ```bash
-git clone https://github.com/Vrun-design/openflowkit.git
+git clone https://github.com/openflowkit/openflowkit.git
 cd openflowkit
 npm install && npm run dev      # http://localhost:3000
 ```
@@ -183,11 +185,11 @@ live connection, the CLI and the full tool set need version 0.2.0 or later of th
 
 ```bash
 # Claude Code
-claude plugin marketplace add Vrun-design/openflowkit
+claude plugin marketplace add openflowkit/openflowkit
 claude plugin install openflowkit@openflowkit
 
 # Codex: add the marketplace, then install OpenFlowKit from the Plugins Directory
-codex plugin marketplace add Vrun-design/openflowkit
+codex plugin marketplace add openflowkit/openflowkit
 ```
 
 The skill ([`skills/openflowkit/SKILL.md`](skills/openflowkit/SKILL.md)) tells an agent when a
@@ -258,15 +260,19 @@ README or wiki. [Mermaid](https://docs.openflowkit.com/mermaid-import/) ·
 
 ## In your repo and CI
 
-The npm package also ships an `openflowkit` CLI:
+The `openflowkit` CLI runs the same engine as the app, from any terminal or CI job:
 
 ```bash
-npx -p @vrun-design/openflowkit-mcp openflowkit render diagram.ofk -o diagram.svg   # text → SVG
-npx -p @vrun-design/openflowkit-mcp openflowkit validate diagram.ofk --strict       # exit 1 on an error
-npx -p @vrun-design/openflowkit-mcp openflowkit convert flow.mmd -o flow.openflow.json
-npx -p @vrun-design/openflowkit-mcp openflowkit discover . --out architecture.ofk   # draft a C4 model of this repo
-npx -p @vrun-design/openflowkit-mcp openflowkit drift .                             # exit 1 when the code moved on
+npx openflowkit render diagram.ofk -o diagram.svg   # Mermaid, D2, Structurizr or DSL → SVG
+npx openflowkit validate diagram.ofk --strict       # exit 1 on an error
+npx openflowkit convert flow.mmd -o flow.openflow.json
+npx openflowkit discover . --out architecture.ofk   # draft a C4 model of this repo
+npx openflowkit drift .                             # exit 1 when the code moved on
 ```
+
+<p align="center">
+  <img src="assets/readme/cli-welcome.png" width="720" alt="Running npx openflowkit: a welcome box, OPEN FLOWKIT in orange block letters, and three commands to try">
+</p>
 
 Commit `architecture.ofk` next to the code and `drift` keeps it honest in CI. The **PR diagrams
 Action** comments on a pull request with how its diagrams changed: node and connector counts, the
@@ -376,13 +382,13 @@ More: [FAQ](https://docs.openflowkit.com/faq/).
 
 Issues, ideas and PRs are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 the checks, and [ARCHITECTURE.md](ARCHITECTURE.md) for how the code fits together. Questions go to
-[Discussions](https://github.com/Vrun-design/openflowkit/discussions). What changed in each
+[Discussions](https://github.com/openflowkit/openflowkit/discussions). What changed in each
 version: [CHANGELOG.md](CHANGELOG.md).
 
 Report security issues privately, as [SECURITY.md](SECURITY.md) describes. MIT licensed, see
 [LICENSE](LICENSE).
 
-<a href="https://github.com/Vrun-design/openflowkit/graphs/contributors"><img src="https://contrib.rocks/image?repo=Vrun-design/openflowkit" alt="Contributors"></a>
+<a href="https://github.com/openflowkit/openflowkit/graphs/contributors"><img src="https://contrib.rocks/image?repo=openflowkit/openflowkit" alt="Contributors"></a>
 
 ---
 
@@ -390,13 +396,13 @@ Report security issues privately, as [SECURITY.md](SECURITY.md) describes. MIT l
   <a href="https://app.openflowkit.com"><img src="public/Logo_openflowkit.svg" width="40" height="40" alt="OpenFlowKit logo"></a>
 </p>
 <p align="center">
-  <b>If OpenFlowKit saved you a diagram, <a href="https://github.com/Vrun-design/openflowkit">give it a ⭐ on GitHub</a>.</b><br>
+  <b>If OpenFlowKit saved you a diagram, <a href="https://github.com/openflowkit/openflowkit">give it a ⭐ on GitHub</a>.</b><br>
   <sub>It's how other people find it.</sub>
 </p>
 <p align="center">
   <a href="https://app.openflowkit.com">Open the app</a> &nbsp;·&nbsp;
   <a href="https://docs.openflowkit.com/">Docs</a> &nbsp;·&nbsp;
   <a href="CONTRIBUTING.md">Contribute</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Vrun-design/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
-  <a href="https://github.com/Vrun-design/openflowkit/issues/new/choose">Report a bug</a>
+  <a href="https://github.com/openflowkit/openflowkit/discussions">Discussions</a> &nbsp;·&nbsp;
+  <a href="https://github.com/openflowkit/openflowkit/issues/new/choose">Report a bug</a>
 </p>

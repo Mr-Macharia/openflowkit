@@ -3,7 +3,7 @@
   "description": "OpenFlowKit: diagrams for coding agents",
   "owner": {
     "name": "OpenFlowKit",
-    "url": "https://github.com/Vrun-design/openflowkit"
+    "url": "https://github.com/openflowkit/openflowkit"
   },
   "plugins": [
     {

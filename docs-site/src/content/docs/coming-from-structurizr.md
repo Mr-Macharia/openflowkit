@@ -28,7 +28,7 @@ Pick one way.
   lost. Add `--json` for a machine-readable report. `--svg` needs `-o`.
 
 The `openflowkit` CLI ships in the MCP server package, version 0.2.0 or newer
-(`npx -p @vrun-design/openflowkit-mcp openflowkit convert …`). See [the CLI](/cli/).
+(`npx openflowkit convert …`). See [the CLI](/cli/).
 
 ## A worked example
 

@@ -6,9 +6,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Vrun-design/openflowkit.git"
+    "url": "https://github.com/openflowkit/openflowkit.git"
   },
-  "bugs": "https://github.com/Vrun-design/openflowkit/issues",
+  "bugs": "https://github.com/openflowkit/openflowkit/issues",
   "type": "module",
   "workspaces": [
     "docs-site",

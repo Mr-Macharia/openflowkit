@@ -115,4 +115,4 @@ async function publicNumber(label, url, pick) {
 console.log('\nPublic growth');
 await publicNumber('npm downloads last week (@vrun-design/openflowkit-mcp)',
   'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp', (body) => body.downloads);
-await publicNumber('GitHub stars (Vrun-design/openflowkit)', 'https://api.github.com/repos/Vrun-design/openflowkit', (body) => body.stargazers_count);
+await publicNumber('GitHub stars (openflowkit/openflowkit)', 'https://api.github.com/repos/openflowkit/openflowkit', (body) => body.stargazers_count);

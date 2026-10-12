@@ -5,7 +5,7 @@
 **Give Claude Code, Claude Desktop, Cursor, Windsurf, or any MCP client first-class diagramming tools.**
 
 [![npm](https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?style=flat-square&color=f97316)](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp)
-[![MIT License](https://img.shields.io/badge/License-MIT-f97316.svg?style=flat-square)](https://github.com/Vrun-design/openflowkit/blob/main/LICENSE)
+[![MIT License](https://img.shields.io/badge/License-MIT-f97316.svg?style=flat-square)](https://github.com/openflowkit/openflowkit/blob/main/LICENSE)
 [![Node 20.11+](https://img.shields.io/badge/Node-20.11%2B-339933.svg?style=flat-square)](https://nodejs.org/)
 
 </div>
@@ -48,7 +48,7 @@ Requires **Node 20.11+**.
 
 ### Teach your agent when and how to draw
 
-[`skills/openflowkit/SKILL.md`](https://github.com/Vrun-design/openflowkit/blob/main/skills/openflowkit/SKILL.md)
+[`skills/openflowkit/SKILL.md`](https://github.com/openflowkit/openflowkit/blob/main/skills/openflowkit/SKILL.md)
 tells an agent when a diagram helps, how to write it (Mermaid or DSL), and to save it as a
 `.openflow.json` beside the code. For Claude Code, copy it into `~/.claude/skills/openflowkit/`.
 Agents that fetch the web read the same text at `https://app.openflowkit.com/llms.txt`.
@@ -56,7 +56,7 @@ Agents that fetch the web read the same text at `https://app.openflowkit.com/llm
 ### Claude Code plugin
 
 ```bash
-claude plugin marketplace add Vrun-design/openflowkit
+claude plugin marketplace add openflowkit/openflowkit
 claude plugin install openflowkit@openflowkit
 ```
 
@@ -75,7 +75,7 @@ args = ["-y", "@vrun-design/openflowkit-mcp"]
 Or install the plugin, which adds the server and the skill together:
 
 ```bash
-codex plugin marketplace add Vrun-design/openflowkit
+codex plugin marketplace add openflowkit/openflowkit
 ```
 
 Then install **OpenFlowKit** from that marketplace in the Plugins Directory.
@@ -245,7 +245,7 @@ Claude, ChatGPT and VS Code are not verified yet: that needs a deployed HTTPS en
 
 ## Development
 
-This package lives in the [openflowkit monorepo](https://github.com/Vrun-design/openflowkit).
+This package lives in the [openflowkit monorepo](https://github.com/openflowkit/openflowkit).
 
 ```bash
 # From the repo root
