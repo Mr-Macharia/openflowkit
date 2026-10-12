@@ -85,7 +85,7 @@ for (const format of ['GIF', 'MP4', 'WebM'] as const) {
       requestAnimationFrame(tick);
     });
     const download = page.waitForEvent('download', { timeout: 120_000 });
-    await page.getByRole('button', { name: new RegExp(`Export ${format}`) }).click();
+    await page.getByRole('button', { name: new RegExp(`Download ${format}`) }).click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(new RegExp(`\\.${format.toLowerCase()}$`));
     const bytes = await readFile((await file.path())!);
@@ -94,7 +94,7 @@ for (const format of ['GIF', 'MP4', 'WebM'] as const) {
     expect(bytes.length).toBeGreaterThan(4_000);
     expect(bytes.length).toBeLessThan(4_000_000);
     // The dialog stays usable: no error row, progress gone, button live again.
-    await expect(page.getByRole('button', { name: new RegExp(`Export ${format}`) })).toBeEnabled();
+    await expect(page.getByRole('button', { name: new RegExp(`Download ${format}`) })).toBeEnabled();
     if (process.env.CI) return;
     // A realistic page keeps its frames: no blocking task at all, and only a
     // cold-start raster can nudge a single frame past 32 ms.
