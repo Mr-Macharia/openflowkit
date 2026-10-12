@@ -6,10 +6,12 @@ const mapState = (page: Page): Promise<{ open: string[]; nodes: string[] }> =>
   page.evaluate(() => (window as unknown as { __V2__: { getMapState(): { open: string[]; nodes: string[] } } }).__V2__.getMapState())
     .catch(() => ({ open: [], nodes: [] }));
 // Settled reads false; still moving reads the whole motion state, so a stall says which part is waiting.
+// ponytail: 20 s, not the 5 s default — CI's software WebGL drew 166–283 ms frames on 2026-10-13 and a
+// reveal's layout + motion outlasted 5 s (passed on retry). A real stall still fails, just later.
 const settled = (page: Page) => expect.poll(() => page.evaluate(() => {
   const motion = (window as unknown as { __V2__: { getMapMotion(): { running: boolean } } }).__V2__.getMapMotion();
   return motion.running ? JSON.stringify(motion) : false;
-})).toBe(false);
+}), { timeout: 20_000 }).toBe(false);
 const selected = async (page: Page) => (await state(page)).selectedNodes;
 
 async function openMap(page: Page): Promise<void> {
