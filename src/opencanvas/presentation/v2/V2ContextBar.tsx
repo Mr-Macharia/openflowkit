@@ -24,6 +24,8 @@ interface V2ContextBarProps {
   readonly onSetIcon: (icon: IconChoice) => void;
   readonly onConnectorStyleCommitted: (patch: ConnectorStylePatch) => void;
   readonly style: React.CSSProperties;
+  /** The selection's screen bounds: style popovers keep clear of them. */
+  readonly selection: DOMRect;
   /** The ⋯ button's box: the menu hangs off it. */
   readonly onOpenMenu: (trigger: DOMRect) => void;
   readonly onInspect: () => void;
@@ -115,18 +117,20 @@ export function unionScreenBounds(rects: readonly (DOMRect | null | undefined)[]
 // Keydown bubbles to the page on purpose: ⌘Z after a swatch click must undo
 // (the page ignores keys aimed at inputs; buttons keep Enter/Space/arrows).
 export function V2ContextBar(props: V2ContextBarProps): React.JSX.Element {
-  const { page, connectorId } = props;
+  const { page } = props;
+  // A marquee of shapes and a connector is about the shapes (the host anchors the bar to them); a line alone gets line controls.
+  const connectorId = props.nodeIds.length === 0 ? props.connectorId : null;
   const source = useMemo(() => connectorId ? connectorSource(page, connectorId) : null, [page, connectorId]);
   const openMenu = (button: HTMLButtonElement) => props.onOpenMenu(button.getBoundingClientRect());
-  if (props.connectorId) {
+  if (connectorId) {
     const href = source ? safeHttpsUrl(source.link) : null;
     const text = source ? relationSourceLabel(source.link) : '';
     return (
-      <ContextBar label="Connector actions" data-context-bar style={props.style}
+      <ContextBar label="Connector actions" data-context-bar style={props.style} selection={props.selection}
         onPointerDown={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}>
         <ContextGroup label="Appearance">
-          <V2ConnectorStyle page={props.page} connectorId={props.connectorId} commit={props.commit}
+          <V2ConnectorStyle page={props.page} connectorId={connectorId} commit={props.commit}
             onCommitted={props.onConnectorStyleCommitted} />
         </ContextGroup>
         {source ? (
@@ -152,7 +156,7 @@ export function V2ContextBar(props: V2ContextBarProps): React.JSX.Element {
     );
   }
   return (
-    <ContextBar label="Selection actions" data-context-bar style={props.style}
+    <ContextBar label="Selection actions" data-context-bar style={props.style} selection={props.selection}
       onPointerDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}>
       <ContextGroup label="Appearance">

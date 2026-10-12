@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { lastDocumentId, mintV2Id } from '@/opencanvas/presentation/v2/v2Document';
+import { V2ErrorBoundary } from '@/opencanvas/presentation/v2/V2ErrorBoundary';
 
 const HomePage = lazy(async () => {
   const module = await import('@/opencanvas/presentation/v2/V2HomePage');
@@ -66,22 +67,24 @@ function LegacyV2Redirect(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   return (
     <HashRouter>
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/flow/:flowId" element={<LegacyFlowRedirect />} />
-          <Route path="/view" element={<LegacyViewPage />} />
-          {LEGACY_HOME_PATHS.map((path) => <Route key={path} path={path} element={<Navigate to="/home" replace />} />)}
-          {LEGACY_DOCS_PATHS.map((path) => <Route key={path} path={path} element={<DocsSiteRedirect />} />)}
-          <Route path="/d/:id" element={<EditorRoute />} />
-          <Route path="/s/:id/:key?" element={<SharedPage />} />
-          <Route path="/from/github/*" element={<FromGithubPage />} />
-          <Route path="/map/github/*" element={<MapRoute />} />
-          <Route path="/from/dsl" element={<FromDslPage />} />
-          <Route path="/v2/:id" element={<LegacyV2Redirect />} />
-          <Route path="*" element={<HomeDocument />} />
-        </Routes>
-      </Suspense>
+      <V2ErrorBoundary>
+        <Suspense fallback={<div className="ofk-boot" />}>
+          <Routes>
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/flow/:flowId" element={<LegacyFlowRedirect />} />
+            <Route path="/view" element={<LegacyViewPage />} />
+            {LEGACY_HOME_PATHS.map((path) => <Route key={path} path={path} element={<Navigate to="/home" replace />} />)}
+            {LEGACY_DOCS_PATHS.map((path) => <Route key={path} path={path} element={<DocsSiteRedirect />} />)}
+            <Route path="/d/:id" element={<EditorRoute />} />
+            <Route path="/s/:id/:key?" element={<SharedPage />} />
+            <Route path="/from/github/*" element={<FromGithubPage />} />
+            <Route path="/map/github/*" element={<MapRoute />} />
+            <Route path="/from/dsl" element={<FromDslPage />} />
+            <Route path="/v2/:id" element={<LegacyV2Redirect />} />
+            <Route path="*" element={<HomeDocument />} />
+          </Routes>
+        </Suspense>
+      </V2ErrorBoundary>
     </HashRouter>
   );
 }

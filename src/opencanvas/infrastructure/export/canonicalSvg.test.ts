@@ -90,7 +90,7 @@ describe('canonical SVG export', () => {
   });
 
   it('stays well-formed XML when a label carries control characters (a PowerPoint soft break)', () => {
-    const node = createTestNode('a', { content: { label: 'line\u000Bbreak nul\u0000 bad\uD800 ok 😀' } });
+    const node = createTestNode('a', { size: { width: 400, height: 50 }, content: { label: 'line\u000Bbreak nul\u0000 bad\uD800 ok 😀' } });
     const svg = exportCanonicalSvg(createTestDocument({ nodes: [node] }));
     const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
     expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0);

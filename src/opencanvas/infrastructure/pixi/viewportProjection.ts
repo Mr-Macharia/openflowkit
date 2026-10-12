@@ -30,9 +30,12 @@ export function semanticDetailLevel(zoom: number): SemanticDetailLevel {
 /** Below this size on screen a label is noise, not text. */
 const MIN_LABEL_SCREEN_PX = 6;
 
+/** A card or node title still names it at this size, and on a fit overview it is the one thing worth reading. */
+export const MIN_TITLE_SCREEN_PX = 4;
+
 /** A label shows while it is readable on screen: zoom × font size, so a big title outlasts body text. */
-export function labelReadable(zoom: number, fontSize: number): boolean {
-  return zoom * fontSize >= MIN_LABEL_SCREEN_PX;
+export function labelReadable(zoom: number, fontSize: number, minScreenPx = MIN_LABEL_SCREEN_PX): boolean {
+  return zoom * fontSize >= minScreenPx;
 }
 
 function expandBounds(bounds: Bounds2d, padding: number): Bounds2d {

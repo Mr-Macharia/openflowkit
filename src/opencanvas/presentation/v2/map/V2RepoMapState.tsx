@@ -3,7 +3,7 @@ import { Button, ErrorState, Progress } from '../../design-system';
 import type { RepoMapSource } from '../../../application/map/repoMapSource';
 import { V2StateHero } from '../V2StateHero';
 import { V2StateShell } from '../V2StateShell';
-import { CliText, cliCommand, RepoTokenForm } from '../v2RepoProblem';
+import { CliText, RepoTokenForm } from '../v2RepoProblem';
 import { mapRepoPath, MapRepoForm } from './V2MapStart';
 import type { RepoMapState } from './useRepoMap';
 import './map.css';
@@ -45,7 +45,7 @@ export function V2RepoMapState({ source, map }: { readonly source: RepoMapSource
   if (map.status === 'ready' && files === 0) {
     return (
       <V2StateShell testId="v2-map">
-        <ErrorState hero={<V2StateHero kind="no-canvas" />} title="Nothing to map here." description={<CliText text={`${name} has no TypeScript, JavaScript, Python or Go sources the map reads. ${cliCommand('map')}`} />} action={home(true)} />
+        <ErrorState hero={<V2StateHero kind="no-canvas" />} title="Nothing to map here." description={`${name} has no TypeScript, JavaScript, Python or Go files, which is what a map reads. A repo of Dockerfiles, compose files, Kubernetes manifests or package manifests can be drawn as a diagram of its services instead.`} action={home(true)} />
       </V2StateShell>
     );
   }

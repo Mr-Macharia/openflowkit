@@ -17,3 +17,7 @@ body { font-family: Inter, system-ui, sans-serif; overscroll-behavior: none; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The ground while a route chunk loads or the error screen is on its way: the editor's canvas colour, so dark never flashes white. */
+.ofk-boot { min-height: 100%; background: #f7f7f5; color: #191b19; }
+@media (prefers-color-scheme: dark) { .ofk-boot { background: #191b19; color: #f7f7f5; } }

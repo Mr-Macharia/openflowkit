@@ -46,6 +46,12 @@ const unlabelled = (node: SceneNode): SceneNode => {
 
 // A repo box says its repo word where the C4 kind word was: on a card, the chip (its note is the card's own detail
 // line); on an open box, the frame's footer, with the note beside it ("Folder · 12 files") and no C4 brackets.
+// A kind line on a map reads plainly ("Software system · React"), without the Canvas card's brackets.
+const unbracketed = (node: SceneNode): SceneNode => {
+  const text = node.content.subLabel;
+  return typeof text === 'string' && /^\[[^\]\n]*\]/.test(text) ? { ...node, content: { ...node.content, subLabel: text.replace(/^\[([^\]\n]*)\]/, '$1') } } : node;
+};
+
 const retag = (node: SceneNode, element: ArchElement, tag: string): SceneNode => {
   const content = node.kind === 'architecture'
     ? { archProviderLabel: tag, subLabel: [[tag, element.tech].filter(Boolean).join(' · '), element.desc].filter(Boolean).join('\n') }
@@ -65,8 +71,8 @@ export const closedBoxSize = (look: MapLook, node: MapNode): Size2d => {
     const own = look.measureLabel?.(label, kind);
     return { width: Math.max(own?.width ?? 0, tagWidth), height: own?.height ?? 0 };
   } });
-  // A repo card says a name and a size, not a C4 description: it is as tall as that, not the card's roomy default.
-  return tag && drawn.kind === 'architecture' ? { width: drawn.size.width, height: architectureCardHeight(drawn, resolveNodeStyle(drawn)) } : drawn.size;
+  // A card is as tall as what it says (name, kind, a line or two), not the Canvas card's roomy default.
+  return drawn.kind === 'architecture' ? { width: drawn.size.width, height: architectureCardHeight(drawn, resolveNodeStyle(drawn)) } : drawn.size;
 };
 
 export function mapScene(model: MapModel, open: ReadonlySet<string>, layout: MapLayout, look: MapLook): ScenePage {
@@ -84,7 +90,7 @@ export function mapScene(model: MapModel, open: ReadonlySet<string>, layout: Map
     const parentId = parentRect ? parent : null;
     const tag = look.tags?.get(id);
     const drawn = isOpen ? boundaryNode(element, parentId, i + 1, ctx) : elementNode(element, parentId, i + 1, ctx);
-    const built = tag ? retag(drawn, element, tag) : drawn;
+    const built = unbracketed(tag ? retag(drawn, element, tag) : drawn);
     nodes.push({
       ...(elements.has(id) ? built : unlabelled(built)),
       size: { width: rect.width, height: rect.height },

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SVG_BACKGROUND } from './canonicalSvg';
-import { buildPrintDocument } from './print';
+import { buildPrintDocument, printSvgDocument } from './print';
 
 describe('print document', () => {
   it('puts each page on its own sheet', () => {
@@ -30,5 +30,24 @@ describe('print document', () => {
 
   it('escapes the title', () => {
     expect(buildPrintDocument(['<svg></svg>'], '<b>&')).toContain('<title>&lt;b&gt;&amp;</title>');
+  });
+
+  it('carries no script (the CSP forbids inline ones)', () => {
+    expect(buildPrintDocument(['<svg></svg>'], 'T')).not.toMatch(/<script/i);
+  });
+});
+
+describe('printSvgDocument', () => {
+  afterEach(() => { document.querySelectorAll('iframe').forEach((frame) => frame.remove()); });
+
+  it('prints the frame from the parent once it has loaded, and not before', async () => {
+    printSvgDocument(['<svg></svg>'], 'T');
+    const frame = document.querySelector('iframe')!;
+    const print = vi.fn();
+    Object.defineProperty(frame, 'contentWindow', { value: { focus: vi.fn(), print } });
+    Object.defineProperty(frame, 'contentDocument', { value: { fonts: { ready: Promise.resolve() } } });
+    expect(print).not.toHaveBeenCalled();
+    frame.dispatchEvent(new Event('load'));
+    await vi.waitFor(() => expect(print).toHaveBeenCalled());
   });
 });

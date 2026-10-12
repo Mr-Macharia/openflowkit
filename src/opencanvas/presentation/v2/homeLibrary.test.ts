@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { V2DocumentSummary } from '../../../services/storage/v2/v2Repository';
 import { arrange, copyName, gridStep, importKind, parseView, readHomeState, selectRange, toggleId } from './homeLibrary';
 
-const doc = (id: string, name: string): V2DocumentSummary => ({ id, name, savedAt: '', pageCount: 1, pageIds: [] });
+const doc = (id: string, name: string): V2DocumentSummary => ({ id, name, savedAt: '', pageCount: 1, pageIds: [], searchText: '' });
 const docs = [doc('a', 'Payments'), doc('b', 'auth flow'), doc('c', 'Diagram 10'), doc('d', 'Diagram 9')];
 
 describe('homeLibrary', () => {
@@ -17,6 +17,13 @@ describe('homeLibrary', () => {
   it('parses views, unknown means recents', () => {
     expect([parseView(null), parseView('starred'), parseView('templates'), parseView('archive'), parseView('news'), parseView('trash')])
       .toEqual(['recents', 'starred', 'templates', 'archive', 'news', 'recents']);
+  });
+
+  it('finds a diagram by a page name or a box label, not only its title', () => {
+    const inside = [{ ...doc('a', 'Checkout'), searchText: 'page 1\nstripe\ncart' }, doc('b', 'Auth')];
+    const base = { view: 'recents' as const, starred: [], sort: 'edited' as const };
+    expect(arrange(inside, { ...base, query: ' Stripe ' }).map(({ id }) => id)).toEqual(['a']);
+    expect(arrange(inside, { ...base, query: 'auth' }).map(({ id }) => id)).toEqual(['b']);
   });
 
   it('toggles an id on and off', () => {

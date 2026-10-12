@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { detectForeign } from '../../../agent/lint';
 import type { DslDiagnostic } from '../../../dsl/ast';
+import { DSL_FAMILIES } from '../../../dsl/ast';
 import { compileWorkspace } from '../../../dsl/compile';
+import { MAX_DSL_LINES } from '../../../dsl/tokenize';
 import { architectureWorkspaceText } from '../../../dsl/families/architecture/text';
-import { frameEdited, frameScene, frameSource } from '../../../dsl/frameScene';
+import { dslFrames, frameEdited, frameScene, frameSource } from '../../../dsl/frameScene';
 import { archModelOfPage } from '../../../dsl/model/model';
 import { parse } from '../../../dsl/parse';
 import { dslFrameRaw } from '../../../dsl/sceneMeta';
@@ -52,6 +54,31 @@ interface V2CodeWorkspaceOptions {
 // Below this a phone: the source would cover the diagram it just drew.
 const PHONE_PX = 768;
 
+type Foreign = NonNullable<ReturnType<typeof detectForeign>>;
+
+/** A converter that throws (a pathological input) reports like one that returns an error. */
+function convertSafely(foreign: Foreign, text: string): ReturnType<Foreign['convert']> {
+  try { return foreign.convert(text); } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Couldn’t convert this text' };
+  }
+}
+
+/** Text the code panel can draw: Mermaid, Structurizr, D2, or OpenFlowKit source (a family line, then more). */
+export function looksLikeDiagramCode(text: string): boolean {
+  if (detectForeign(text)) return true;
+  const lines = text.split('\n').map((line) => line.trim()).filter((line) => line && !/^(?:%%|\/\/|#)/.test(line));
+  return lines.length > 1 && (DSL_FAMILIES as readonly string[]).includes(lines[0]!.split(/\s+/)[0]!);
+}
+
+/** "Flowchart: Start here" — the diagram kind and its first node's label, short. */
+function pastedName(result: { readonly meta: { readonly family: string }; readonly nodes: readonly { readonly content: Record<string, unknown> }[] }): string {
+  const kind = result.meta.family.charAt(0).toUpperCase() + result.meta.family.slice(1);
+  const first = result.nodes.map((node) => node.content.label).find((label): label is string => typeof label === 'string' && label.trim() !== '');
+  if (!first) return kind;
+  const label = first.replace(/\s+/g, ' ').trim();
+  return `${kind}: ${label.length > 28 ? `${label.slice(0, 27)}…` : label}`;
+}
+
 export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const {
     document, page, pageRef, hostRef, readOnly, palette, autoIcons, onPaletteChange,
@@ -67,7 +94,6 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   const [panelSelect, setPanelSelect] = useState(true);
   const [compileDiagnostics, setCompileDiagnostics] = useState<readonly DslDiagnostic[]>([]);
   const abortRef = useRef<AbortController | null>(null);
-  const iconToastFramesRef = useRef(new Set<string>());
   // The icons toast speaks for one Generate: the next one dismisses it, so it never sits over a diagram it says nothing about.
   const iconToastRef = useRef<string | null>(null);
   // The text last generated as a workspace. While the draft still equals it, the draft
@@ -98,7 +124,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   }, [draft, foreign, compileDiagnostics]);
   const convertForeign = useCallback(() => {
     if (!foreign) return;
-    const conversion = foreign.convert(draft);
+    const conversion = convertSafely(foreign, draft);
     if ('error' in conversion) {
       setCompileDiagnostics([{ code: 'E003', severity: 'error', line: 1, col: 1, endCol: 1, message: conversion.error, source: 'parse' }]);
       return;
@@ -128,7 +154,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     setPanelSelect(true);
     openPanel();
   }, [openPanel]);
-  const openFrame = useCallback((id: string) => {
+  const openFrame = useCallback((id: string, reveal = true) => {
     const scene = pageRef.current ? frameScene(pageRef.current, id) : null;
     if (!scene) return;
     const metadata = dslFrameRaw(scene.frame);
@@ -138,10 +164,25 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     if (isDiagramPalette(authored) && authored !== palette) onPaletteChange(authored);
     setDraft(source);
     setFrameId(id);
+    if (!reveal) return;
     setPanelFocus(true);
     setPanelSelect(false);
     openPanel();
   }, [pageRef, palette, onPaletteChange, openPanel]);
+
+  // The panel follows the page on screen: a frame bound on the page just left is not this page's, so it shows this page's own
+  // diagram, or (none) starts over as a new diagram. Generate must never rewrite a page the user is not on.
+  const lastPageId = useRef(page?.id);
+  useEffect(() => {
+    if (!page || lastPageId.current === page.id) return;
+    lastPageId.current = page.id;
+    if (frameId && page.nodes.some((node) => node.id === frameId)) return;
+    // A draft typed for a new diagram stays; a bound frame's source, or the untouched sample, belongs to a page.
+    if (!frameId && draft !== INITIAL_CODE) return;
+    const frames = dslFrames(page);
+    if (frames.length === 1) openFrame(frames[0]!.id, false);
+    else { setFrameId(null); setDraft(INITIAL_CODE); }
+  }, [page, frameId, draft, openFrame]);
 
   // A new diagram is fitted once the renderer has its frame; regenerating keeps the camera.
   const [fitFrameId, setFitFrameId] = useState<string | null>(null);
@@ -152,16 +193,15 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   }, [fitFrameId, page, hostRef, fitView]);
 
   const offerIconRemoval = useCallback((targetId: string, inferred: number) => {
-    // Said once per diagram: what the compiler added, with the way out beside it.
-    if (!inferred || iconToastFramesRef.current.has(targetId)) return;
-    iconToastFramesRef.current.add(targetId);
+    // Said once per diagram, when it is drawn: what the compiler added, with the way out beside it.
+    if (!inferred) return;
     const toastId = `auto-icons-${targetId}`;
     iconToastRef.current = toastId;
     pushToast({
       id: toastId, tone: 'info',
       title: `${inferred} ${inferred === 1 ? 'icon' : 'icons'} added from labels`,
       description: 'Right-click a node to remove one, or turn this off in Settings.',
-      action: { label: 'Remove all', onClick: () => {
+      action: { label: inferred === 1 ? 'Remove' : 'Remove all', onClick: () => {
         dismissToast(toastId);
         const off = pageRef.current ? buildAutoIconsOffCommand(pageRef.current, targetId) : null;
         if (off) commit(off);
@@ -170,7 +210,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
   }, [pushToast, dismissToast, pageRef, commit]);
 
   /** Compiles `text` (the draft by default) into `target`, the bound frame unless a new diagram is asked for. True when it committed. */
-  const generate = useCallback(async (text?: string, snaps?: Readonly<Record<string, WorkspaceSnap>>, target = frameId): Promise<boolean> => {
+  const generate = useCallback(async (text?: string, snaps?: Readonly<Record<string, WorkspaceSnap>>, target = frameId, quiet = false): Promise<boolean> => {
     const currentPage = pageRef.current;
     if (!currentPage || !document || readOnly || generating) return false;
     abortRef.current?.abort();
@@ -182,7 +222,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
       // Mermaid, Structurizr or D2 converts first: compiled as DSL it parses into one node per line.
       const written = text ?? draft;
       const foreignSource = detectForeign(written);
-      const attempt = foreignSource?.convert(written);
+      const attempt = foreignSource ? convertSafely(foreignSource, written) : undefined;
       if (attempt && 'error' in attempt) {
         setCompileDiagnostics([{ code: 'E003', severity: 'error', line: 1, col: 1, endCol: 1, message: attempt.error, source: 'parse' }]);
         return false;
@@ -193,8 +233,16 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
         return false;
       }
       const source = conversion ? conversion.dsl : written;
+      // The tokenizer drops every line past the cap: committing would draw the nodes that fit and none of the connectors after them.
+      const lineCount = source.split('\n').length;
+      if (lineCount > MAX_DSL_LINES) {
+        setCompileDiagnostics([{ code: 'E002', severity: 'error', line: 1, col: 1, endCol: 1, message: `Too big: ${lineCount.toLocaleString('en-US')} lines, the limit is ${MAX_DSL_LINES.toLocaleString('en-US')}`, source: 'parse' }]);
+        return false;
+      }
       if (conversion) setDraft(source);
+      // Generate only writes the page on screen: a frame bound on another page is not this page's to replace.
       const bound = target ? currentPage.nodes.find((node) => node.id === target) : undefined;
+      if (!bound) target = null;
       const compiled = await compileWorkspace(source, {
         origin: bound?.transform.translation ?? nextDslFrameOrigin(currentPage),
         layout: elkDslLayoutPort, signal: controller.signal, resolveIcon: resolveDslIcon,
@@ -203,7 +251,11 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
       });
       // Saved layout overrides win over ELK for the elements they name.
       const workspace = snaps ? applySnapsToWorkspace(compiled, snaps) : compiled;
-      const primary = workspace.views[0]!.result;
+      const compiledPrimary = workspace.views[0]!.result;
+      // A pasted diagram without a title names its frame after what it is, not "Frame".
+      const primary = foreignSource?.from === 'mermaid' && !compiledPrimary.meta.title && !compiledPrimary.frame.content.label
+        ? { ...compiledPrimary, frame: { ...compiledPrimary.frame, content: { ...compiledPrimary.frame.content, label: pastedName(compiledPrimary) } } }
+        : compiledPrimary;
       setCompileDiagnostics([...(conversion?.diagnostics ?? []), ...primary.diagnostics]);
       if (workspace.views.length > 1 || workspace.views[0]!.viewId.startsWith('view:')) {
         // A C4 workspace: one page per view, all pages in one undo step.
@@ -211,7 +263,8 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
           mintId: mintV2Id, intoPageId: currentPage.id, ...(target ? { replaceFrameId: target } : {}),
         });
         if (command) commit(nameUntitledDocument(document, command, primary.meta.title));
-        workspaceTextRef.current = source;
+        // Bad lines stay in the panel as written, so the typo can be fixed; only a clean text follows the model.
+        workspaceTextRef.current = primary.diagnostics.some((item) => item.severity !== 'info') ? null : source;
         setFrameId(null);
         // Regenerating from one of its view pages stays on that page; else land on the first view.
         const first = firstViewLanding(document, workspace, command, target ?? undefined, currentPage.id);
@@ -220,13 +273,14 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
           // The first view may have taken the page the user is on: no page switch to fit it.
           if (!target) setFitFrameId(first.frameId);
         }
-        announce(`Generated ${workspace.views.length} views. Every element is shared across them.`);
+        announce(workspace.views.length === 1 ? 'Generated 1 view.' : `Generated ${workspace.views.length} views. Every element is shared across them.`);
         return Boolean(command);
       }
       const command = buildDslPageCommand(currentPage, primary, target ?? undefined);
       if (command) commit(nameUntitledDocument(document, command, primary.meta.title));
       const targetId = target ?? primary.frame.id;
-      offerIconRemoval(targetId, primary.nodes.filter(hasAutoIcon).length);
+      // A template or import was asked for as it is: no note about icons it carries. A regenerate is not news either.
+      if (!target && !quiet) offerIconRemoval(targetId, primary.nodes.filter(hasAutoIcon).length);
       // A new diagram lands where the user can see it; regenerating keeps their camera.
       if (!target) setFitFrameId(targetId);
       setFrameId(targetId);
@@ -253,7 +307,7 @@ export function useV2CodeWorkspace(options: V2CodeWorkspaceOptions) {
     }
     // A skipped generate committed nothing: the undo it would have replaced stays.
     // A template opens on the diagram, not on a selected frame with its style bar over it (J11).
-    return generate(dsl, undefined, null).then((committed) => {
+    return generate(dsl, undefined, null, baseline).then((committed) => {
       if (baseline && committed) {
         forgetHistory?.();
         applySelection(replaceSelection([]));

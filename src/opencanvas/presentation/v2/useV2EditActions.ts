@@ -203,6 +203,12 @@ export function useV2EditActions(options: V2EditActionsOptions) {
       return kind === 'group' || kind === 'section';
     });
   };
+  /** Every selected node is locked: ⌘L would unlock (buildToggleLockCommand locks when any is not). */
+  const selectionLocked = () => {
+    const page = pageRef.current;
+    const nodes = page?.nodes.filter((node) => selectionRef.current.nodeIds.includes(node.id)) ?? [];
+    return nodes.length > 0 && nodes.every((node) => node.content.sectionLocked === true);
+  };
 
   // ⌘B/I/U: toggle against the primary node's resolved style so mixed
   // selections settle on one value.
@@ -247,6 +253,6 @@ export function useV2EditActions(options: V2EditActionsOptions) {
     deleteSelection, duplicateSelection, nudgeSelection, reorderSelection, toggleLock,
     alignSelection, distributeSelection, flipSelection,
     copySelection, cutSelection, pasteShapes, pasteKeyPressed, pasteEventArrived, hasClipboard, copyStyle, pasteStyle, toggleTextStyle,
-    groupSelection, wrapInSection, ungroupSelection, canUngroup,
+    groupSelection, wrapInSection, ungroupSelection, canUngroup, selectionLocked,
   };
 }

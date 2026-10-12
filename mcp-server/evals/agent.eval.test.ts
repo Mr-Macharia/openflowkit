@@ -114,6 +114,7 @@ describe('agent eval — create, read, update, screenshot', () => {
         pages: [{ pageId: 'p1', name: 'Page 1', nodes: 3, connectors: 2 }], lastSeenMs: 10,
       }),
       status: () => ({ port: 43119, state: 'paired' }),
+      retryPort: async () => undefined,
       call: async (op: string) => {
         seen.push(op);
         if (op === 'create_diagram') return { frameId: 'dsl-live', family: 'flowchart', nodes: 3, connectors: 2 };

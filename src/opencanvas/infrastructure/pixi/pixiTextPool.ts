@@ -46,6 +46,8 @@ export class PixiTextPool {
     const cached = this.free.get(key)?.pop();
     if (cached) {
       cached.anchor.set(0, 0);
+      cached.label = '';
+      cached.visible = true;
       return cached;
     }
     const created = make();

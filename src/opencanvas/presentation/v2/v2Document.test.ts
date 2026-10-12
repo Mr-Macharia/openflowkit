@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetPageId, savePageId, savedPageId } from './v2Document';
 
 afterEach(() => localStorage.clear());
@@ -22,5 +22,18 @@ describe('the page a document was left on', () => {
     forgetPageId('doc-b');
     expect(savedPageId('doc-b')).toBeNull();
     expect(localStorage.length).toBe(0);
+  });
+});
+
+// Found 2026-10-12: a reload before the editor finished loading (a stale-chunk reload, the v1 kill
+// switch's navigation, F5) turned a just-minted diagram into "That diagram isn't in this browser."
+describe('a document this tab minted', () => {
+  it('may still be created after a reload of the tab', async () => {
+    const { mintV2Id } = await import('./v2Document');
+    const id = mintV2Id('doc');
+    vi.resetModules();
+    const reloaded = await import('./v2Document');
+    expect(reloaded.mayCreateDocument(id, null)).toBe(true);
+    expect(reloaded.mayCreateDocument('doc-someone-elses', null)).toBe(false);
   });
 });

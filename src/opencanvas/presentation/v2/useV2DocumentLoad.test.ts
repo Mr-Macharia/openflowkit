@@ -26,6 +26,20 @@ describe('useV2DocumentLoad initialize', () => {
     expect(repository.saveDocument).toHaveBeenCalledWith('d1', openDocument.mock.calls[0]![0], 1);
     expect(view.result.current.baseRevision).toBe(1);
   });
+  it('with saveBorn false opens the fresh document unsaved, and saves it once saveBorn turns true', async () => {
+    const repository = repo({ status: 'missing' });
+    const openDocument = vi.fn();
+    let saveBorn = false;
+    const view = renderHook(() => useV2DocumentLoad({ documentId: 'd1', repository, openDocument, onRecovered: vi.fn(), initialize: stamp, saveBorn }));
+    await waitFor(() => expect(view.result.current.phase).toBe('ready'));
+    expect(openDocument.mock.calls[0]![0].name).toBe('initialized');
+    expect(repository.saveDocument).not.toHaveBeenCalled();
+    expect(view.result.current.baseRevision).toBe(0);
+    saveBorn = true;
+    view.rerender();
+    await waitFor(() => expect(view.result.current.baseRevision).toBe(1));
+    expect(repository.saveDocument).toHaveBeenCalledWith('d1', openDocument.mock.calls[0]![0], 1);
+  });
   it('after a reload the saved repo-map document opens with its source, and initialize is not applied again', async () => {
     const stored = new Map<string, unknown>();
     const repository = {

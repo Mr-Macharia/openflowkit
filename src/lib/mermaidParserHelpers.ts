@@ -26,7 +26,6 @@ const SHAPE_OPENERS: Array<{
 
 export const SKIP_PATTERNS = [
   /^%%/,
-  /^click\s/i,
   /^direction\s/i,
   /^accTitle\s/i,
   /^accDescr\s/i,
@@ -127,14 +126,15 @@ function normalizeLineEdgeLabels(line: string): string {
   let result = line;
   // Collapse extended arrows: ---> → -->, ====> → ==>, -..-> → -.->
   // Mermaid spec allows any number of repeated chars in the arrow body.
-  result = result.replace(/={3,}>/g, '==>');
-  result = result.replace(/-{3,}>/g, '-->');
+  // `(?<!=)` starts a run only at its first char, so a long `=====` or `-----` is scanned once, not once per char.
+  result = result.replace(/(?<!=)={3,}>/g, '==>');
+  result = result.replace(/(?<!-)-{3,}>/g, '-->');
   result = result.replace(/-\.{2,}->/g, '-.->');
   result = result.replace(/<-{3,}>/g, '<-->');
   result = result.replace(/<={3,}>/g, '<==>');
   result = result.replace(/<-\.{2,}->/g, '<-.->');
   // Inline-label arrow forms: == text ==> and -- text -->
-  result = result.replace(/==(?![>])\s*(.+?)\s*==>/g, ' ==>|$1|');
+  result = result.replace(/(?<!=)==(?![>])\s*(.+?)\s*==>/g, ' ==>|$1|');
   result = result.replace(/--(?![>-])\s*(.+?)\s*-->/g, ' -->|$1|');
   result = result.replace(/-\.\s*(.+?)\s*\.->/g, ' -.->|$1|');
   result = result.replace(/--(?![>-])\s*(.+?)\s*---/g, ' ---|$1|');
@@ -149,6 +149,10 @@ export interface RawNode {
   parentId?: string;
   styles?: Record<string, string>;
   classes?: string[];
+  /** `id[[Label]]`: the DSL's `component`. */
+  subroutine?: boolean;
+  /** `click id "url"`. */
+  link?: string;
   /** A state's `id : text` under a name it already has. */
   description?: string;
   metadata?: {
@@ -266,6 +270,7 @@ function tryParseWithShape(
     label,
     type: shape.type,
     shape: shape.shape,
+    ...(shape.open === '[[' ? { subroutine: true } : {}),
     classes: classes.length ? classes : undefined,
   };
 }
@@ -348,7 +353,7 @@ function sanitizeEdgeEndpoint(raw: string): string {
 
 function findArrowInLine(
   line: string
-): { arrow: string; index: number; before: string; after: string } | null {
+): { arrow: string; index: number } | null {
   let quoteChar: '"' | "'" | null = null;
   let pipeOpen = false;
   let squareDepth = 0;
@@ -410,12 +415,7 @@ function findArrowInLine(
 
     for (const arrow of ARROW_PATTERNS) {
       if (line.startsWith(arrow, index)) {
-        return {
-          arrow,
-          index,
-          before: line.substring(0, index).trim(),
-          after: line.substring(index + arrow.length).trim(),
-        };
+        return { arrow, index };
       }
     }
   }

@@ -97,6 +97,9 @@
   font-weight: var(--ofk-weight-emphasis);
   text-align: start;
 }
+/* The button is a flex box: the ellipsis belongs to the text inside it. */
+.ofk-v2-document-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ofk-v2-conflict-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 6px; font-size: 13px; color: var(--ofk-secondary); }
 .ofk-v2-document-title-input {
   width: min(240px, 28vw);
   min-height: var(--ofk-control-compact);
@@ -146,7 +149,8 @@
 .ofk-v2-save-status[data-busy] svg { animation: ofk-v2-spin 1s linear infinite; }
 @keyframes ofk-v2-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ofk-v2-save-status[data-busy] svg { animation: none; } }
-.ofk-v2 .ofk-context { animation: none; max-width: calc(100vw - 16px); }
+.ofk-v2 .ofk-context { animation: none; max-width: calc(100vw - 16px); transition: opacity var(--ofk-motion-exit) var(--ofk-curve-exit); }
+.ofk-v2 .ofk-context[data-gesture] { opacity: 0; pointer-events: none; }
 .ofk-v2 .ofk-floating-region[data-slot='bottom-center'] .ofk-toolbar { flex-wrap: nowrap; }
 .ofk-v2[data-tool='hand'] .ofk-v2-canvas:active { cursor: grabbing; }
 
@@ -569,6 +573,14 @@
 .ofk-object-row .ofk-icon-button svg { width: 14px; height: 14px; }
 .ofk-object-actions .ofk-icon-button:not([data-persistent]) { opacity: 0; }
 .ofk-object-row:hover .ofk-icon-button, .ofk-object-row:focus-within .ofk-icon-button { opacity: 1; }
+/* A mouse row: the label runs to the row's end, and the actions lie over it (on the row's own fill) while the row is lit.
+   A row with a lit lock or hide keeps the room for them; touch has no hover, so it keeps the room always. */
+@media (pointer: fine) {
+  .ofk-object-actions { position: absolute; inset-inline-end: 6px; top: 0; bottom: 0; align-items: center; border-radius: 6px; }
+  .ofk-object-row:hover .ofk-object-actions, .ofk-object-row:focus-within .ofk-object-actions { background: var(--ofk-raised); }
+  .ofk-object-row[data-selected] .ofk-object-actions { background: var(--ofk-accentSoft); }
+  .ofk-object-row:has(.ofk-icon-button[data-persistent]) .ofk-object-select { padding-inline-end: 80px; }
+}
 /* Hidden or locked with its parent: the state shows, fainter than the row's own. A hidden row selects nothing. */
 .ofk-object-row .ofk-icon-button[data-inherited] { opacity: .45; }
 .ofk-object-select[aria-disabled='true'] { cursor: default; }
@@ -662,7 +674,7 @@
 
 .ofk-v2[data-left-open='true'] > .ofk-floating-region[data-slot='top-start'],
 .ofk-v2[data-left-open='true'] > .ofk-floating-region[data-slot='bottom-start'] { left: calc(var(--v2-left-width) + 16px); }
-.ofk-v2 .ofk-panel-header { min-height: 52px; padding-inline: 20px 10px; }
+.ofk-v2 .ofk-panel-header { min-height: 52px; padding-inline: 20px 13px; }
 .ofk-v2 .ofk-panel-body { padding: 20px; }
 .ofk-v2 .ofk-agent-panel .ofk-panel-body { padding: 0; }
 .ofk-v2 .ofk-thread { padding: 24px; }
@@ -745,6 +757,8 @@
 .ofk-style-panel .ofk-number-control:focus-within { border-color: var(--ofk-focus); outline: 2px solid color-mix(in srgb, var(--ofk-focus) 20%, transparent); outline-offset: 0; }
 .ofk-style-panel .ofk-number-control input { width: 100%; padding: 0 10px; text-align: start; font-size: 13px; }
 .ofk-style-panel .ofk-number-unit { font-size: 11px; padding: 0 6px 0 0; }
+/* ° is a raised glyph: drop it to where px and % sit. */
+.ofk-style-panel .ofk-number-unit[data-unit='°'] { font-size: 13px; transform: translateY(0.25em); }
 .ofk-style-panel .ofk-number[data-stepper='stacked'] .ofk-icon-button { grid-column: 3; min-height: 17px; height: 17px; min-width: 22px; width: 22px; padding: 0; color: var(--ofk-secondary); border: 0; border-radius: 0; }
 .ofk-style-panel .ofk-number[data-stepper='stacked'] .ofk-icon-button:hover { background: var(--ofk-border); color: var(--ofk-text); }
 
@@ -817,7 +831,6 @@
 .ofk-custom-color-panel .ofk-color { width: 100%; min-width: 0; }
 .ofk-custom-color-panel .ofk-color-fields { grid-template-columns: minmax(0, 1fr) minmax(88px, auto); }
 
-.ofk-v2-page-total { color: var(--ofk-muted); font-variant-numeric: tabular-nums; }
 .ofk-pages-popover { width: min(380px, calc(100vw - 32px)); padding: 0; overflow: visible; }
 .ofk-utility-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--ofk-border); }
 .ofk-utility-header h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--ofk-type-body); font-weight: var(--ofk-weight-emphasis); }
@@ -831,10 +844,10 @@
 .ofk-page-rows > li[data-depth="3"] { padding-inline-start: 40px; }
 .ofk-page-rows > .ofk-page-group { padding: 8px 8px 2px; color: var(--ofk-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .ofk-page-rows > .ofk-page-group:hover { background: none; }
-.ofk-page-rows > li[data-active] { background: var(--ofk-accentSoft); }
+.ofk-page-rows > li[data-active] { background: color-mix(in srgb, var(--ofk-text) 9%, transparent); }
 .ofk-v2-page-select { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 36px; padding: 4px; border: 0; background: none; color: var(--ofk-text); font: inherit; font-size: 13px; text-align: start; cursor: pointer; }
 .ofk-v2-page-select svg { width: 16px; height: 16px; flex: none; color: var(--ofk-secondary); }
-.ofk-v2-page-select svg:last-child:not(:first-child) { color: var(--ofk-accent); }
+.ofk-v2-page-select svg:last-child:not(:first-child) { color: var(--ofk-text); }
 .ofk-v2-page-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ofk-page-rows .ofk-icon-button { width: 28px; height: 28px; color: var(--ofk-muted); }
 .ofk-v2-page-rename { flex: 1; width: 0; min-width: 0; padding: 7px 6px; border: 1px solid var(--ofk-focus); border-radius: 5px; background: var(--ofk-canvas); color: var(--ofk-text); font: inherit; font-size: 13px; }
@@ -842,6 +855,9 @@
 .ofk-pages-footer .ofk-button { width: 100%; justify-content: flex-start; padding-inline: 10px; font-size: 12px; }
 /* Five captioned rows: the caption column plus four format cells need more than a settings popover. */
 .ofk-v2-properties.ofk-v2-export { width: min(352px, calc(100vw - 48px)); }
+/* Row labels at the style popovers' size; the scope caption hangs under its Pages row. */
+.ofk-v2-export .ofk-segmented-caption { font-size: 12px; }
+.ofk-v2-export .ofk-v2-export-caption { margin-top: -6px; padding-inline-start: calc(var(--ofk-row-label, 72px) + var(--ofk-space-md)); }
 .ofk-v2-export-actions { display: flex; gap: 8px; }
 .ofk-v2-export-copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
 .ofk-v2-export-copies .ofk-button, .ofk-v2-export-copies > * { width: 100%; white-space: nowrap; }

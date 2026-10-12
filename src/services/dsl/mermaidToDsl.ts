@@ -1,5 +1,5 @@
 import type { DslDiagnostic } from '../../dsl/ast';
-import { quote, slugifyDslId } from '../../dsl/text';
+import { quote, quoted, slugifyDslId } from '../../dsl/text';
 import { detectMermaidDiagramType } from '../mermaid/detectDiagramType';
 import { parseMermaidByType } from '../mermaid/parseMermaidByType';
 
@@ -41,6 +41,11 @@ interface FlowNodeData {
   color?: string;
   seqParticipantKind?: string;
   seqParticipantStereotype?: string;
+  seqParticipantMermaidType?: string;
+  /** Flowchart `id[[Label]]`. */
+  mermaidSubroutine?: boolean;
+  /** Flowchart `click id "url"`. */
+  link?: string;
   seqParticipantAlias?: string;
   seqNoteTarget?: string;
   seqNoteTargets?: string[];
@@ -54,6 +59,8 @@ interface FlowNodeData {
   classMethods?: string[];
   stateControlKind?: string;
   mindmapDepth?: number;
+  mindmapWrapper?: string;
+  mindmapUnmappedShape?: string;
   mindmapParentId?: string;
   archTitle?: string;
   archProvider?: string;
@@ -114,6 +121,7 @@ function nodeName(node: FlowNode): string {
 }
 
 function shapeAttribute(node: FlowNode): string | undefined {
+  if (node.data?.mermaidSubroutine) return 'component';
   const shape = typeof node.data?.shape === 'string' ? SHAPE_WORDS[node.data.shape] : undefined;
   return shape && shape !== 'rect' ? shape : undefined;
 }
@@ -131,6 +139,7 @@ function nodeAttributes(node: FlowNode): string[] {
   if (color) attrs.push(color);
   const subLabel = typeof node.data?.subLabel === 'string' && node.data.subLabel ? node.data.subLabel : undefined;
   if (subLabel) attrs.push(`desc: ${quote(subLabel)}`);
+  if (node.data?.link) attrs.push(`link: ${quoted(node.data.link)}`);
   return attrs;
 }
 
@@ -283,11 +292,16 @@ function sequenceDsl(source: string, nodes: readonly FlowNode[], edges: readonly
     return slug === (slugifyDslId(id) || 'n') ? quote(label) : (slugifyDslId(id) || 'n');
   };
   const lines: string[] = ['sequence'];
-  if (/^\s*autonumber\b/m.test(source)) lines.push('autonumber');
+  if (/^\s*autonumber\b/m.test(source)) {
+    lines.push('autonumber');
+    losses.push('autonumber is kept in the code, but the canvas does not draw message numbers yet');
+  }
   for (const participant of participants) {
     const attrs: string[] = [];
     if (participant.data?.seqParticipantKind === 'actor') attrs.push('actor');
     if (participant.data?.seqParticipantStereotype) attrs.push(participant.data.seqParticipantStereotype);
+    const mermaidType = participant.data?.seqParticipantMermaidType;
+    if (mermaidType) losses.push(`Participant ${participant.id}: the ${mermaidType} icon is drawn as a plain participant`);
     const alias = participant.data?.seqParticipantAlias;
     if (typeof alias === 'string' && alias && alias !== participant.data?.label) losses.push(`Participant alias "${alias}" folded into the label`);
     lines.push(`participant ${participantDecl(participant)}${attrText(attrs)}`);
@@ -541,23 +555,36 @@ function classDsl(nodes: readonly FlowNode[], edges: readonly FlowEdge[]): Conve
   return { dsl: `${lines.join('\n')}\n`, losses };
 }
 
+const MINDMAP_SHAPES: Readonly<Record<string, string>> = {
+  square: 'rect', rounded: 'rounded', 'double-circle': 'circle', stadium: 'ellipse', hexagon: 'hexagon', subroutine: 'component',
+};
+
 function mindmapDsl(nodes: readonly FlowNode[]): Converted {
   const lines: string[] = ['mindmap'];
+  const losses: string[] = ['Mindmap icons and classes are dropped'];
   const root = nodes.find((node) => numberData(node.data?.mindmapDepth) === 0) ?? nodes[0];
   if (!root) return { dsl: 'mindmap\n', losses: [] };
-  lines.push(`central: ${quote(String(root.data?.label ?? 'Root'))}`);
+  const text = (node: FlowNode): string => {
+    const label = String(node.data?.label ?? '');
+    const wrapper = node.data?.mindmapWrapper;
+    const shape = wrapper ? MINDMAP_SHAPES[wrapper] : undefined;
+    if (wrapper && !shape) losses.push(`Mindmap "${label}": the ${wrapper} shape is drawn as plain text`);
+    if (node.data?.mindmapUnmappedShape) losses.push(`Mindmap "${label}": the ${node.data.mindmapUnmappedShape} shape is drawn as plain text`);
+    return `${quote(label)}${shape ? ` [${shape}]` : ''}`;
+  };
+  lines.push(`central: ${text(root)}`);
   const depthOf = (node: FlowNode) => numberData(node.data?.mindmapDepth);
   const parentOf = (node: FlowNode) => typeof node.data?.mindmapParentId === 'string' ? node.data.mindmapParentId : null;
   const childrenOf = (id: string) => nodes.filter((node) => parentOf(node) === id);
   const walk = (node: FlowNode) => {
     for (const child of childrenOf(node.id)) {
       const depth = depthOf(child);
-      lines.push(`${' '.repeat(Math.max(0, (depth - 1) * 2))}- ${quote(String(child.data?.label ?? ''))}`);
+      lines.push(`${' '.repeat(Math.max(0, (depth - 1) * 2))}- ${text(child)}`);
       walk(child);
     }
   };
   walk(root);
-  return { dsl: `${lines.join('\n')}\n`, losses: ['Mindmap icons and classes are dropped'] };
+  return { dsl: `${lines.join('\n')}\n`, losses };
 }
 
 /** Mermaid gitGraph has no app-side parser; the five statements map one-to-one. */

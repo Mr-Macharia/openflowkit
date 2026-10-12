@@ -6,7 +6,7 @@ import { joinTokens, type DslSegment } from '../../segments';
 import { slugifyDslId } from '../../text';
 import { attributeSlot, DIRECTIONS } from '../../vocabulary';
 import type { DslToken } from '../../tokenize';
-import { createArchIndex, resolveElementRef, viewDisplayName } from '../../model/model';
+import { createArchIndex, resolveElementRef, suggestElementRef, viewDisplayName } from '../../model/model';
 import {
   ELEMENT_KINDS, FLOW_STEP_KINDS, VIEW_KINDS,
   type ArchElement, type ArchFlow, type ArchModel, type ArchRelation, type ArchView,
@@ -607,7 +607,8 @@ export function parseArchitectureWorkspace(
     const from = endpoint(entry.from);
     const to = endpoint(entry.to);
     if (!from || !to) {
-      diagnostics.push(lineDiagnostic(entry.line, 'W122', 'warning', `Unknown element reference ${!from ? entry.from : entry.to}; relation dropped`));
+      const unknown = !from ? entry.from : entry.to;
+      diagnostics.push(lineDiagnostic(entry.line, 'W122', 'warning', `Unknown element reference ${unknown}; relation dropped`, suggestElementRef(relationIndex, unknown)));
       continue;
     }
     const pair = `rel:${from.id}->${to.id}`;

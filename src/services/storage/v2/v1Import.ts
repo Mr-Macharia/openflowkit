@@ -44,6 +44,19 @@ interface V1ImportReport {
   readonly firstRun: boolean;
 }
 
+// v1 room links (`?room=…&secret=…`) and the service-worker cutover reload (`?ofk-reload`, see public/sw.js)
+// leave query params v2 has no use for; the secret must not ride along into a new share link.
+const V1_ONLY_PARAMS = ['room', 'secret', 'ofk-reload'];
+
+/** `search` without v1-only params, or null when it had none (nothing to rewrite). */
+export function withoutV1Params(search: string): string | null {
+  const params = new URLSearchParams(search);
+  if (!V1_ONLY_PARAMS.some((name) => params.has(name))) return null;
+  V1_ONLY_PARAMS.forEach((name) => params.delete(name));
+  const rest = params.toString();
+  return rest ? `?${rest}` : '';
+}
+
 export function readV1ImportMarker(storage: Storage = localStorage): V1ImportMarker | null {
   try {
     const marker = JSON.parse(storage.getItem(V1_IMPORT_MARKER_KEY) ?? 'null') as unknown;
@@ -128,7 +141,7 @@ export async function importV1Workspace(deps: V1ImportDeps): Promise<V1ImportRep
       const prepared = await inlineImages(document);
       let id = document.id;
       let revision = 1;
-      let result = await deps.repository.saveDocument(id, prepared, revision);
+      let result = await deps.repository.saveDocument(id, prepared, revision, revision - 1, document.updatedAt);
       const earlier = previous[v1Id];
       // `stale` = a copy exists. If it came from an earlier import and v1 has moved on since,
       // the newer v1 edit must not be dropped: replace the copy if v2 never touched it,
@@ -136,11 +149,11 @@ export async function importV1Workspace(deps: V1ImportDeps): Promise<V1ImportRep
       if (result.status === 'stale' && earlier?.status === 'imported') {
         if (result.storedRevision === (earlier.v2Revision ?? 1)) {
           revision = result.storedRevision + 1;
-          result = await deps.repository.saveDocument(id, prepared, revision);
+          result = await deps.repository.saveDocument(id, prepared, revision, revision - 1, document.updatedAt);
         } else {
           id = `${document.id}~${document.updatedAt.replace(/\D/g, '')}`;
           revision = 1;
-          result = await deps.repository.saveDocument(id, { ...prepared, id, name: `${document.name} (later v1 edit)` }, revision);
+          result = await deps.repository.saveDocument(id, { ...prepared, id, name: `${document.name} (later v1 edit)` }, revision, revision - 1, document.updatedAt);
         }
       }
       if (result.status === 'saved') imported.push(id);
@@ -241,7 +254,7 @@ export async function openV1Backup(backup: V1Backup, repository: V2DocumentRepos
   const failures = [...workspace.failures];
   for (const document of workspace.documents) {
     try {
-      const result = await repository.saveDocument(document.id, document, 1);
+      const result = await repository.saveDocument(document.id, document, 1, 0, document.updatedAt);
       if (result.status === 'saved') opened.push(document.id);
       else existing += 1;
     } catch (error) {

@@ -48,6 +48,8 @@ describe('V2RepoMapState', () => {
   it('finished with no sources says nothing to map', () => {
     view({ status: 'ready', model: model(0) });
     expect(screen.getByText('Nothing to map here.')).toBeTruthy();
+    expect(screen.getByText(/Dockerfiles, compose files, Kubernetes manifests/)).toBeTruthy();
+    expect(document.querySelector('code')).toBeNull();
   });
   it('renders nothing once there is a map to draw', () => {
     expect(view({ status: 'loading', model: model(4) }).container.textContent).toBe('');

@@ -55,3 +55,9 @@ describe('connectorLabelLines and connectorLabelPlate', () => {
     expect(connectorLabelLines('internationalization-and-localization-pipeline', style)).toEqual(['internationalization-and-localization-pipeline']);
   });
 });
+
+describe('connector label wrap width', () => {
+  it('wraps "POST /checkout [HTTPS]" at the width the canvas does, so the plate never fills a gap', () => {
+    expect(connectorLabelLines('POST /checkout [HTTPS]', resolveConnectorLabelStyle(connector({}))).length).toBe(2);
+  });
+});

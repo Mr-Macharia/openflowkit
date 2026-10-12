@@ -57,7 +57,13 @@ describe('V2HomePage', () => {
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
     expect(within(list).getByText('From the old app').closest('li')!.textContent).toContain('From v1');
     expect(within(list).getByText('Made here').closest('li')!.textContent).not.toContain('From v1');
-    expect(screen.getByRole('region', { name: 'Not brought over' }).textContent).toContain('Old one: quota');
+    expect(screen.getByRole('region', { name: 'Not brought over' }).textContent).toContain('Couldn’t bring over “Old one”: it couldn’t be converted.');
+  });
+
+  it('draws the preview a v1 import never had, once, and leaves other cards to the editor', async () => {
+    renderHome();
+    const repository = createV2Repository(indexedDB);
+    await waitFor(async () => expect([...(await repository.listThumbnails()).keys()]).toEqual(['v1-doc-a']));
   });
 
   it('renames, archives with an undo, then deletes for good only after a confirm', async () => {

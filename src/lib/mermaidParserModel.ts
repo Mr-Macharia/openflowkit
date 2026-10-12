@@ -101,6 +101,7 @@ export function registerMermaidNode(
     }
     if (parsed.shape) {
       existing.shape = parsed.shape;
+      existing.subroutine = parsed.subroutine;
     }
     if (parsed.classes) {
       existing.classes = [...(existing.classes || []), ...parsed.classes];

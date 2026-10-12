@@ -35,6 +35,20 @@ const CLASS_ID_START_PATTERN = '[A-Za-z_]';
 const CLASS_ID_SEGMENT_PATTERN = '(?:[\\w.]|<[^>]+>|~[^~]+~|,)';
 const CLASS_ID_PATTERN = `${CLASS_ID_START_PATTERN}${CLASS_ID_SEGMENT_PATTERN}*`;
 
+/** `List~Map~K,V~~` → `List<Map<K,V>>`: a `~` between word characters opens, any other closes. */
+function genericsToAngle(value: string): string {
+  let depth = 0;
+  return value.replace(/~/g, (_, offset: number) => {
+    if (/\w/.test(value[offset - 1] ?? '') && /\w/.test(value[offset + 1] ?? '')) {
+      depth += 1;
+      return '<';
+    }
+    if (depth === 0) return '~';
+    depth -= 1;
+    return '>';
+  });
+}
+
 function normalizeClassIdentifier(value: string): string {
   return value.trim().replace(/~([^~]+)~/g, '<$1>');
 }
@@ -295,8 +309,8 @@ function parseClassDiagram(input: string): { nodes: FlowNode[]; edges: FlowEdge[
       shape: 'rectangle',
       classStereotype: record.stereotype,
       ...(fillOf(record) ? { classFill: fillOf(record) } : {}),
-      classAttributes: record.attributes,
-      classMethods: record.methods,
+      classAttributes: record.attributes.map(genericsToAngle),
+      classMethods: record.methods.map(genericsToAngle),
       ...(record.namespace ? { classNamespace: record.namespace } : {}),
     },
   }));

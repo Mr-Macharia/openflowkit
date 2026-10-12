@@ -43,6 +43,20 @@ export function firstV2Page(document: SceneDocumentV1): ScenePage {
 }
 
 let v2IdCounter = 0;
+// Kept per tab across reloads: a reload before the editor finishes loading (a stale-chunk reload, the
+// v1 kill switch's navigation, F5) must still open the diagram this tab just started.
+const MINTED_KEY = 'ofk:minted-documents';
+
+function mintedHere(): Set<string> {
+  try { return new Set(JSON.parse(sessionStorage.getItem(MINTED_KEY) ?? '[]') as string[]); } catch { return new Set(); }
+}
+
+function rememberMinted(id: string): void {
+  const minted = [...mintedHere(), id].slice(-20);
+  try { sessionStorage.setItem(MINTED_KEY, JSON.stringify(minted)); } catch { /* storage blocked: this load only */ }
+  documentsMintedHere.add(id);
+}
+
 const documentsMintedHere = new Set<string>();
 
 // Session-unique node/connector ids. Undo/redo restore identical ids from
@@ -50,7 +64,7 @@ const documentsMintedHere = new Set<string>();
 export function mintV2Id(prefix: string): string {
   v2IdCounter += 1;
   const id = `${prefix}-${Date.now().toString(36)}-${v2IdCounter}`;
-  if (prefix === 'doc') documentsMintedHere.add(id);
+  if (prefix === 'doc') rememberMinted(id);
   return id;
 }
 
@@ -59,7 +73,7 @@ export function mintV2Id(prefix: string): string {
  * one open last (a reload before the first edit). Any other id is someone else's link (U1-08).
  */
 export function mayCreateDocument(id: string, lastOpen: string | null): boolean {
-  return documentsMintedHere.has(id) || id === lastOpen;
+  return documentsMintedHere.has(id) || id === lastOpen || mintedHere().has(id);
 }
 
 // `/` reopens the document you had open last (Excalidraw's "refresh, same
@@ -103,7 +117,7 @@ export type V2StartIntent =
   | { readonly start: 'assistant' | 'code' | 'agent' }
   | { readonly template: string }
   /** A file's text from home's Import: OpenFlow DSL, or Mermaid / Structurizr / D2 to convert first. */
-  | { readonly source: string; readonly via?: 'repo' }
+  | { readonly source: string; readonly via?: 'repo'; /** The title it opens with: the file's name, or the shared diagram's. */ readonly name?: string }
   /** `/map/github/<owner>/<repo>`: a new document that is the repo's map. `ref` absent = default branch. */
   | { readonly repoMap: { readonly owner: string; readonly repo: string; readonly ref?: string } };
 

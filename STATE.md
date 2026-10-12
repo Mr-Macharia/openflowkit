@@ -3,12 +3,11 @@ Plan: `docs/plans/plan-v3.md` (untracked, owner's copy), v3 from 2026-10-03: pha
 (0–11) done, archived at `docs/archive/plan-executed-2026-10-03/`; 7b/8 parked; 6.10 → 14.1.
 
 ## Now
-- **Overnight 2026-10-11 (uncommitted, owner reviews)**: 9 personas/audits → README + docs site rebuilt, ERD/class export, tool keys vs
-  labels, agent canvasEdits, repo-map cards, CI lint: `docs/logs/overnight-2026-10-11.md` (owner decisions + holds). 10-10 night: `overnight-2026-10-10.md`.
-  Day 10-11 (same log, rounds 2–3): Share = view-only | editable copy; GitHub #68 arrow ends + #51 Icon above/left (`iconpos`);
-  section headers clear of content; labels off other edges; round 5: map drill-down GIF, Layers audit (11 fixes), WebMCP
-  (`docs/plans/webmcp-plan.md`). Owner to-dos: `docs/owner/actions.md`. README art: `scripts/readme/*.mjs`.
-- **Launch checks 2026-10-10**: `docs/logs/launch-checks-2026-10-10.md` (`_headers` ships; dev + e2e fail on any CSP violation).
+- **Pre-launch overnight 2026-10-12 (uncommitted, ~140 files, owner reviews)**: 11 lanes (security, migration, code panel, DSL,
+  Mermaid/Structurizr import, render, agent/MCP, UI, Map, site) → `docs/logs/overnight-2026-10-12.md` (+ `lanes/`, `MIGRATE.md`).
+  Final `npm run verify` green (unit 3897, MCP 156, @gate 229/229). V1→V2: safe to merge with `-s ours`. Owner steps: `docs/owner/actions.md` §0.
+- Overnight 2026-10-11 (personas, docs site, Share modes, Layers audit, WebMCP): `docs/logs/overnight-2026-10-11.md`; 10-10: `overnight-2026-10-10.md`,
+  `launch-checks-2026-10-10.md`. Owner to-dos: `docs/owner/actions.md`. README art: `scripts/readme/*.mjs`.
 - Icon catalog: re-run `node scripts/gen-icon-manifest.mjs` after adding SVGs. Gate: `npm run verify` (~9 min headed). README/docs screens: `scripts/capture-readme.mjs`, `docs-site/scripts/capture-screens.mjs`. CI: `quality` (unit, build, MCP) ∥ 4 e2e shards → `e2e-report` (one merged report).
 - **Phases 12 + 13 DONE 2026-10-03.** Owner's: merge `main` → `v2`, PR `v2` → `main`, Cloudflare Landing, tag `v1-final`; 13.4 needs a stronger model.
 ## Roadmap 2026-10 run (opus-5.5, from 2026-10-07): plan `docs/plans/roadmap-2026-10.md`, log + RESUME `docs/logs/roadmap-progress.md`

@@ -41,7 +41,7 @@ const STATIC_TOOLS = [
   'whoami',
 ];
 
-export function registerDiscoveryTools(server: McpServer, bridge: Pick<LiveBridge, 'status'>): void {
+export function registerDiscoveryTools(server: McpServer, bridge: Pick<LiveBridge, 'status' | 'retryPort'>): void {
   server.registerTool(
     'list_diagram_node_types',
     {
@@ -71,35 +71,38 @@ export function registerDiscoveryTools(server: McpServer, bridge: Pick<LiveBridg
         'Return the server version and the tools, resources and prompts it serves. ' +
         'Useful when debugging client connections.',
     },
-    async () => ({
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(
-            {
-              name: MCP_SERVER_NAME,
-              version: MCP_SERVER_VERSION,
-              localFirst: true,
-              bridge: bridge.status(),
-              modes: ['live-editor (pair with "Connect agent")', 'file (.openflow.json)'],
-              tools: [...STATIC_TOOLS, ...AGENT_OPS.map(({ name }) => name)].sort(),
-              resources: [
-                'openflowkit://docs/grammar',
-                'openflowkit://templates',
-                'openflowkit://templates/{name}',
-                'openflowkit://icons',
-                'openflowkit://icons/{provider}',
-              ],
-              prompts: [
-                'flowchart_from_description',
-                'architecture_from_codebase',
-              ],
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    })
+    async () => {
+      await bridge.retryPort();
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                name: MCP_SERVER_NAME,
+                version: MCP_SERVER_VERSION,
+                localFirst: true,
+                bridge: bridge.status(),
+                modes: ['live-editor (pair with "Connect agent")', 'file (.openflow.json)'],
+                tools: [...STATIC_TOOLS, ...AGENT_OPS.map(({ name }) => name)].sort(),
+                resources: [
+                  'openflowkit://docs/grammar',
+                  'openflowkit://templates',
+                  'openflowkit://templates/{name}',
+                  'openflowkit://icons',
+                  'openflowkit://icons/{provider}',
+                ],
+                prompts: [
+                  'flowchart_from_description',
+                  'architecture_from_codebase',
+                ],
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
   );
 }

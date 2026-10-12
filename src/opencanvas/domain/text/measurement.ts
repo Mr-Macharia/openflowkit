@@ -29,37 +29,58 @@ function glyphUnits(character: string): number {
   return 0.56;
 }
 
-function lineWidth(text: string, fontSize: number, weight: number): number {
+/** Width of a run of glyph units; the one place the weight and size factors are applied. */
+function unitsWidth(units: number, fontSize: number, weight: number): number {
   const weightFactor = 1 + Math.max(0, weight - 400) / 3_000;
-  return [...text].reduce((sum, character) => sum + glyphUnits(character), 0)
-    * fontSize * weightFactor;
+  return units * fontSize * weightFactor;
+}
+
+function lineWidth(text: string, fontSize: number, weight: number): number {
+  return unitsWidth([...text].reduce((sum, character) => sum + glyphUnits(character), 0), fontSize, weight);
+}
+
+/** The longest prefix of `text` from `start` that fits `maximum`: where it ends (a string index), where the last space in it sits and the last place a `-` or `/` lets a long name break. One pass. */
+function fitFrom(text: string, start: number, maximum: number, fontSize: number, weight: number): { end: number; lastSpace: number; lastSoft: number; whole: boolean } {
+  let units = 0;
+  let lastSpace = -1;
+  let lastSoft = -1;
+  let index = start;
+  while (index < text.length) {
+    const character = String.fromCodePoint(text.codePointAt(index)!);
+    const next = units + glyphUnits(character);
+    if (unitsWidth(next, fontSize, weight) > maximum) return { end: index, lastSpace, lastSoft, whole: false };
+    units = next;
+    if (character === ' ') lastSpace = index;
+    index += character.length;
+    if (character === '-' || character === '/') lastSoft = index;
+  }
+  return { end: index, lastSpace, lastSoft, whole: true };
 }
 
 function fitPrefix(text: string, maximum: number, fontSize: number, weight: number): string {
-  let result = '';
-  for (const character of text) {
-    if (lineWidth(result + character, fontSize, weight) > maximum) break;
-    result += character;
-  }
-  return result;
+  return text.slice(0, fitFrom(text, 0, maximum, fontSize, weight).end);
 }
 
-function wrapParagraph(text: string, maximum: number, fontSize: number, weight: number): string[] {
+/** Wraps one paragraph in one pass; stops once `limit` lines exist, since the caller drops the rest. */
+function wrapParagraph(text: string, maximum: number, fontSize: number, weight: number, limit: number): string[] {
   if (!text) return [''];
   const lines: string[] = [];
-  let remaining = text;
-  while (remaining) {
-    if (lineWidth(remaining, fontSize, weight) <= maximum) {
-      lines.push(remaining);
+  let start = 0;
+  while (start < text.length && lines.length < limit) {
+    const fit = fitFrom(text, start, maximum, fontSize, weight);
+    if (fit.whole) {
+      lines.push(text.slice(start));
       break;
     }
-    let prefix = fitPrefix(remaining, maximum, fontSize, weight);
-    if (!prefix) prefix = [...remaining][0] ?? '';
+    // Nothing fits: take one character anyway.
+    let end = fit.end > start ? fit.end : start + String.fromCodePoint(text.codePointAt(start)!).length;
     // A prefix that ends right before a space is already whole words; only cut back to a space mid-word.
-    const breakAt = prefix.lastIndexOf(' ');
-    if (remaining[prefix.length] !== ' ' && breakAt > 0) prefix = prefix.slice(0, breakAt);
-    lines.push(prefix.trimEnd());
-    remaining = remaining.slice(prefix.length).trimStart();
+    // A name with no space to break at breaks after a `-` or `/` rather than mid-word.
+    const cut = fit.lastSpace > start ? fit.lastSpace : fit.lastSoft;
+    if (text[end] !== ' ' && cut > start) end = cut;
+    lines.push(text.slice(start, end).trimEnd());
+    start = end;
+    while (start < text.length && /\s/u.test(text[start]!)) start += 1;
   }
   return lines;
 }
@@ -79,8 +100,15 @@ export function measurePortableText(
     throw new Error('Portable text max width must be positive and finite.');
   }
   const sourceLines = text.split('\n');
+  // One line past the limit is enough to know the text was cut; a longer label is never wrapped to its end.
+  let budget = style.maxLines !== undefined && Number.isFinite(style.maxLines) ? Math.max(1, Math.ceil(style.maxLines)) + 1 : Number.POSITIVE_INFINITY;
   let lines = maximum && overflow === 'wrap'
-    ? sourceLines.flatMap((line) => wrapParagraph(line, maximum, style.fontSize, weight))
+    ? sourceLines.flatMap((line) => {
+      if (budget <= 0) return [];
+      const wrapped = wrapParagraph(line, maximum, style.fontSize, weight, budget);
+      budget -= wrapped.length;
+      return wrapped;
+    })
     : sourceLines;
   let truncated = false;
   if (style.maxLines !== undefined && lines.length > style.maxLines) {

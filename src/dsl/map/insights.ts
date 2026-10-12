@@ -22,6 +22,9 @@ const NOT_IMPORTED = new RegExp(
   'i',
 );
 
+// Machine-written files say nothing about how the code is organised (protobuf stubs, `*.generated.*`).
+const GENERATED = /(\.pb\.go|_pb2(_grpc)?\.pyi?|\.generated\.[a-z]+)$/i;
+
 export function insights(model: MapModel, { minPair = 3, top = 5 } = {}): Insights {
   const { edges } = aggregate(model, presets(model).detailed, ['import']);
   // A `more` box (or a range inside one) is a bucket of leftovers, not a part: two buckets importing each other say nothing.
@@ -31,7 +34,7 @@ export function insights(model: MapModel, { minPair = 3, top = 5 } = {}): Insigh
     .map((e) => (e.from < e.to ? { a: e.from, b: e.to, ab: e.forward, ba: e.reverse } : { a: e.to, b: e.from, ab: e.reverse, ba: e.forward }))
     .sort((x, y) => y.ab + y.ba - (x.ab + x.ba) || compare(x.a, y.a));
 
-  const files = Object.values(model.nodes).filter((n) => n.kind === 'file');
+  const files = Object.values(model.nodes).filter((n) => n.kind === 'file' && !GENERATED.test(n.path ?? n.id));
   const largest = [...files].sort((a, b) => b.loc - a.loc || compare(a.id, b.id)).slice(0, top).map((n) => n.id);
 
   // A dir import references everything in that folder, so ancestors count as referenced.

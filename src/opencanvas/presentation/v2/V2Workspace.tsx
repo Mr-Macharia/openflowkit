@@ -18,7 +18,7 @@ import {
   Toolbar,
   Tooltip,
 } from '../design-system';
-import { shortcutGroups } from './v2Shortcuts';
+import { shortcutFor, shortcutGroups } from './v2Shortcuts';
 import { DOCS_URL } from './homeStars';
 import { mapRepoPath, MapRepoForm } from './map/V2MapStart';
 
@@ -72,7 +72,7 @@ export function V2WorkspaceRail({
       <FloatingRegion slot="top-end" className="ofk-v2-workspace-rail">
         <Toolbar label="Workspace" orientation="vertical">
           {MODES.map(({ id, label, icon }) => (
-            <Tooltip key={id} content={label}>
+            <Tooltip key={id} content={label} shortcut={shortcutFor(label)}>
               <IconButton
                 variant="quiet"
                 label={label}

@@ -32,6 +32,8 @@ test('object actions, page menus and connection states stay usable', async ({ pa
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.getByRole('button', { name: /^Pages/ }).click();
   await page.getByRole('button', { name: 'Add page', exact: true }).click();
+  // A new page opens in rename; Enter keeps its name.
+  await page.keyboard.press('Enter');
   const pages = page.getByRole('dialog', { name: 'Pages', exact: true });
   await expect(pages.locator('[aria-current="page"]')).toHaveCount(1);
   await page.getByRole('button', { name: 'Actions for Page 2' }).click();
@@ -149,4 +151,24 @@ test('on a phone the selection toolbar does not sit on an open panel @gate', asy
   await bar.click();
   await expect(source).toBeVisible();
   await expect(page.locator('[data-context-bar]')).toBeHidden();
+});
+
+test('a new page opens in rename: typing names it, Escape keeps "Page N", and a deleted page with content can be undone', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('v2-canvas')).toBeVisible();
+  await page.getByRole('button', { name: /^Pages/ }).click();
+  await page.getByRole('button', { name: 'Add page', exact: true }).click();
+  const input = page.getByRole('textbox', { name: 'Rename Page 2' });
+  await expect(input).toBeFocused();
+  // N would drop a sticky note if the key reached the canvas shortcuts.
+  await page.keyboard.type('Notes');
+  await expect(input).toHaveValue('Notes');
+  await page.keyboard.press('Enter');
+  const pages = page.getByRole('dialog', { name: 'Pages', exact: true });
+  await expect(pages.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Add page', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(pages.getByRole('button', { name: 'Page 3', exact: true })).toBeVisible();
+  // The tab title carries the document name.
+  await expect(page).toHaveTitle(/ · OpenFlowKit$/);
 });

@@ -77,7 +77,7 @@ export const IMPORT_ACCEPT = '.json,.mmd,.mermaid,.d2,.dsl,.ofk,.txt,application
 
 const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-/** The diagrams a view shows: the view's subset, matching the search, in the chosen order. */
+/** The diagrams a view shows: the view's subset, matching the search (title, page names, box labels), in the chosen order. */
 export function arrange(documents: readonly V2DocumentSummary[], { view, starred, query, sort }: {
   readonly view: HomeView;
   readonly starred: readonly string[];
@@ -85,8 +85,8 @@ export function arrange(documents: readonly V2DocumentSummary[], { view, starred
   readonly sort: HomeSort;
 }): readonly V2DocumentSummary[] {
   const needle = query.trim().toLowerCase();
-  const shown = documents.filter(({ id, name }) =>
-    (view !== 'starred' || starred.includes(id)) && (!needle || name.toLowerCase().includes(needle)));
+  const shown = documents.filter(({ id, name, searchText }) =>
+    (view !== 'starred' || starred.includes(id)) && (!needle || name.toLowerCase().includes(needle) || searchText.includes(needle)));
   // The repository already lists most recently saved first.
   return sort === 'name' ? [...shown].sort((a, b) => byName.compare(a.name, b.name)) : shown;
 }

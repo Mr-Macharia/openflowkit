@@ -178,7 +178,21 @@ export function resolveElementRef(index: ArchIndex, reference: string, scopeId: 
   // Last resort: a bare display name that is unique in the model. Ambiguous
   // names stay unresolved rather than guessing.
   const byName = index.model.elements.filter((element) => element.name.toLowerCase() === lower);
-  return byName.length === 1 ? byName[0]! : null;
+  if (byName.length === 1) return byName[0]!;
+  const partial = wanted.includes('.') ? pathEndsWith(index, slugPath) : [];
+  return partial.length === 1 ? partial[0]! : null;
+}
+
+/** Elements whose slug path ends with `tail` on a segment boundary (`Gateway.Auth` → `Payments.Gateway.Auth`). */
+function pathEndsWith(index: ArchIndex, tail: string): ArchElement[] {
+  return index.model.elements.filter((element) => element.id.endsWith(`.${tail}`));
+}
+
+/** For an unresolved reference: the full paths of elements it may have meant, `did you mean A or B?`. */
+export function suggestElementRef(index: ArchIndex, reference: string): string | undefined {
+  const last = slugifyDslId(reference.trim().split('.').at(-1) ?? '');
+  const matches = index.model.elements.filter((element) => element.id === last || element.id.endsWith(`.${last}`));
+  return matches.length ? `did you mean ${matches.slice(0, 3).map((element) => elementPathRef(index, element.id)).join(' or ')}?` : undefined;
 }
 
 /** The Model panel's kind word; a container drawn as a cylinder or a queue says what it holds. */

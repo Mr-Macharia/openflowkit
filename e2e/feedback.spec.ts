@@ -183,9 +183,9 @@ test('a shared link’s viewer is never asked and sends nothing @gate', async ({
   const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
   await seed(page, { firstVisitAt: 0, activeDays: [day(3), day(2), day(1)] });
   const { body, key } = await encryptDocument(createTestDocument());
-  await page.context().route(`${SHARE}/s/view1`, (route) => route.fulfill({ status: 200, headers: CORS, body: Buffer.from(body) }));
+  await page.context().route(`${SHARE}/s/${'a'.repeat(32)}`, (route) => route.fulfill({ status: 200, headers: CORS, body: Buffer.from(body) }));
   await page.clock.install();
-  await page.goto(`/#/s/view1/${key}`);
+  await page.goto(`/#/s/${'a'.repeat(32)}/${key}`);
   await expect(page.getByText('Shared diagram, read-only')).toBeVisible();
   await page.clock.fastForward(25_000);
   await page.waitForTimeout(500);

@@ -1,7 +1,7 @@
 // Public surface of the agent layer, bundled for the MCP server by
 // vite.agent.config.ts. Pure: no store, no browser, no React.
-import { projectLegacyDocument } from '@/opencanvas/domain/document/legacyProjection';
-import type { SceneDocumentV1 } from '@/opencanvas/domain/document/types';
+import { createDefaultSceneLayer } from '@/opencanvas/domain/document/defaults';
+import { SCENE_DOCUMENT_FORMAT, SCENE_DOCUMENT_VERSION, type SceneDocumentV1 } from '@/opencanvas/domain/document/types';
 import { validateSceneDocumentV1 } from '@/opencanvas/domain/document/validation';
 
 export { AGENT_OPS, LOOKUP_OPS, MAX_IMAGE_KB, PAGELESS_OPS, base64Kb, findAgentOp, opInputShape } from './ops';
@@ -55,9 +55,21 @@ export { DSL_FAMILIES } from '../dsl/ast';
 
 export function createAgentDocument(name: string, id: string = crypto.randomUUID()): SceneDocumentV1 {
   const now = new Date().toISOString();
-  return projectLegacyDocument({ name, nodes: [], edges: [] }, {
-    documentId: id, pageId: `${id}:page-1`, pageName: 'Page 1', now,
-  });
+  // Same shape as the editor's createEmptyV2Document; the agent layer must not import presentation code.
+  return {
+    format: SCENE_DOCUMENT_FORMAT,
+    schemaVersion: SCENE_DOCUMENT_VERSION,
+    id,
+    name,
+    createdAt: now,
+    updatedAt: now,
+    pages: [{
+      id: `${id}:page-1`, name: 'Page 1', diagramKind: 'flowchart', layers: [createDefaultSceneLayer()],
+      nodes: [], connectors: [], metadata: {}, extensions: {},
+    }],
+    metadata: {},
+    extensions: {},
+  };
 }
 
 export function parseAgentDocument(value: unknown): SceneDocumentV1 {

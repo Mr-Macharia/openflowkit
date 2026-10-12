@@ -122,6 +122,27 @@ async function convertMermaidNodes(page: ScenePage, convert: LegacyMermaidConver
   return current;
 }
 
+/** A failure's reason in plain words; the technical text stays on `LegacyImportFailure.error` for a tooltip. */
+export function plainImportFailure(error: string | undefined): string {
+  if (/node id/i.test(error ?? '')) return 'it has a shape with no id.';
+  if (/arrays|JSON values|not an object|no pages/i.test(error ?? '')) return 'its contents couldn’t be read.';
+  return 'it couldn’t be converted.';
+}
+
+const DEFAULT_V1_NAME = 'Untitled Flow';
+
+// v1 never asked for a name, so most diagrams arrive as "Untitled Flow": a wall of identical cards.
+// Name those after their content (a page the user named, else the first two labels). A typed name stays.
+function nameFor(record: LegacyRecord, pages: readonly ScenePage[]): string {
+  if (record.name !== DEFAULT_V1_NAME) return record.name;
+  const meaningful = pages.map(({ name }) => name.trim()).find((name) => name && name !== DEFAULT_V1_NAME && !/^Page \d+$/.test(name));
+  if (meaningful) return meaningful;
+  const labels = pages.flatMap((page) => page.nodes.map((node) => node.content.label))
+    .filter((label): label is string => typeof label === 'string' && label.trim().length > 0)
+    .slice(0, 2).map((label) => (label.trim().length > 24 ? `${label.trim().slice(0, 23)}…` : label.trim()));
+  return labels.length ? labels.join(' → ') : record.name;
+}
+
 async function migrateRecord(record: LegacyRecord, options: LegacyWorkspaceOptions): Promise<SceneDocumentV1> {
   const documentId = legacyDocumentId(record.id);
   const taken = new Set<string>();
@@ -142,7 +163,7 @@ async function migrateRecord(record: LegacyRecord, options: LegacyWorkspaceOptio
   if (projected.length === 0) throw new TypeError('Legacy document has no pages.');
   const pages: ScenePage[] = [];
   for (const document of projected) pages.push(await convertMermaidNodes(document.pages[0]!, options.convertMermaid));
-  const { document } = dropDanglingConnectors({ ...projected[0]!, name: record.name, createdAt: record.createdAt, updatedAt: record.updatedAt, pages });
+  const { document } = dropDanglingConnectors({ ...projected[0]!, name: nameFor(record, pages), createdAt: record.createdAt, updatedAt: record.updatedAt, pages });
   const validation = validateSceneDocumentV1(document);
   if (validation.success === false) throw new TypeError(`${validation.issues[0]?.path}: ${validation.issues[0]?.message}`);
   return document;

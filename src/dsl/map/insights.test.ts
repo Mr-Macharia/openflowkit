@@ -27,6 +27,14 @@ describe('insights', () => {
     expect(insights(model, { top: 2 }).largest).toEqual(['web/App.tsx', 'web/ui/Card.tsx']);
   });
 
+  it('skips generated files in the largest list', () => {
+    const m = buildMap({
+      files: [{ path: 'pb/demo.pb.go', loc: 900 }, { path: 'pb/demo_grpc.pb.go', loc: 800 }, { path: 'x/api_pb2.py', loc: 700 }, { path: 'x/schema.generated.ts', loc: 600 }, { path: 'x/real.go', loc: 5 }],
+      imports: [],
+    });
+    expect(insights(m).largest).toEqual(['x/real.go']);
+  });
+
   it('flags files nothing imports, but not entry points, tests or scripts', () => {
     const m = buildMap({
       files: [

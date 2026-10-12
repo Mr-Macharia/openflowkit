@@ -7,6 +7,8 @@ interface ParsedMindmapNode {
   lineNumber: number;
   alias?: string;
   wrapper?: NonNullable<FlowNode['data']['mindmapWrapper']>;
+  /** `)x(` cloud / `))x((` bang: Mermaid shapes the wrappers do not have. */
+  unmappedShape?: 'cloud' | 'bang';
 }
 
 interface StructuredNode extends ParsedMindmapNode {
@@ -49,6 +51,7 @@ function extractMindmapLabel(
   label: string;
   alias?: string;
   wrapper?: NonNullable<FlowNode['data']['mindmapWrapper']>;
+  unmappedShape?: 'cloud' | 'bang';
 } | null {
   const trimmed = rawContent.trim();
   if (!trimmed) return null;
@@ -70,6 +73,15 @@ function extractMindmapLabel(
     { wrapper: 'rounded', pattern: createWrappedMindmapPattern('\\(', '\\)') },
     { wrapper: 'hexagon', pattern: createWrappedMindmapPattern('\\{\\{', '\\}\\}') },
   ];
+
+  for (const [unmappedShape, pattern] of [
+    ['bang', createWrappedMindmapPattern('\\)\\)', '\\(\\(')],
+    ['cloud', createWrappedMindmapPattern('\\)', '\\(')],
+  ] as const) {
+    const match = withoutDirective.match(pattern);
+    const value = match?.[2]?.trim();
+    if (value) return { label: value, alias: match?.[1]?.trim(), unmappedShape };
+  }
 
   for (const definition of wrapperDefinitions) {
     const wrappedMatch = withoutDirective.match(definition.pattern);
@@ -147,6 +159,7 @@ function parseMindmap(input: string): { nodes: FlowNode[]; edges: FlowEdge[]; er
       alias: parsedLabel.alias,
       lineNumber,
       wrapper: parsedLabel.wrapper,
+      unmappedShape: parsedLabel.unmappedShape,
     });
   }
 
@@ -188,6 +201,7 @@ function parseMindmap(input: string): { nodes: FlowNode[]; edges: FlowEdge[]; er
       alias: parsedNode.alias,
       lineNumber: parsedNode.lineNumber,
       wrapper: parsedNode.wrapper,
+      unmappedShape: parsedNode.unmappedShape,
       parentIndex,
     });
     stack.push({ depth: parsedNode.depth, index });
@@ -262,6 +276,7 @@ function parseMindmap(input: string): { nodes: FlowNode[]; edges: FlowEdge[]; er
       mindmapParentId: node.parentIndex === null ? undefined : structuredNodes[node.parentIndex].id,
       mindmapAlias: node.alias,
       mindmapWrapper: node.wrapper,
+      ...(node.unmappedShape ? { mindmapUnmappedShape: node.unmappedShape } : {}),
     },
   }));
 

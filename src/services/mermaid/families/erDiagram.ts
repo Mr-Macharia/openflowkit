@@ -183,6 +183,9 @@ function parseERDiagram(input: string): { nodes: FlowNode[]; edges: FlowEdge[]; 
         continue;
       }
       activeEntity.fields.push(parseMermaidErField(line));
+      // The erd family has no field description to carry `type name PK "comment"`.
+      const comment = line.match(/"([^"]*)"\s*$/)?.[1];
+      if (comment !== undefined) diagnostics.push(`Comment "${comment}" on ${activeEntity.label} field dropped at line ${lineNumber}`);
       continue;
     }
 

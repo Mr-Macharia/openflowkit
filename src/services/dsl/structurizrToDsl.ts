@@ -322,6 +322,34 @@ function readStatements(text: string): StStatement[] {
   return roots;
 }
 
+const VIEW_KEYWORDS: ReadonlySet<string> = new Set([
+  'include', 'exclude', 'autolayout', 'title', 'description', 'animation', 'default', 'properties', 'perspectives',
+]);
+const STYLE_KEYWORDS: ReadonlySet<string> = new Set([
+  'shape', 'icon', 'width', 'height', 'background', 'color', 'colour', 'stroke', 'strokewidth', 'fontsize', 'border',
+  'opacity', 'metadata', 'description', 'properties',
+]);
+
+/**
+ * Structurizr statements may share a line (`include * exclude email autoLayout lr`): a statement that
+ * starts with one of `keywords` ends where the next bare keyword begins. Quoted words never split.
+ * Child blocks belong to the last piece.
+ */
+function splitOnKeywords(statement: StStatement, keywords: ReadonlySet<string>): StStatement[] {
+  if (!keywords.has(statement.tokens[0]?.value.toLowerCase() ?? '')) return [statement];
+  const pieces: StStatement[] = [];
+  let tokens: StToken[] = [];
+  for (const token of statement.tokens) {
+    if (tokens.length > 0 && token.kind === 'word' && keywords.has(token.value.toLowerCase())) {
+      pieces.push({ tokens, children: [], line: tokens[0]!.line });
+      tokens = [];
+    }
+    tokens.push(token);
+  }
+  pieces.push({ tokens, children: statement.children, line: tokens[0]!.line });
+  return pieces;
+}
+
 /** Structurizr's own identifier derivation: "Spring PetClinic" → `springPetClinic`. */
 function derivedSid(name: string): string {
   return name.split(/[^A-Za-z0-9]+/).filter(Boolean)
@@ -441,6 +469,7 @@ class StructurizrConverter {
   private readonly flows: DraftFlow[] = [];
   private readonly styles: ElementStyle[] = [];
   private readonly losses: Loss[] = [];
+  private readonly definedAt = new Map<string, number>();
   private name: string | undefined;
 
   walk(roots: readonly StStatement[]): void {
@@ -523,7 +552,7 @@ class StructurizrConverter {
             const instance = this.declareInstance(declaration, parent, env, statement.line);
             this.walkStatements(statement.children, instance, env);
           } else if (declaration.kind === 'node') {
-            const element = this.declareElement(declaration, parent, env);
+            const element = this.declareElement(declaration, parent, env, statement.line);
             this.walkStatements(statement.children, element, env);
           } else {
             this.loss(statement.line, `${declaration.kindWord} is not valid in a deployment environment; dropped`);
@@ -534,7 +563,7 @@ class StructurizrConverter {
           this.loss(statement.line, `${declaration.kindWord} outside a deployment environment dropped`);
           continue;
         }
-        const element = this.declareElement(declaration, parent, null);
+        const element = this.declareElement(declaration, parent, null, statement.line);
         this.walkStatements(statement.children, element, null);
         continue;
       }
@@ -600,7 +629,7 @@ class StructurizrConverter {
     this.loss(statement.line, `url ${value} dropped`);
   }
 
-  private declareElement(declaration: Declaration, parent: DraftElement | null, env: string | null): DraftElement {
+  private declareElement(declaration: Declaration, parent: DraftElement | null, env: string | null, line: number): DraftElement {
     const name = normalizeName(declaration.name) || declaration.sid || 'element';
     const element: DraftElement = {
       sid: declaration.sid ?? derivedSid(name),
@@ -614,6 +643,12 @@ class StructurizrConverter {
       ofkId: '',
       ...(env ? { env } : {}),
     };
+    if (element.explicitSid) {
+      const key = `${env ?? ''}:${this.sidPath(element)}`;
+      const first = this.definedAt.get(key);
+      if (first !== undefined) this.loss(line, `Identifier \`${element.sid}\` is defined twice (lines ${first}, ${line}); the second wins.`);
+      else this.definedAt.set(key, line);
+    }
     const values = positional(declaration.strings, declaration.kind);
     if (values.desc) element.desc = values.desc;
     if (values.tech) element.tech = values.tech;
@@ -652,7 +687,7 @@ class StructurizrConverter {
       const tag = child.tokens.find((token) => token.kind === 'string')?.value ?? child.tokens[1]?.value ?? '';
       if (!tag) continue;
       const style: ElementStyle = { tag };
-      for (const property of child.children) {
+      for (const property of child.children.flatMap((entry) => splitOnKeywords(entry, STYLE_KEYWORDS))) {
         const key = property.tokens[0]?.value.toLowerCase() ?? '';
         const value = property.tokens.slice(1).map((token) => token.value).join(' ');
         if (key === 'background' && (isHexColor(value) || canonicalColorWord(value))) style.color = value.toLowerCase();
@@ -724,7 +759,9 @@ class StructurizrConverter {
       return;
     }
     if (kind === 'deployment' && env) this.ensureEnv(env);
-    for (const child of statement.children) this.readViewStatement(child, view);
+    for (const child of statement.children) {
+      for (const part of splitOnKeywords(child, VIEW_KEYWORDS)) this.readViewStatement(part, view);
+    }
     this.views.push(view);
   }
 

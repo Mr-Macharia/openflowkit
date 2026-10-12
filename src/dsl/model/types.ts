@@ -150,4 +150,6 @@ export interface ProjectedRelation {
   readonly from: string;
   readonly to: string;
   readonly implied: boolean;
+  /** How many relations drew as this one edge; set only when several projected onto the same pair. */
+  readonly merged?: number;
 }

@@ -88,6 +88,16 @@ describe('repoLook', () => {
     expect(l.arch.elements.find((e) => e.id === 'worker')!.desc).toBeUndefined();
   });
 
+  it('tags a part by its language, not by a protocol or runtime discovery noticed', () => {
+    const m = buildMap({
+      files: [{ path: 'cart/main.go', loc: 40 }, { path: 'web/app.ts', loc: 9 }],
+      imports: [], parts: [{ name: 'cart', dir: 'cart', desc: 'container · gRPC' }, { name: 'web', dir: 'web', desc: 'container · Node' }],
+    });
+    const l = repoLook(m, { swatch: paletteResolver('pastel') });
+    expect(l.arch.elements.find((e) => e.id === 'cart')).toMatchObject({ tech: 'Go' });
+    expect(l.arch.elements.find((e) => e.id === 'web')).toMatchObject({ tech: 'TypeScript' });
+  });
+
   it('a box with no known language gets its kind\'s plain icon, never none', () => {
     const m = buildMap({ files: [{ path: 'docs/a.md', loc: 3 }, { path: 'lib/x.unknown', loc: 3 }], imports: [] });
     const l = repoLook(m, { swatch: paletteResolver('pastel') });

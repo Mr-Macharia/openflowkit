@@ -179,7 +179,7 @@ export function V2ContextMenu(props: V2ContextMenuProps): React.JSX.Element | nu
             <MenuSeparator />
             <MenuItem onSelect={props.onZoomToSelection} shortcut={platformKeys('⇧2')}>Zoom to selection</MenuItem>
             <MenuSeparator />
-            <MenuItem onSelect={actions.toggleLock} shortcut={platformKeys('⌘L')} disabled={!edit}>Lock / Unlock</MenuItem>
+            <MenuItem onSelect={actions.toggleLock} shortcut={platformKeys('⌘L')} disabled={!edit}>{actions.selectionLocked() ? 'Unlock' : 'Lock'}</MenuItem>
             <MenuItem onSelect={actions.deleteSelection} shortcut={platformKeys('⌫')} disabled={!edit} danger>Delete</MenuItem>
           </>
         )}

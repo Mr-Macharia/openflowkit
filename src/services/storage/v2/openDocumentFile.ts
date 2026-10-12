@@ -13,6 +13,17 @@ export function defaultLegacyNodeSize(node: JsonObject) {
 
 const OPENS = 'OpenFlowKit opens the .json files it exports, from this version or the previous one.';
 
+/** Where JSON.parse left an `Infinity` (`1e400`): the path to the first number that is not finite. */
+function unreadableNumberPath(value: unknown, path = ''): string | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? null : path;
+  if (!value || typeof value !== 'object') return null;
+  for (const [key, child] of Object.entries(value)) {
+    const found = unreadableNumberPath(child, Array.isArray(value) ? `${path}[${key}]` : path ? `${path}.${key}` : key);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
 /** `notice`: what opening had to change, for the person who opened it. */
 type OpenedDocumentFile = { readonly document: SceneDocumentV1; readonly notice?: string } | { readonly error: string };
 
@@ -29,6 +40,8 @@ export function documentFromFileText(text: string, id: string, now = new Date().
   } catch {
     return { error: `It isn’t valid JSON. ${OPENS}` };
   }
+  const badNumber = unreadableNumberPath(parsed);
+  if (badNumber !== null) return { error: `It has a number OpenFlowKit can’t read${badNumber ? ` (${badNumber})` : ''}. ${OPENS}` };
   if (!isJsonObject(parsed)) return { error: `It isn’t an OpenFlowKit diagram. ${OPENS}` };
   if (parsed.format === SCENE_DOCUMENT_FORMAT) {
     const migrated = migrateSceneDocument({ ...parsed, id });

@@ -18,6 +18,14 @@ describe('buildMap tree', () => {
     expect(m.nodes['pkg/core']).toMatchObject({ kind: 'part', name: 'pkg/core/' });
   });
 
+  it('puts a top-level folder of only scripts in `more`, beside the real modules', () => {
+    const m = buildMap({ files: [{ path: 'api/a.ts', loc: 1 }, { path: 'web/b.ts', loc: 1 }, { path: 'kustomize/components/assistant/scripts/gen.py', loc: 1 }], imports: [] });
+    expect(m.nodes.root.children).toEqual(['api', 'web', 'root#more']);
+    expect(m.nodes['root#more'].children).toEqual(['kustomize/components/assistant/scripts']);
+    // Alone, it is the whole map: nothing to rank it under.
+    expect(buildMap({ files: [{ path: 'tools/a.py', loc: 1 }], imports: [] }).nodes.root.children).toEqual(['tools']);
+  });
+
   it('collapses a single-child folder chain: the deepest id is kept and shows the whole chain', () => {
     expect(childIds('web')).toEqual(['web/lib/deep/only', 'web/ui', 'web/App.tsx']);
     expect(model.nodes['web/lib/deep/only']).toMatchObject({ kind: 'folder', name: 'lib/deep/only/', parent: 'web', files: 1 });

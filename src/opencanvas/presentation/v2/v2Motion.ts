@@ -11,7 +11,7 @@ import type { MotionFormat, MotionFps, MotionSize } from '../../infrastructure/e
 import { exportAnimatedSvg, exportMotionFrameSvg } from '../../infrastructure/export/animatedSvg';
 import { renderMotionFile } from '../../infrastructure/export/motionFrames';
 import { withEmbeddedInter } from '../../infrastructure/export/raster';
-import type { V2ExportFile } from './v2Export';
+import { slug, type V2ExportFile } from './v2Export';
 import { loadIconArt } from './v2IconArt';
 
 /** `auto` walks the connector graph; a flow id replays a model flow; `code` reads the frame's animate block. */
@@ -90,9 +90,6 @@ export function motionFrameSvgFor(
   });
 }
 
-function slug(value: string, fallback: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fallback;
-}
 
 export function motionFileStem(request: V2MotionRequest): string {
   const page = pageOf(request);

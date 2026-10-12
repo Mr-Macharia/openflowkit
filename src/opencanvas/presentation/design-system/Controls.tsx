@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useId,
+  useRef,
   useState,
   type InputHTMLAttributes,
   type ReactNode,
@@ -123,7 +124,21 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
   // flow to the host. Null means synced with `value`; no effect reset needed —
   // external value changes show through automatically when draft is null, and a
   // non-null draft preserves user intent until blur/Enter/Escape/stepper.
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraftState] = useState<string | null>(null);
+  // Enter commits and then blurs, and blur fires onBlur in the same tick with this render's
+  // `draft`: the ref is what both read, so an edit commits exactly once.
+  const draftRef = useRef<string | null>(null);
+  function setDraft(next: string | null) {
+    draftRef.current = next;
+    setDraftState(next);
+  }
+  function commitDraft() {
+    const pending = draftRef.current;
+    if (pending === null) return;
+    setDraft(null);
+    const n = Number.parseFloat(pending);
+    if (Number.isFinite(n)) commit(n);
+  }
   function clamp(n: number) {
     if (min !== undefined) n = Math.max(min, n);
     if (max !== undefined) n = Math.min(max, n);
@@ -180,10 +195,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
           }}
           onBlur={(e) => {
             onBlur?.(e);
-            if (draft === null) return;
-            const n = Number.parseFloat(draft);
-            setDraft(null);
-            if (Number.isFinite(n)) commit(n);
+            commitDraft();
           }}
           onKeyDown={(e) => {
             onKeyDown?.(e);
@@ -192,9 +204,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
               e.preventDefault();
               nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
             } else if (e.key === 'Enter' && draft !== null) {
-              const n = Number.parseFloat(draft);
-              setDraft(null);
-              if (Number.isFinite(n)) commit(n);
+              commitDraft();
               e.currentTarget.blur();
             } else if (e.key === 'Escape' && draft !== null) {
               e.preventDefault();
@@ -203,7 +213,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
             }
           }}
         />
-        {unit && <span className="ofk-number-unit">{unit}</span>}
+        {unit && <span className="ofk-number-unit" data-unit={unit}>{unit}</span>}
         {stepper !== 'none' && <IconButton
           variant="quiet"
           label={`Increase ${label}`}

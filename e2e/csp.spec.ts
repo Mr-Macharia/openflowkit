@@ -19,6 +19,6 @@ test('icons, PNG and GIF export load under the production CSP @gate', async ({ p
   await page.getByRole('button', { name: /Animate this page/ }).click();
   await page.getByRole('radio', { name: 'GIF', exact: true }).check();
   const gif = page.waitForEvent('download', { timeout: 60_000 });
-  await page.getByRole('button', { name: /Export GIF/ }).click();
+  await page.getByRole('button', { name: /Download GIF/ }).click();
   expect((await gif).suggestedFilename()).toMatch(/\.gif$/);
 });

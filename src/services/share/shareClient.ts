@@ -38,6 +38,8 @@ async function uploadShare(
 }
 
 async function downloadShare(id: string, origin = SHARE_ORIGIN, fetcher: typeof fetch = fetch): Promise<Uint8Array> {
+  // The id comes from the link's path: anything but the Worker's own shape could steer the request to another path.
+  if (!/^[0-9a-f]{32}$/.test(id)) throw new ShareError('not-found', 'This link is not a share link.');
   const response = await call(fetcher, `${origin}/s/${id}`, { method: 'GET' });
   if (response.status === 404) throw new ShareError('not-found', 'This link was deleted or never existed.');
   if (!response.ok) throw new ShareError('server', `The share service failed (${response.status}). Try again later.`);
@@ -56,6 +58,12 @@ export async function deleteShare(id: string, deleteToken: string, origin = SHAR
  * Link format: `<app>/#/s/<id>/<key>`. The key (base64url, 43 chars) is the last path segment of the
  * fragment, so it is never sent to any server. Path form, not `?k=`, so the hash router parses it unaided.
  */
+/** The app's own address with no query or hash: a v1 room link's `?room=…&secret=…` must never ride into a new link. */
+export function appBaseUrl(href: string): string {
+  const { origin, pathname } = new URL(href);
+  return `${origin}${pathname}`;
+}
+
 export function shareLink(appUrl: string, id: string, key: string): string {
   return `${appUrl.split('#')[0]}#/s/${id}/${key}`;
 }

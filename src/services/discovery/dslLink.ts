@@ -3,10 +3,14 @@ export const MAX_DSL_BYTES = 1024 * 1024;
 /** Chat apps and browsers cut long URLs; the MCP server's open link keeps the same cap. */
 export const MAX_LINK_PAYLOAD = 32 * 1024;
 
-/** The editable-copy link for this code, or null when it is too long to survive being pasted. */
-export async function dslLink(dsl: string, appHref: string): Promise<string | null> {
+/**
+ * The editable-copy link for this code, or null when it is too long to survive being pasted. `title` rides as `t`:
+ * a link without it (the MCP viewer's, every older one) still opens, titled by the app.
+ */
+export async function dslLink(dsl: string, appHref: string, title?: string): Promise<string | null> {
   const payload = await encodeDslPayload(dsl);
-  return payload.length > MAX_LINK_PAYLOAD ? null : `${appHref.split('#')[0]}#/from/dsl?d=${payload}`;
+  const name = title?.trim() ? `&t=${encodeURIComponent(title.trim())}` : '';
+  return payload.length > MAX_LINK_PAYLOAD ? null : `${appHref.split('#')[0]}#/from/dsl?d=${payload}${name}`;
 }
 
 export async function encodeDslPayload(dsl: string): Promise<string> {

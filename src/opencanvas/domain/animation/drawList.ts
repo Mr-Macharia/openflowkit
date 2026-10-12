@@ -13,7 +13,7 @@ import { basicNodeDecorations } from '../nodes/basicNodeDecorations';
 import { nodeLabelBounds, nodeOutline } from '../nodes/nodeLabelBounds';
 import { isBackdropNode, isContainerNodeKind } from '../nodes/containerNodePresentation';
 import { measurePortableText } from '../text/measurement';
-import { resolveNodeSizingPolicy } from '../node-sizing/model';
+import { resolveLabelSizing } from '../node-sizing/labelWrap';
 import { FONT_STACKS, resolveNodeStyle, type NodeStyle } from '../nodes/nodeStyle';
 import { cameraFitMatrix } from './camera';
 import { PULSE_DASH, PULSE_TRAVEL } from './frame';
@@ -218,10 +218,10 @@ function shapeNodeOps(
     }
   }
   const label = typeof node.content.label === 'string' ? node.content.label : node.id;
-  const clip = resolveNodeSizingPolicy(node).clipContent ? outline : null;
+  const sizing = resolveLabelSizing(node, style);
+  const clip = sizing.clipContent ? outline : null;
   const labelBox = nodeLabelBounds(node);
   // A wrapping node (sizing policy) draws its label in the lines the canvas wraps it to, centred as a block.
-  const sizing = resolveNodeSizingPolicy(node);
   const lines = sizing.overflow === 'visible' ? [label] : measurePortableText(label, {
     fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.fontSize * style.lineHeight,
     maxWidth: Math.max(1, node.size.width - style.textPadding * 2), maxLines: sizing.maxLines, overflow: sizing.overflow,

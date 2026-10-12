@@ -6,7 +6,6 @@ import { useDocumentSession } from '../../application/session/useDocumentSession
 import type { PixiRendererHost, PixiRendererStatus } from '../../infrastructure/pixi/PixiRendererHost';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
 import { isImageFile } from '../../../services/storage/assets';
-import { looksLikeMermaid } from '../../../services/dsl/mermaidToDsl';
 import { elkDslLayoutPort } from '../../../services/elk-layout/runtime';
 import { resolveDslIcon } from '../../../services/dsl/iconResolver';
 import { findStarterTemplate } from '../../../agent/starterTemplates';
@@ -66,7 +65,7 @@ import { useV2ArchitectureActions } from './useV2ArchitectureActions';
 import { useV2Assistant } from './useV2Assistant';
 import { useV2Autosave } from './useV2Autosave';
 import { useV2Camera } from './useV2Camera';
-import { useV2CodeWorkspace } from './useV2CodeWorkspace';
+import { looksLikeDiagramCode, useV2CodeWorkspace } from './useV2CodeWorkspace';
 import { useV2ConnectorLabelEditing } from './useV2ConnectorLabelEditing';
 import { useV2DocumentLoad } from './useV2DocumentLoad';
 import { useV2EditActions } from './useV2EditActions';
@@ -298,9 +297,12 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     if (insertsNode(command) && writable(command) && documentRef.current?.pages.every((candidate) => candidate.nodes.length === 0)) track('created_draw');
     commit(command);
   }, [commit, writable]);
+  // A repo map is kept (Recents, last open) once it has files to draw: a typo, a private repo or a rate limit leaves nothing behind.
+  const repoReadable = (repo.state.model?.stats.files ?? 0) > 0;
   const load = useV2DocumentLoad({
     documentId: id,
     initialize: repo.initialize,
+    saveBorn: repoReadable,
     createIfMissing: !id || startIntent !== null || mayCreateDocument(id, lastOpen),
     repository,
     fixed: shared?.document,
@@ -310,7 +312,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
       ...(id ? { action: { label: 'Download the damaged copy', onClick: () => downloadRawRecords(id, 'damaged-copy') } } : {}) }),
   });
   // Only a document that opened becomes the one `/` lands on: never a link that was not found.
-  useEffect(() => { if (id && load.phase === 'ready') rememberLastDocument(id); }, [id, load.phase]);
+  useEffect(() => { if (id && load.phase === 'ready' && (repo.source === null || repoReadable)) rememberLastDocument(id); }, [id, load.phase, repo.source, repoReadable]);
   // Map mode: a lens on the page's model. The canvas draws `viewPage`; commands, undo and autosave still see `page`.
   const docReadOnly = load.readOnly || repo.broken || repoPage;
   const { openWorkspace } = panels;
@@ -363,10 +365,10 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
   });
   // Zoom to fit takes what is on screen: the map's own fit in Map mode.
   const fitAll = () => (map.active ? map.fit() : camera.fitView());
-  // A repo map's first visit opens its outline beside it.
+  // A repo map's first visit opens its outline beside it, once there is a map: a state screen (failure, empty repo) has no side panel.
   useEffect(() => {
-    if (repoPage && map.active && session.document && firstMapVisit(session.document.id)) openWorkspace('model');
-  }, [repoPage, map.active, session.document, openWorkspace]);
+    if (repoPage && map.active && repoReadable && session.document && firstMapVisit(session.document.id)) openWorkspace('model');
+  }, [repoPage, map.active, repoReadable, session.document, openWorkspace]);
   // Choosing a Create tool on Map's start screen goes back to Canvas with it armed.
   const leaveStart = <A extends unknown[], R>(action: (...args: A) => R) => (...args: A): R => {
     if (map.start) map.choose('canvas');
@@ -379,6 +381,14 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     if (!document || !page || !map.mapPage || map.start) return document;
     return { ...document, pages: document.pages.map((candidate) => (candidate.id === page.id ? { ...map.mapPage!, id: page.id } : candidate)) };
   }, [session.document, page, map.mapPage, map.start]);
+  // The browser tab names the diagram; the default title returns when the editor closes (Home).
+  const documentName = session.document?.name;
+  useEffect(() => {
+    if (!documentName) return;
+    const previous = document.title;
+    document.title = `${documentName} · OpenFlowKit`;
+    return () => { document.title = previous; };
+  }, [documentName]);
   const undo = () => {
     const undone = session.canUndo;
     session.undo();
@@ -453,7 +463,12 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     if (!startIntent || load.phase !== 'ready' || !page) return;
     navigate(location.pathname, { replace: true, state: null });
     if ('start' in startIntent) openWorkspace(startIntent.start);
-    else if ('source' in startIntent) void code.startFrom(startIntent.source, { baseline: true }).then(counted(startIntent.via === 'repo' ? 'created_map' : 'created_import'));
+    else if ('source' in startIntent) {
+      // The title is set before the draw: the draw forgets undo history, so naming is not an undo step.
+      const { name } = startIntent;
+      if (name && name !== session.document!.name) commit({ kind: 'set-document-name', id: `rename-document:${session.document!.id}`, label: 'Rename document', before: session.document!.name, after: name });
+      void code.startFrom(startIntent.source, { baseline: true }).then(counted(startIntent.via === 'repo' ? 'created_map' : 'created_import'));
+    }
     else if ('template' in startIntent) { // a repoMap intent needs nothing here: the document was born with its source
       const template = findStarterTemplate(startIntent.template);
       if (template) void code.startFrom(template.dsl, { baseline: true }).then(counted('created_template'));
@@ -510,10 +525,12 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
 
   const ghostPage = useV2ProposalPreview(proposal, hostRef, rendererReady, camera.revealBounds);
 
+  const revisionRef = useRef(session.revision);
+  revisionRef.current = session.revision;
   const pages = useV2Pages({
     document: session.document, pageId: page?.id ?? null, readOnly: load.readOnly || repo.broken, lockedPageId: repo.lockedPageId,
     commit: commit, onSelect: setActivePageId, mintId: mintV2Id,
-    announce: setAnnouncement,
+    announce: setAnnouncement, toast: pushToast, undo: () => session.undo(), revision: () => revisionRef.current,
   });
   // A page switch lands on that page's content, readable (never below the label floor);
   // the canvas only ever renders one page, so the landing is already page-scoped.
@@ -835,7 +852,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     for (const file of files) void media.insertImageFile(file, at);
   };
   // ⌘V arrives here as the native paste event (the keyboard hook leaves it alone): a text field pastes into itself;
-  // on the canvas, images, then our own copied shapes, image URLs, Mermaid (drawn in place), and last the in-memory copy.
+  // on the canvas, images, then our own copied shapes, image URLs, diagram code (drawn in place), and last the in-memory copy.
   const handlePaste = (event: Pick<ClipboardEvent, 'target' | 'clipboardData' | 'preventDefault'>) => {
     editActions.pasteEventArrived();
     if (isEditableTarget(event.target) || editLocked) return;
@@ -851,12 +868,15 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
     } else if (IMAGE_URL_PATTERN.test(text)) {
       event.preventDefault();
       media.insertImageUrl(text);
-    } else if (looksLikeMermaid(text)) {
+    } else if (looksLikeDiagramCode(text)) {
       // The code panel converts and draws it as one undo step, its source open beside it.
       event.preventDefault();
       void code.startFrom(text).then(counted('created_import'));
     } else if (editActions.pasteShapes()) {
       event.preventDefault();
+    } else if (text) {
+      event.preventDefault();
+      pushToast({ id: 'paste-text', tone: 'info', title: `Pasted text isn’t a diagram — open Diagram as code (${platformKeys('⌥C')}) to convert it` });
     }
   };
   pasteRef.current = handlePaste;
@@ -1262,7 +1282,7 @@ export function V2EditorPage({ shared }: { readonly shared?: V2SharedView } = {}
                 renameRequest={renameRequest}
                 mapArrow={mapArrow}
                 {...(repoPanel.box ? { mapBox: repoPanel.box } : {})}
-                {...(map.active && map.model ? { mapOverview: { model: map.model, arch: map.arch, onSelect: map.reveal } } : {})}
+                {...(map.active && map.model ? { mapOverview: { model: map.model, arch: map.arch, onSelect: map.reveal, reading: repoSource !== null && repo.state.status === 'loading' } } : {})}
                 placedElementIds={placedElementIds}
                 perspectiveTags={preferences.perspectiveTags}
                 onPerspectiveChange={(tags) => updatePreferences({ perspectiveTags: [...tags] })}

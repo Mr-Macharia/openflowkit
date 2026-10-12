@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import {
   IconAlertTriangle, IconArrowBackUp, IconArrowUpRight, IconBook2, IconBrandGithub, IconBulb, IconChevronDown, IconClock, IconFileImport, IconHierarchy2,
   IconKeyboard, IconLayoutGrid, IconLayoutList, IconLock, IconMoon, IconPlus, IconSearch, IconSparkles, IconSpeakerphone, IconStar,
-  IconArchive, IconStarFilled, IconSun, IconTemplate, IconTrashX, IconUpload, IconX,
+  IconArchive, IconDownload, IconStarFilled, IconSun, IconTemplate, IconTrashX, IconUpload, IconX,
 } from '@tabler/icons-react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { HomeNotice } from './V2LegacyRoutes';
@@ -13,9 +13,10 @@ import {
 import { CommandPalette, type Command } from '../design-system/CommandPalette';
 import { createV2Repository, type V2DocumentSummary, type V2Thumbnail } from '../../../services/storage/v2/v2Repository';
 import { describeStorageFailure } from '../../../services/storage/v2/v2Errors';
-import { UNTITLED_DOCUMENT_NAME } from '../../domain/document/defaults';
-import { isV1Backup, openV1Backup, readV1ImportMarker, runV1Import } from '../../../services/storage/v2/v1Import';
-import { documentFromFileText } from '../../../services/storage/v2/openDocumentFile';
+import { plainImportFailure } from '../../domain/document/legacyWorkspace';
+import { readV1ImportMarker, runV1Import } from '../../../services/storage/v2/v1Import';
+import { buildV2Backup, importFiles as importDocumentFiles, readAllDocuments } from '../../../services/storage/v2/backup';
+import { downloadTextFile } from './v2Export';
 import { track } from '../../../services/usage/usage';
 import { buildV2Thumbnail } from './v2Thumbnail';
 import { STARTER_TEMPLATES } from '../../../agent/starterTemplates';
@@ -58,8 +59,6 @@ const VIEWS: readonly { view: HomeView; title: string; icon: IconComponent }[] =
   { view: 'archive', title: 'Archive', icon: IconArchive },
 ];
 const SORTS: readonly { sort: HomeSort; title: string }[] = [{ sort: 'edited', title: 'Last edited' }, { sort: 'name', title: 'Name' }];
-/** A text diagram rides in router state to the editor; past this it is not a diagram anyone typed. */
-const MAX_IMPORT_CHARS = 2_000_000;
 
 /** Keys meant for a field, a menu's typeahead or a dialog are not page shortcuts. */
 const typing = (target: EventTarget | null) =>
@@ -80,6 +79,8 @@ export function V2HomePage(): React.JSX.Element {
   const [documents, setDocuments] = useState<readonly V2DocumentSummary[] | null>(null);
   const [archive, setArchive] = useState<readonly V2DocumentSummary[] | null>(null);
   const [thumbnails, setThumbnails] = useState<ReadonlyMap<string, V2Thumbnail | null>>(new Map());
+  const [thumbnailsListed, setThumbnailsListed] = useState(false);
+  const previewed = useRef(new Set<string>());
   // An old link that found nothing, or an opened backup, arrives with a notice in router state;
   // clear it so a reload or Back does not show it again.
   const location = useLocation();
@@ -117,13 +118,31 @@ export function V2HomePage(): React.JSX.Element {
       (error: unknown) => setListError(describeStorageFailure(error)));
     repository.listArchive().then(setArchive, () => setArchive([]));
     // A preview that fails to load is a placeholder, never an error.
-    repository.listThumbnails().then(setThumbnails, () => undefined);
+    repository.listThumbnails().then((listed) => { setThumbnails(listed); setThumbnailsListed(true); }, () => undefined);
   }, [repository]);
   // List at once, and again when a v1 import still running on this load lands.
   useEffect(() => {
     refresh();
     runV1Import().then(refresh, () => undefined);
   }, [repository, refresh]);
+  // An editor save draws a card's preview; a diagram brought over from v1 has had none, so draw them
+  // here, one at a time, once each. A failure leaves the placeholder.
+  useEffect(() => {
+    if (!documents || !thumbnailsListed) return;
+    const todo = documents.filter(({ id }) => id.startsWith('v1-') && !thumbnails.has(id) && !previewed.current.has(id));
+    todo.forEach(({ id }) => previewed.current.add(id));
+    void (async () => {
+      for (const { id } of todo) {
+        try {
+          const loaded = await repository.loadDocument(id);
+          if (loaded.status !== 'ok' && loaded.status !== 'recovered') continue;
+          const thumbnail = await buildV2Thumbnail(loaded.record.document);
+          await repository.saveThumbnail(id, thumbnail);
+          setThumbnails((current) => new Map(current).set(id, thumbnail));
+        } catch { /* the placeholder stays */ }
+      }
+    })();
+  }, [documents, thumbnails, thumbnailsListed, repository]);
   useEffect(() => { renameRef.current?.select(); }, [renaming?.id]);
   // Visiting What's new is what reads it.
   useEffect(() => {
@@ -259,54 +278,34 @@ export function V2HomePage(): React.JSX.Element {
       toast({ tone: 'danger', title: 'Nothing here to import', description: 'OpenFlowKit imports its own .json files, and Mermaid, D2, Structurizr or OpenFlow DSL text files.' });
       return;
     }
-    const sources = usable.filter((file) => importKind(file.name) === 'source');
+    const report = await importDocumentFiles(usable, repository, () => mintV2Id('doc'));
     // A text diagram is drawn by the editor's compiler, so it opens there — one at a time.
-    if (usable.length === 1 && sources.length === 1) {
-      const text = await sources[0]!.text();
-      if (text.length > MAX_IMPORT_CHARS) toast({ tone: 'danger', title: `“${sources[0]!.name}” is too big to draw` });
-      else create({ source: text });
-      return;
-    }
-    let imported = 0;
-    const problems: string[] = [];
-    // What opening a file had to change (a v1 edge to a deleted shape), said once per file.
-    const notes: string[] = [];
-    for (const file of usable.filter((candidate) => importKind(candidate.name) === 'json')) {
-      try {
-        const text = await file.text();
-        let parsed: unknown = null;
-        try { parsed = JSON.parse(text); } catch { /* documentFromFileText reports it */ }
-        if (isV1Backup(parsed)) {
-          const report = await openV1Backup(parsed, repository);
-          imported += report.opened.length;
-          problems.push(...report.failures.map((failure) => failure.name));
-          continue;
-        }
-        const opened = documentFromFileText(text, mintV2Id('doc'));
-        if ('error' in opened) { problems.push(`${file.name}: ${opened.error}`); continue; }
-        if (opened.notice) notes.push(`${file.name}: ${opened.notice}`);
-        const untitled = !opened.document.name || opened.document.name === UNTITLED_DOCUMENT_NAME;
-        const document = untitled ? { ...opened.document, name: file.name.replace(/\.json$/i, '') } : opened.document;
-        const saved = await repository.saveDocument(document.id, document, 1);
-        if (saved.status === 'saved') {
-          imported += 1;
-          // The card's preview is otherwise drawn only by an editor save; it arrives after the list.
-          void buildV2Thumbnail(document).then((thumbnail) => repository.saveThumbnail(document.id, thumbnail))
-            .then(() => repository.listThumbnails()).then(setThumbnails, () => undefined);
-        } else problems.push(file.name);
-      } catch {
-        problems.push(file.name);
-      }
-    }
+    if (report.draw) { create({ source: report.draw.source, name: report.draw.name }); return; }
     refresh();
-    if (imported > 0) track('created_import');
-    if (sources.length) problems.push(`${plural(sources.length, 'text file')} (drop those one at a time)`);
-    const description = [...(problems.length ? [`Couldn’t open ${problems.join('; ')}`.replace(/([^.])$/, '$1.')] : []), ...notes].join(' ');
+    if (report.count > 0) track('created_import');
+    // The card's preview is otherwise drawn only by an editor save; they arrive after the list.
+    void (async () => {
+      for (const document of report.documents) {
+        try { await repository.saveThumbnail(document.id, await buildV2Thumbnail(document)); } catch { /* the placeholder stays */ }
+      }
+      repository.listThumbnails().then(setThumbnails, () => undefined);
+    })();
+    const description = [...(report.problems.length ? [`Couldn’t open ${report.problems.join('; ')}`.replace(/([^.])$/, '$1.')] : []), ...report.notes].join(' ');
     toast({
-      tone: problems.length ? (imported ? 'warning' : 'danger') : notes.length ? 'warning' : 'success',
-      title: imported ? `Imported ${plural(imported, 'diagram')}` : 'Nothing was imported',
+      tone: report.problems.length ? (report.count ? 'warning' : 'danger') : report.notes.length ? 'warning' : 'success',
+      title: report.count ? `Imported ${plural(report.count, 'diagram')}` : 'Nothing was imported',
       ...(description ? { description } : {}),
     });
+  }
+
+  async function downloadAll(): Promise<void> {
+    try {
+      const documents = await readAllDocuments(repository);
+      if (!documents.length) { toast({ tone: 'info', title: 'No diagrams to download yet' }); return; }
+      const backup = buildV2Backup(documents);
+      downloadTextFile(`openflowkit-diagrams-${backup.exportedAt.slice(0, 10)}.json`, JSON.stringify(backup), 'application/json');
+      toast({ tone: 'success', title: `Downloaded ${plural(documents.length, 'diagram')}`, description: 'One file. Import it here to bring them back.' });
+    } catch (error) { fail(error); }
   }
 
   const select = (id: string, range: boolean) => {
@@ -591,6 +590,9 @@ export function V2HomePage(): React.JSX.Element {
               <span className="ofk-home-local-icon"><Icon icon={IconLock} /></span>
               <p><strong>Private by default</strong>Saved in this browser. No account, no upload.</p>
             </div>
+            <button type="button" className="ofk-home-nav-item" onClick={() => { void downloadAll(); }}>
+              <Icon icon={IconDownload} /><span>Download all diagrams</span>
+            </button>
             <Link to={viewLink('news')} className="ofk-home-nav-item" aria-current={view === 'news' ? 'page' : undefined}>
               <Icon icon={IconSpeakerphone} />
               <span>What’s new</span>
@@ -655,7 +657,7 @@ export function V2HomePage(): React.JSX.Element {
                 <Icon icon={IconAlertTriangle} />
                 <div>
                   <p><strong>{failed.length === 1 ? '1 diagram' : `${failed.length} diagrams`} from the previous editor didn’t come over yet.</strong> {failed.length === 1 ? 'It’s' : 'They’re'} safe in this browser.</p>
-                  <ul>{failed.map(([v1Id, entry]) => <li key={v1Id}>{entry.name ?? v1Id}: {entry.error}</li>)}</ul>
+                  <ul>{failed.map(([v1Id, entry]) => <li key={v1Id} title={entry.error}>Couldn’t bring over “{entry.name ?? v1Id}”: {plainImportFailure(entry.error)}</li>)}</ul>
                 </div>
                 {/* The import runs once per page load; a reload is the retry. */}
                 <Button variant="quiet" onClick={() => window.location.reload()}>Try again</Button>

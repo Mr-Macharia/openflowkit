@@ -70,7 +70,8 @@ export function graphText(scene: DslFrameScene, options: GraphTextOptions = {}):
   const nameOf = (node: SceneNode): string => {
     // A group whose name a node also carries is named by its id, or the edge would end on the node (§4).
     if (groupIds.has(node.id) && nodeNames.has(nodeReference(node))) return `${node.id} = ${quote(nodeReference(node))}`;
-    return options.nodeRef?.(node) ?? (shared(node) ? node.id : nodeName(node));
+    // A node declared `id = Label` is named by its id on edges (§6.2); the declaration line carries the label.
+    return options.nodeRef?.(node) ?? (shared(node) || slugifyDslId(nodeReference(node)) !== node.id ? node.id : nodeName(node));
   };
   const edgeLine = (connector: SceneConnector): string | undefined => {
     const source = connector.source.nodeId ? byId.get(connector.source.nodeId) : undefined;

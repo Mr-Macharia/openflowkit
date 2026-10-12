@@ -23,13 +23,13 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
-import { documentFromFileText } from '../../../services/storage/v2/openDocumentFile';
+import { importFiles, importSummary } from '../../../services/storage/v2/backup';
 import { track } from '../../../services/usage/usage';
-import { buildV1Backup, isV1Backup, openV1Backup, readV1ImportMarker } from '../../../services/storage/v2/v1Import';
+import { buildV1Backup, readV1ImportMarker } from '../../../services/storage/v2/v1Import';
 import { downloadTextFile } from './v2Export';
 import type { HomeNotice } from './V2LegacyRoutes';
-import { mintV2Id } from './v2Document';
-import { copyName } from './homeLibrary';
+import { mintV2Id, type V2StartIntent } from './v2Document';
+import { IMPORT_ACCEPT, copyName } from './homeLibrary';
 import { DOCS_URL } from './homeStars';
 import {
   Button,
@@ -78,7 +78,6 @@ interface V2DocumentBarProps extends V2SettingsProps {
   /** Map mode: the selected box's path (ancestors, then the box), and the way to select an ancestor. */
   readonly mapPath?: readonly { readonly id: string; readonly label: string }[];
   readonly onMapPath?: (id: string) => void;
-  /** Canvas | Map, present only when the page belongs to an architecture model. */
   readonly mapMode?: { readonly mode: 'canvas' | 'map'; readonly onChange: (mode: 'canvas' | 'map') => void };
 }
 
@@ -92,7 +91,7 @@ function saveLabel(status: V2SaveStatus): { tone: 'neutral' | 'success' | 'warni
     case 'saved':
       return { tone: 'success', text: 'Saved', icon: IconCloudCheck };
     case 'conflict':
-      return { tone: 'warning', text: 'Another tab saved first — reload, or save yours as a copy', icon: IconCloudOff };
+      return { tone: 'warning', text: 'Changed in another tab. Reload loses this tab’s last edits.', icon: IconCloudOff };
     case 'failed':
       if (status.reason === 'invalid') return { tone: 'danger', text: status.message, icon: IconCloudOff };
       return status.reason === 'quota'
@@ -165,35 +164,28 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
       .finally(() => setCopying(false));
   };
 
-  // Open a .json file (our export or a V1 file) as a new document and go there.
+  // Open files (our .json or a backup, a V1 file, diagram text) as new diagrams, the way Home's Import does, and go there.
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
-  const openFile = async (file: File): Promise<void> => {
-    const text = await file.text();
-    let parsed: unknown = null;
-    try { parsed = JSON.parse(text); } catch { /* documentFromFileText reports it */ }
-    if (isV1Backup(parsed)) {
-      // 12.1's "Export all my diagrams" file: every diagram in it, then the list.
-      const { opened, existing, failures } = await openV1Backup(parsed, createV2Repository(window.indexedDB));
-      if (opened.length) track('created_import');
-      const parts = [`Opened ${opened.length} ${opened.length === 1 ? 'diagram' : 'diagrams'} from the backup.`];
-      if (existing) parts.push(`${existing} ${existing === 1 ? 'was' : 'were'} already here and kept as is.`);
-      if (failures.length) parts.push(`${failures.length} could not be opened: ${failures.map((failure) => failure.name).join(', ')}.`);
-      navigate('/home', { state: { notice: parts.join(' '), tone: failures.length ? 'warning' : 'success' } satisfies HomeNotice });
+  // A file the person picked is always tried (a renamed backup still opens); what isn't a diagram says so below.
+  const openFiles = async (files: readonly File[]): Promise<void> => {
+    if (!files.length) return;
+    const report = await importFiles(files, createV2Repository(window.indexedDB), () => mintV2Id('doc'));
+    if (report.draw) { navigate(`/d/${mintV2Id('doc')}`, { state: { source: report.draw.source, name: report.draw.name } satisfies V2StartIntent }); return; }
+    if (report.count) track('created_import');
+    const failed = report.problems.length > 0;
+    if (report.count === 1 && !failed && report.firstId) {
+      navigate(`/d/${report.firstId}`, report.notes.length ? { state: { openedNotice: report.notes.join(' ') } } : undefined);
       return;
     }
-    const opened = documentFromFileText(text, mintV2Id('doc'));
-    if ('error' in opened) {
-      props.onToast({ id: `toast-${Date.now()}`, tone: 'danger', title: 'Couldn’t open that file', description: opened.error });
+    if (!report.count) {
+      props.onToast({ id: `toast-${Date.now()}`, tone: 'danger', title: 'Couldn’t open that file', description: report.problems.join('; ') });
       return;
     }
-    const saved = await createV2Repository(window.indexedDB).saveDocument(opened.document.id, opened.document, 0);
-    if (saved.status !== 'saved') {
-      toast('Couldn’t save the opened file', 'danger');
-      return;
-    }
-    track('created_import');
-    navigate(`/d/${opened.document.id}`, opened.notice ? { state: { openedNotice: opened.notice } } : undefined);
+    const parts = [importSummary(report)];
+    if (failed) parts.push(`Couldn’t open ${report.problems.join('; ')}.`);
+    parts.push(...report.notes);
+    navigate('/home', { state: { notice: parts.join(' '), tone: failed || report.notes.length ? 'warning' : 'success' } satisfies HomeNotice });
   };
   // What opening the file had to change, told once in the new document's editor.
   const location = useLocation();
@@ -242,9 +234,9 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
                 if (event.key === 'Escape') { event.preventDefault(); finishRename(false); }
               }} />
           ) : (
-            <Button variant="quiet" className="ofk-v2-document-title" title="Rename diagram"
+            <Button variant="quiet" className="ofk-v2-document-title" title={props.document.name}
               onClick={startRename}>
-              {props.document.name}
+              <span className="ofk-v2-document-title-text">{props.document.name}</span>
             </Button>
           )}
           {props.mapMode ? (
@@ -281,8 +273,7 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
             <Button ref={pagesRef} variant="quiet" aria-expanded={panel === 'pages'} aria-haspopup="dialog"
               aria-label={`Pages (current: ${activePageName})`}
               onClick={() => togglePanel('pages')}>
-              {props.breadcrumb?.length ? 'Pages' : activePageName}
-              {props.pages.pages.length > 1 ? <span className="ofk-v2-page-total">{` / ${props.pages.pages.length}`}</span> : null}
+              {`${props.pages.pages.length} ${props.pages.pages.length === 1 ? 'page' : 'pages'}`}
             </Button>
           </Tooltip>
           <Tooltip content={props.readOnly ? 'Read-only' : save.text}>
@@ -305,8 +296,9 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
           ) : null}
           {props.saveStatus.state === 'conflict' ? (
             <>
+              <span className="ofk-v2-conflict-note" title="Changed in another tab. Reload loses this tab’s last edits.">Changed in another tab. Reload loses this tab’s last edits.</span>
               <Button variant="quiet" onClick={props.onReload}>
-                Reload
+                Discard and reload
               </Button>
               <Button variant="quiet" onClick={() => void saveCopy().catch((error: unknown) =>
                 toast(error instanceof Error ? error.message : 'Couldn’t save a copy', 'danger'))}>
@@ -353,11 +345,11 @@ export function V2DocumentBar(props: V2DocumentBarProps): React.JSX.Element {
         <MenuItem icon={<Icon icon={IconBook2} />} onSelect={() => { window.open(DOCS_URL, '_blank', 'noopener'); }}>Docs</MenuItem>
         <MenuItem icon={<Icon icon={IconMessageCircle} />} onSelect={() => openPanel('feedback')}>Send feedback…</MenuItem>
       </Menu>
-      <input ref={fileRef} type="file" accept=".json,application/json" hidden aria-hidden="true" tabIndex={-1}
+      <input ref={fileRef} type="file" accept={IMPORT_ACCEPT} multiple hidden aria-hidden="true" tabIndex={-1}
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
+          const files = [...(event.currentTarget.files ?? [])];
           event.currentTarget.value = '';
-          if (file) void openFile(file).catch((error: unknown) => toast(error instanceof Error ? error.message : 'Couldn’t open the file', 'danger'));
+          if (files.length) void openFiles(files).catch((error: unknown) => toast(error instanceof Error ? error.message : 'Couldn’t open the file', 'danger'));
         }} />
       <V2Settings open={panel === 'settings'} anchorRef={settingsRef} onClose={() => closePanel('settings')}
         preferences={props.preferences} canvasDefaultColor={props.canvasDefaultColor}

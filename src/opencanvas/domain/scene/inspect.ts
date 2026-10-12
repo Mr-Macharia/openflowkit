@@ -148,6 +148,9 @@ function inspectNode(page: ScenePage, node: SceneNode): InspectReport {
   };
 }
 
+/** The panel paints this as a CSS background: only a plain colour, never `url(...)` (user JSON could beacon on open). Same rule as the connector draw list. */
+const safeSwatch = (value: string) => (/^(?:#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(value) ? { swatch: value } : {});
+
 function inspectConnector(page: ScenePage, connector: SceneConnector): InspectReport {
   const byId = new Map(page.nodes.map((node) => [node.id, node]));
   const appearance = connector.appearance;
@@ -158,7 +161,7 @@ function inspectConnector(page: ScenePage, connector: SceneConnector): InspectRe
     { label: 'Route', value: ROUTE_NAMES[connector.route.kind] ?? connector.route.kind },
     { label: 'Line', value: text(appearance.dashPattern) || text(appearance.strokeStyle) || 'solid' },
     { label: 'Arrows', value: `${text(appearance.markerStart) || 'none'} → ${text(appearance.markerEnd) || 'none'}` },
-    ...(text(appearance.stroke) ? [{ label: 'Stroke', value: text(appearance.stroke), swatch: text(appearance.stroke) }] : []),
+    ...(text(appearance.stroke) ? [{ label: 'Stroke', value: text(appearance.stroke), ...safeSwatch(text(appearance.stroke)) }] : []),
   ];
   const label = connector.labels.map((entry) => entry.text).filter(Boolean).join(' · ');
   return {

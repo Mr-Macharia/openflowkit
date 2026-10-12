@@ -21,6 +21,10 @@ function parseReference(tokens: readonly DslToken[], diagnostics: DslDiagnostic[
   if (!label) return undefined;
   const first = parsed.body[0]!;
   const last = parsed.body.at(-1)!;
+  // `group edge "Edge"` (Mermaid's `subgraph id [Label]`): the label is "edge Edge" — still parsed so, but say how to name it.
+  if (equals < 0 && parsed.body.length === 2 && first.kind === 'word' && last.kind === 'string') {
+    diagnostics.push(tokenDiagnostic('W101', 'warning', first, `\`${first.value} "${last.value}"\` reads as one label, "${label}"`, `${first.value} = "${last.value}"`));
+  }
   const written = equals >= 0 ? joinTokens(parsed.body.slice(0, equals)) : undefined;
   let id = written;
   if (written && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(written)) {
@@ -157,6 +161,13 @@ interface GraphParseOptions {
   readonly reservedRecords?: ReadonlySet<string>;
 }
 
+/** The declaration that replaces `… -> Name{Text}`, or undefined when the line is not that. */
+function inlineShapeHint(tokens: readonly DslToken[], inner: string): string | undefined {
+  const name = tokens.at(-1);
+  if (!tokens.some((token) => token.kind === 'arrow') || name?.kind !== 'word' || !inner) return undefined;
+  return `${name.value} = "${inner}" [diamond]`;
+}
+
 export function parseGraphStatements(segments: readonly DslSegment[], diagnostics: DslDiagnostic[], options: GraphParseOptions = {}): DslStatement[] {
   const reservedRecords = options.reservedRecords ?? RESERVED_RECORDS;
   const statements: DslStatement[] = [];
@@ -175,7 +186,14 @@ export function parseGraphStatements(segments: readonly DslSegment[], diagnostic
     }
   }
   let mermaidSubgraphs = 0;
+  let skippedDepth = 0;
   for (const segment of segments) {
+    // The rest of a Mermaid `Name{Text}` already reported on its edge line.
+    if (skippedDepth > 0) {
+      if (segment.opens) skippedDepth += 1;
+      else if (segment.closes) skippedDepth -= 1;
+      continue;
+    }
     const current = stack.at(-1)!.statements;
     if (segment.tokens[0]?.kind === 'comment') continue;
     if (segment.closes) {
@@ -199,6 +217,13 @@ export function parseGraphStatements(segments: readonly DslSegment[], diagnostic
     if (keyword === 'end' && segment.tokens.length === 1 && mermaidSubgraphs > 0) {
       mermaidSubgraphs -= 1;
       diagnostics.push(tokenDiagnostic('W101', 'warning', firstToken, "Mermaid's `end` closes a subgraph; line dropped", '}'));
+      continue;
+    }
+    // `Start -> Check{Valid?}`: Mermaid's diamond, which here is a node with a shape.
+    const shape = segment.opens && oneLineBlocks.has(segment) ? inlineShapeHint(segment.tokens, oneLineBlocks.get(segment)!) : undefined;
+    if (shape) {
+      skippedDepth = 1;
+      diagnostics.push(tokenDiagnostic('W101', 'warning', firstToken, `\`{…}\` on an edge line is Mermaid's diamond; declare the node with a shape instead — line dropped`, shape));
       continue;
     }
     const edge = parseEdge(segment.tokens, diagnostics);
@@ -239,6 +264,11 @@ export function parseGraphStatements(segments: readonly DslSegment[], diagnostic
       if (node) {
         statement = { kind: 'node', node, ...(reservedKind ? { reservedKind } : {}), raw: joinTokens(segment.tokens), line: firstToken.line, col: firstToken.col, endCol: lastToken.endCol };
         current.push(statement);
+      } else if (reservedKind) {
+        // `queue [tech: Kafka]`: the id agents and people reach for first is a declaration keyword.
+        diagnostics.push(tokenDiagnostic('W101', 'warning', firstToken, `\`${keyword}\` is a keyword, so this line names no node; dropped`,
+          `${keyword} name [...]  or  "${keyword}" [...]`));
+        continue;
       }
     }
     if (!statement) diagnostics.push(tokenDiagnostic('W101', 'warning', firstToken, 'Line could not be parsed; dropped'));

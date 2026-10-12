@@ -55,7 +55,9 @@ export interface V2DocumentRepository {
     id: string,
     document: SceneDocumentV1,
     revision: number,
-    expectedRevision?: number
+    expectedRevision?: number,
+    /** The time the content was last edited, when that is not now: a copy of an older document (the v1 import). */
+    savedAt?: string
   ) => Promise<SaveV2DocumentResult>;
   readonly loadDocument: (id: string) => Promise<LoadV2DocumentResult>;
   /** Every stored document not archived, most recently saved first. */
@@ -88,6 +90,8 @@ export interface V2DocumentSummary {
   readonly savedAt: string;
   readonly pageCount: number;
   readonly pageIds: readonly string[];
+  /** Lowercase page names and box labels, one per line, for Home's search: made once per list, from documents the list reads anyway. */
+  readonly searchText: string;
   readonly archivedAt?: string;
 }
 
@@ -171,7 +175,8 @@ async function saveRecord(
   id: string,
   document: SceneDocumentV1,
   revision: number,
-  expectedRevision: number
+  expectedRevision: number,
+  savedAt = new Date().toISOString()
 ): Promise<SaveV2DocumentResult> {
   // Never store what would load as damaged: refuse it while the editor still holds the document.
   // Checked in place, not through migrateSceneDocument: its copy is most of a save's cost on a large diagram.
@@ -208,7 +213,7 @@ async function saveRecord(
       revision,
       schemaVersion: document.schemaVersion,
       document,
-      savedAt: new Date().toISOString(),
+      savedAt,
     };
     await requestToPromise(documents.put(record));
     // A saved indicator resolves only after durable commit, not after put.
@@ -254,6 +259,12 @@ export async function readRawV2Records(factory: IDBFactory | null, id: string): 
   }));
 }
 
+function searchText(document: SceneDocumentV1): string {
+  const pages = Array.isArray(document.pages) ? document.pages : [];
+  return pages.flatMap((page) => [page.name, ...(Array.isArray(page.nodes) ? page.nodes.map((node) => node.content?.label) : [])])
+    .filter((text): text is string => typeof text === 'string' && text !== '').join('\n').toLowerCase();
+}
+
 // ponytail: reads every whole document to list a few fields — fine for one person's diagrams;
 // a summary store written beside each save is the upgrade if lists get slow.
 async function listRecords(database: IDBDatabase, archived: boolean): Promise<V2DocumentSummary[]> {
@@ -267,6 +278,7 @@ async function listRecords(database: IDBDatabase, archived: boolean): Promise<V2
       savedAt: record.savedAt,
       pageCount: Array.isArray(record.document.pages) ? record.document.pages.length : 0,
       pageIds: Array.isArray(record.document.pages) ? record.document.pages.map((page) => page.id) : [],
+      searchText: searchText(record.document),
       ...(archived ? { archivedAt: record.archivedAt } : {}),
     }))
     .sort(archived ? (a, b) => (a.archivedAt! < b.archivedAt! ? 1 : -1) : (a, b) => (a.savedAt < b.savedAt ? 1 : -1));
@@ -327,14 +339,24 @@ async function withDatabase<T>(factory: IDBFactory | null, action: string, run: 
   }
 }
 
+let persistAsked = false;
+/** Once per session, after the first durable save: ask the browser not to evict this storage (Safari clears idle sites' storage after 7 days). Best effort. */
+function askForPersistentStorage(): void {
+  if (persistAsked) return;
+  persistAsked = true;
+  try { void navigator.storage?.persist?.().catch(() => undefined); } catch { /* unsupported */ }
+}
+
 // v2 records live in dedicated stores, never alongside v1 records; the
 // store name is the namespace, so keys need no prefix.
 export function createV2Repository(factory: IDBFactory | null): V2DocumentRepository {
   return {
-    saveDocument: async (id, document, revision, expectedRevision = revision - 1) => {
+    saveDocument: async (id, document, revision, expectedRevision = revision - 1, savedAt) => {
       const database = await openV2Database(factory);
       try {
-        return await saveRecord(database, id, document, revision, expectedRevision);
+        const result = await saveRecord(database, id, document, revision, expectedRevision, savedAt);
+        if (result.status === 'saved') askForPersistentStorage();
+        return result;
       } finally {
         database.close();
       }

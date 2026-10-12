@@ -5,8 +5,8 @@
 //                  that window, against the document the user sees.
 //   • file mode  — a `.openflow.json` document opened in this process; the op
 //                  runs here with the file host capabilities (no raster).
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -67,12 +67,32 @@ const exportPathField = z.string().min(1).optional()
 
 type ExportFile = { mime: string; text?: string; base64?: string };
 
+/** realpath of the nearest existing ancestor plus the not-yet-created tail, so a symlink anywhere on the way is followed. */
+async function realTarget(path: string): Promise<string> {
+  try { return await realpath(path); } catch {
+    const parent = dirname(path);
+    return parent === path ? path : join(await realTarget(parent), basename(path));
+  }
+}
+
+/** The one rule for every file the server writes for an agent: resolved (symlinks included) inside the working directory. */
+async function insideWorkingDirectory(target: string): Promise<string> {
+  const root = process.cwd();
+  const resolved = resolve(root, target);
+  const inside = relative(await realpath(root), await realTarget(resolved));
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error(`path must be inside the server's working directory (${root}); "${target}" resolves outside it, symlinks included. Use a relative path such as "diagram.openflow.json".`);
+  return resolved;
+}
+
+/** openflow_save writes documents only: an agent steered by a shared diagram must not overwrite ~/.zshrc or a script. */
+async function savePathFor(target: string): Promise<string> {
+  if (!/\.(json|ofk)$/i.test(target)) throw new Error(`openflow_save writes .openflow.json, .ofk or .json files only; "${target}" is none of them. Rename it, e.g. "${basename(target)}.openflow.json".`);
+  return insideWorkingDirectory(target);
+}
+
 /** Writes the one exported file to `target` inside the working directory; the server owns disk IO in both modes. */
 async function saveExport(output: unknown, target: string): Promise<{ saved: string; bytes: number; mime: string }> {
-  const root = process.cwd();
-  const saved = resolve(root, target);
-  const inside = relative(root, saved);
-  if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error(`path must be inside the server's working directory (${root}).`);
+  const saved = await insideWorkingDirectory(target);
   const files = (output as { files?: readonly ExportFile[] }).files ?? [];
   if (files.length !== 1) throw new Error(`This export is ${files.length} files; pass scope: "page" (or a pageId) to write one.`);
   const [file] = files as [ExportFile];
@@ -100,6 +120,7 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
         ? text(wrap(await saveExport(output, savePath)))
         : opResult(output, wrap);
       try {
+        if (!documentId && !deps.bridge.connected) await deps.bridge.retryPort();
         if (!documentId && deps.bridge.connected) {
           return await respond(await deps.bridge.call(op.name, input, requestedPage));
         }
@@ -147,12 +168,13 @@ export function registerDocumentTools(server: McpServer, deps: DocumentToolDeps)
     title: 'Save to .openflow.json',
     description: 'Write a document to disk (svg: true also writes the first page as a .svg beside it). With a paired editor and no documentId, saves what the editor currently shows.',
     inputSchema: {
-      path: z.string().min(1),
+      path: z.string().min(1).describe("Inside the server's working directory; .openflow.json, .ofk or .json only."),
       documentId: z.string().min(1).optional().describe('File-mode document; omit to save the paired editor document (or, in file mode, the one opened or created last).'),
       svg: z.boolean().default(false).describe('Also write the first page as <same name>.svg next to the file.'),
     },
-  }, async ({ path, documentId, svg }) => {
+  }, async ({ path: requested, documentId, svg }) => {
     try {
+      const path = await savePathFor(requested);
       if (!documentId && deps.bridge.connected) {
         // Live mode: the editor owns the document, so ask it for canonical
         // JSON and write the bytes here (the server owns disk IO).
@@ -189,6 +211,7 @@ export function registerDocumentTools(server: McpServer, deps: DocumentToolDeps)
     description: 'Local-only status: whether an editor is paired, and the documents this server holds.',
     inputSchema: {},
   }, async () => {
+    await deps.bridge.retryPort();
     const health = deps.bridge.health();
     return text({
       server: `${health.name} ${health.version}`,

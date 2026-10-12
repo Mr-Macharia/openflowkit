@@ -54,6 +54,13 @@ describe('motion schedule', () => {
     expect(height).toBeGreaterThan(0);
   });
 
+  it('grows a wide diagram until it is half the pick tall, within 2.5x the pick wide', () => {
+    expect(motionCanvasSize({ width: 2105, height: 464 }, 1080)).toEqual({ width: 2450, height: 540 });
+    expect(motionCanvasSize({ width: 4000, height: 400 }, 1080)).toEqual({ width: 2700, height: 270 });
+    expect(motionCanvasSize({ width: 1600, height: 1200 }, 720)).toEqual({ width: 720, height: 540 });
+    expect(motionCanvasSize({ width: 800, height: 3200 }, 1080)).toEqual({ width: 1080, height: 4320 });
+  });
+
   it('maps formats to mime types', () => {
     expect(motionMime('gif')).toBe('image/gif');
     expect(motionMime('mp4')).toBe('video/mp4');

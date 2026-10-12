@@ -9,9 +9,12 @@ interface ParsedParticipant {
   alias?: string;
   /** `participant DB@{ "type": "database" }`. */
   stereotype?: 'db' | 'queue';
+  /** `boundary` / `control` / `entity`: Mermaid icons the DSL has no kind for. */
+  mermaidType?: string;
 }
 
 const PARTICIPANT_TYPES: Readonly<Record<string, ParsedParticipant['stereotype']>> = { database: 'db', collections: 'db', queue: 'queue' };
+const UNMAPPED_TYPES = new Set(['boundary', 'control', 'entity']);
 
 interface ParsedMessage {
   from: string;
@@ -165,16 +168,18 @@ function parseSequence(input: string): {
     if (/^autonumber\b/i.test(line)) continue;
     if (/^destroy\s/i.test(line)) continue;
 
-    const participantMatch = line.match(/^(?:create\s+)?(participant|actor)\s+(.+?)(?:\s+as\s+(.+))?$/i);
+    const participantMatch = line.match(/^(?:create\s+)?(participant|actor|database|collections|queue|boundary|control|entity)\s+(.+?)(?:\s+as\s+(.+))?$/i);
     if (participantMatch) {
       const annotated = participantMatch[2].trim().match(/^(.+?)@\{(.*)\}$/);
       const rawId = annotated ? annotated[1].trim() : participantMatch[2].trim();
-      const type = annotated?.[2].match(/"?type"?\s*:\s*"?(\w+)/)?.[1]?.toLowerCase();
-      const kind = type === 'actor' ? 'actor' : participantMatch[1].toLowerCase() as 'participant' | 'actor';
+      const keyword = participantMatch[1].toLowerCase();
+      const type = annotated?.[2].match(/"?type"?\s*:\s*"?(\w+)/)?.[1]?.toLowerCase() ?? (keyword === 'participant' || keyword === 'actor' ? undefined : keyword);
+      const kind = type === 'actor' || keyword === 'actor' ? 'actor' : 'participant';
       const stereotype = type ? PARTICIPANT_TYPES[type] : undefined;
+      const mermaidType = type && UNMAPPED_TYPES.has(type) ? type : undefined;
       const alias = participantMatch[3]?.trim();
       if (!knownIds.has(rawId)) {
-        participants.push({ id: rawId, label: alias || rawId, kind, alias, ...(stereotype ? { stereotype } : {}) });
+        participants.push({ id: rawId, label: alias || rawId, kind, alias, ...(stereotype ? { stereotype } : {}), ...(mermaidType ? { mermaidType } : {}) });
         knownIds.add(rawId);
       }
       continue;
@@ -340,6 +345,7 @@ function parseSequence(input: string): {
       seqParticipantKind: p.kind,
       seqParticipantAlias: p.alias,
       ...(p.stereotype ? { seqParticipantStereotype: p.stereotype } : {}),
+      ...(p.mermaidType ? { seqParticipantMermaidType: p.mermaidType } : {}),
       seqActivations: activationByParticipant.get(p.id),
     },
   }));

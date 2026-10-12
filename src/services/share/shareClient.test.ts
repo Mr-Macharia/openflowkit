@@ -6,7 +6,7 @@ import { FakeBucket, FakeQuotaNamespace } from '../../../worker/fakeBucket';
 import { handle, type Env } from '../../../worker/index';
 import { createTestDocument, createTestNode } from '../../opencanvas/testing/builders/documentBuilder';
 import {
-  browserStorage, createShareLink, deleteShare, forgetShare, latestShareFor, loadSharedDocument, rememberShare, ShareError,
+  appBaseUrl, browserStorage, createShareLink, deleteShare, forgetShare, latestShareFor, loadSharedDocument, rememberShare, ShareError, shareLink,
 } from './shareClient';
 import { encryptDocument } from './shareCrypto';
 
@@ -59,6 +59,13 @@ describe('share client against a real server', () => {
     const { id } = idKey((await share()).url);
     const result = await loadSharedDocument(id, undefined, deadOrigin);
     expect(result).toMatchObject({ problem: { title: expect.stringMatching(/missing its key/) } });
+  });
+
+  it('an id that is not 32 hex chars is a bad link, with no request (dead origin proves none)', async () => {
+    for (const id of ['../health', '..%2F..%2Fhealth', 'abc', 'A'.repeat(32), `${'a'.repeat(32)}/x`]) {
+      expect(await loadSharedDocument(id, 'k'.repeat(43), deadOrigin), id)
+        .toMatchObject({ problem: { title: expect.stringMatching(/deleted/), retry: false } });
+    }
   });
 
   it('a cut-short key is reported as incomplete', async () => {
@@ -179,5 +186,12 @@ describe('delete tokens kept in the browser', () => {
   it('a 403 on delete is its own error, so the caller can drop the token', async () => {
     const link = await share();
     await expect(deleteShare(idKey(link.url).id, 'wrong', origin)).rejects.toMatchObject({ code: 'forbidden' });
+  });
+});
+
+describe('appBaseUrl', () => {
+  it('drops the query and hash, so a v1 room secret never rides into a new link', () => {
+    expect(appBaseUrl('https://app.openflowkit.com/?room=r1&secret=s3#/flow/x')).toBe('https://app.openflowkit.com/');
+    expect(shareLink(appBaseUrl('https://app.openflowkit.com/app/?secret=s3#/d/x'), 'id', 'key')).toBe('https://app.openflowkit.com/app/#/s/id/key');
   });
 });

@@ -31,8 +31,9 @@ export interface V2ExportFile {
   readonly bytes?: Uint8Array;
 }
 
-function slug(value: string, fallback: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fallback;
+/** Filename-safe: letters and digits of any script stay (accents folded away), the rest becomes one dash. */
+export function slug(value: string, fallback: string): string {
+  return value.normalize('NFKD').replace(/\p{M}+/gu, '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || fallback;
 }
 
 /** A lone element names the file: its label, else its kind (`rect-1` stays unique enough). */
@@ -179,11 +180,15 @@ export function downloadTextFile(filename: string, text: string, mime: string): 
   downloadV2Export([{ filename, mime, text }]);
 }
 
-/** Copy an image artefact to the system clipboard; false when the API is missing. */
-export async function copyImageToClipboard(bytes: Uint8Array, mime: string): Promise<boolean> {
+/**
+ * Copy an image artefact to the system clipboard; false when the API is missing or refuses.
+ * The ClipboardItem is made before `bytes` resolves (call this inside the click, not after an await):
+ * Safari only honours the clipboard write while the user gesture is still live.
+ */
+export async function copyImageToClipboard(bytes: Promise<Uint8Array>, mime: string): Promise<boolean> {
   if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false;
   try {
-    await navigator.clipboard.write([new ClipboardItem({ [mime]: new Blob([bytes as BlobPart], { type: mime }) })]);
+    await navigator.clipboard.write([new ClipboardItem({ [mime]: bytes.then((data) => new Blob([data as BlobPart], { type: mime })) })]);
     return true;
   } catch {
     return false;

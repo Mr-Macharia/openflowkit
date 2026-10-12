@@ -28,22 +28,47 @@ export function useV2EditorNotices(pushToast: (toast: ToastItem) => void): void 
   }, [pushToast]);
 
   // The one notice after v1 diagrams come over (12.4); later boots import nothing and stay quiet.
+  // The v1 service-worker kill-switch reloads the tab seconds after the first visit, so the notice is
+  // kept in storage and shown again after the reload until it has been on screen for a while.
   useEffect(() => {
     let live = true;
+    const show = ({ imported, failed }: PendingNotice) => {
+      if (v1NoticeShown) return;
+      v1NoticeShown = true;
+      const names = failed.slice(0, 3).map((name) => `“${name}”`).join(', ');
+      pushToast({
+        id: 'v1-import', tone: failed.length ? 'warning' : 'success', persistent: failed.length > 0,
+        title: imported
+          ? `Brought over ${imported} ${imported === 1 ? 'diagram' : 'diagrams'} from the previous editor`
+          : 'Couldn’t bring over diagrams from the previous editor yet',
+        ...(failed.length ? { description: `Not yet: ${names}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}. They stay safe in this browser.` } : {}),
+        action: { label: 'See all diagrams', onClick: () => { clearPending(); navigate('/home'); } },
+      });
+      // Not cancelled on unmount: leaving the editor does not make it unseen.
+      setTimeout(clearPending, SEEN_AFTER_MS);
+    };
+    const pending = readPending();
+    if (pending) show(pending);
     runV1Import().then(({ imported, failures, firstRun }) => {
       // A failure that repeats on every boot is listed on Home, not toasted again.
       if (!live || v1NoticeShown || (imported.length === 0 && !(firstRun && failures.length))) return;
-      v1NoticeShown = true;
-      const names = failures.slice(0, 3).map((failure) => `“${failure.name}”`).join(', ');
-      pushToast({
-        id: 'v1-import', tone: failures.length ? 'warning' : 'success', persistent: failures.length > 0,
-        title: imported.length
-          ? `Brought over ${imported.length} ${imported.length === 1 ? 'diagram' : 'diagrams'} from the previous editor`
-          : 'Couldn’t bring over diagrams from the previous editor yet',
-        ...(failures.length ? { description: `Not yet: ${names}${failures.length > 3 ? ` and ${failures.length - 3} more` : ''}. They stay safe in this browser.` } : {}),
-        action: { label: 'See all diagrams', onClick: () => navigate('/home') },
-      });
+      const notice = { imported: imported.length, failed: failures.map((failure) => failure.name) };
+      try { localStorage.setItem(PENDING_KEY, JSON.stringify(notice)); } catch { /* the toast still shows once */ }
+      show(notice);
     }, () => undefined);
     return () => { live = false; };
   }, [pushToast, navigate]);
+}
+
+interface PendingNotice { readonly imported: number; readonly failed: readonly string[] }
+const PENDING_KEY = 'ofk.v1ImportNotice';
+const SEEN_AFTER_MS = 8000;
+const clearPending = () => { try { localStorage.removeItem(PENDING_KEY); } catch { /* nothing stored */ } };
+function readPending(): PendingNotice | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null') as Partial<PendingNotice> | null;
+    return value && typeof value.imported === 'number' && Array.isArray(value.failed) ? { imported: value.imported, failed: value.failed.map(String) } : null;
+  } catch {
+    return null;
+  }
 }

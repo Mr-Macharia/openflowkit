@@ -2,6 +2,7 @@ import type { SceneConnector } from '../document/types';
 import type { Bounds2d, Point2d } from '../geometry/types';
 import { resolveNodeStyle, type NodeStyle } from '../nodes/nodeStyle';
 import { isDarkCanvas } from '../color/adaptiveColor';
+import { measurePortableText } from '../text/measurement';
 
 // Connector labels share the node style vocabulary (nodeStyle.ts) under
 // `label*` appearance keys, so the renderer, the label editor and
@@ -52,20 +53,18 @@ export function connectorLabelOnCanvas(style: NodeStyle, canvasColor?: unknown):
 /** Labels wrap here, as the canvas draws them. */
 export const LABEL_WRAP_WIDTH = 140;
 
-// ponytail: exporters cannot measure text, so widths are estimated per character — upgrade to a
-// shared metrics table if long labels overflow. The plate is padded generously (0.58em); where a
-// line breaks is closer to Inter's real average (about 0.5em), so the file wraps where the canvas does.
+// ponytail: exporters cannot measure text, so the plate is padded generously (0.58em per character, an
+// over-estimate) — upgrade to a shared metrics table if long labels overflow.
 const CHAR_EM = 0.58;
-const WRAP_EM = 0.5;
 
-/** The lines a label breaks into: the author's own breaks, then greedy word wrap at LABEL_WRAP_WIDTH. */
+/** The lines a label breaks into: the author's own breaks, then greedy word wrap at LABEL_WRAP_WIDTH (a word is never split), measured as the canvas wraps. */
 export function connectorLabelLines(text: string, style: NodeStyle): readonly string[] {
-  const charWidth = style.fontSize * WRAP_EM;
+  const fits = (line: string) => measurePortableText(line, { fontSize: style.fontSize, fontWeight: style.fontWeight, overflow: 'visible' }).width <= LABEL_WRAP_WIDTH;
   return text.split('\n').flatMap((paragraph) => {
     const lines: string[] = [];
     let line = '';
     for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      if (line && (line.length + 1 + word.length) * charWidth > LABEL_WRAP_WIDTH) {
+      if (line && !fits(`${line} ${word}`)) {
         lines.push(line);
         line = word;
       } else {

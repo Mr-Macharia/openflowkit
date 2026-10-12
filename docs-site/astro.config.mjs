@@ -91,7 +91,7 @@ export default defineConfig({
         alt: 'OpenFlowKit',
       },
       editLink: {
-        baseUrl: 'https://github.com/Vrun-design/openflowkit/edit/main/docs-site/src/content/docs/',
+        baseUrl: 'https://github.com/Vrun-design/openflowkit/edit/main/docs-site/',
       },
       // English only: root locale keeps clean URLs (/introduction, not /en/introduction).
       defaultLocale: 'root',

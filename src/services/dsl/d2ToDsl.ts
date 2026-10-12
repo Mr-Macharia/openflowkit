@@ -37,8 +37,11 @@ interface Item {
 const QUOTED = '\uE001';
 const plain = (segment: string) => segment.replace(QUOTED, '');
 
+const MAX_DEPTH = 200;
+
 class Reader {
   private index = 0;
+  private depth = 0;
   line = 1;
   /** What the reader had to guess at, reported as losses. */
   readonly problems: { line: number; message: string }[] = [];
@@ -186,7 +189,9 @@ class Reader {
       let block: Item[] | undefined;
       if (this.peek() === '{') {
         this.index++;
+        if (++this.depth > MAX_DEPTH) throw new RangeError(`Nested more than ${MAX_DEPTH} levels deep`);
         block = this.items();
+        this.depth--;
       }
       if (paths[0]!.length === 0 && !value && !block) {
         // Not a statement we can read; skip the rest of the line.
@@ -645,7 +650,13 @@ export function looksLikeD2(text: string): boolean {
 
 export function d2ToDsl(text: string): D2Conversion | D2ConversionError {
   const reader = new Reader(text.replace(/\r\n?/g, '\n'));
-  const items = reader.items();
+  let items: Item[];
+  try {
+    items = reader.items();
+  } catch (error) {
+    if (error instanceof RangeError) return { error: error.message };
+    throw error;
+  }
   const converter = new Converter();
   for (const problem of reader.problems) converter.loss(problem.line, problem.message);
   converter.walk(items, []);

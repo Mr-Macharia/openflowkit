@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { legacyMermaidConverter } from '../../application/dsl/legacyMermaid';
 import { deterministicLayout } from '../../../dsl/layout';
-import { restoreLegacyDocumentSnapshot } from './legacyProjection';
 import { legacyWorkspaceRows, migrateLegacyWorkspace, type LegacyWorkspaceSources } from './legacyWorkspace';
 import { validateSceneDocumentV1 } from './validation';
 
@@ -37,13 +36,25 @@ describe('migrateLegacyWorkspace on captured v1 workspaces', () => {
     for (const row of v1) {
       const document = byId(documents, `v1-${row.id}`)!;
       expect(idMap[row.id]).toBe(document.id);
-      expect(document.name).toBe(row.name);
+      if (row.name !== 'Untitled Flow') expect(document.name).toBe(row.name);
       expect(document.createdAt).toBe(row.createdAt);
       expect(document.pages.map(({ id, name }) => [id, name])).toEqual(row.pages.map((page: Json) => [page.id, page.name]));
     }
     for (const document of documents) expect(validateSceneDocumentV1(document)).toMatchObject({ success: true });
     const deleted = Object.keys(manifest).find((id) => manifest[id] === 'deleted')!;
     expect(idMap[deleted]).toBeUndefined();
+  });
+
+  it('names a v1 diagram that kept the default name after its content, and leaves typed names alone', async () => {
+    const { documents } = await migrateLegacyWorkspace(sources, { convertMermaid });
+    const rows = indexedDb.documents as Json[];
+    const defaults = rows.filter((row) => row.name === 'Untitled Flow');
+    expect(defaults.length).toBeGreaterThan(5);
+    for (const row of defaults) {
+      const name = byId(documents, `v1-${row.id}`)!.name;
+      expect(name).not.toBe('Untitled Flow');
+      expect(name.length).toBeLessThanOrEqual(24 * 2 + 3);
+    }
   });
 
   it('opens a diagram whose edge outlived its node in v1, without that edge', async () => {
@@ -63,10 +74,10 @@ describe('migrateLegacyWorkspace on captured v1 workspaces', () => {
   });
 
   it('redraws renderer-first Mermaid as native nodes and keeps the original', async () => {
+    const { documents: unconverted } = await migrateLegacyWorkspace(sources);
+    const pictures = new Set(unconverted.filter((document) => document.pages[0]!.nodes.some((node) => node.kind === 'mermaid_svg')).map(({ id }) => id));
     const { documents } = await migrateLegacyWorkspace(sources, { convertMermaid });
-    const original = (document: (typeof documents)[number]) =>
-      (restoreLegacyDocumentSnapshot(document, document.pages[0]!.id)?.nodes ?? []) as Json[];
-    const mermaid = documents.filter((document) => original(document).some((node) => node.type === 'mermaid_svg'));
+    const mermaid = documents.filter((document) => pictures.has(document.id));
     expect(mermaid).toHaveLength(7);
     const still = mermaid.filter((document) => document.pages[0]!.nodes.some((node) => node.kind === 'mermaid_svg'));
     // `journey` has no DSL family yet: that one keeps v1's node, exactly as v1 shows it.

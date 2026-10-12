@@ -23,13 +23,21 @@ function contains(branch: OverlayBranch, target: Node | null): boolean {
   return !!target && (!!branch.ref.current?.contains(target) || [...branch.children].some((child) => contains(child, target)));
 }
 
+/** What a popover hanging off a context bar must keep clear: the bar's selection. */
+export const PopoverAvoid = createContext<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number } | null>(null);
+/** Least height worth scrolling a layer into before it gives up avoiding the selection. */
+const MIN_AVOIDING_HEIGHT = 180;
+
 export type Placement =
   | 'bottom-start'
   | 'bottom-end'
   | 'top-start'
   | 'top-end'
   | 'right-start'
-  | 'left-start';
+  | 'left-start'
+  /** Beside the anchor, vertically centred on it (a rail's tooltip). */
+  | 'right'
+  | 'left';
 export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -72,6 +80,9 @@ export function Popover({
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   const ref = useRef<HTMLDivElement>(null);
   const parent = useContext(OverlayContext);
+  const avoid = useContext(PopoverAvoid);
+  const avoidRef = useRef(avoid);
+  useLayoutEffect(() => { avoidRef.current = avoid; }, [avoid]);
   const branch = useMemo<OverlayBranch>(() => ({ ref, children: new Set() }), []);
   useEffect(() => {
     if (!open || passive || !parent) return;
@@ -118,6 +129,15 @@ export function Popover({
         anchor.right + gap + self.width <= vw - inset
       )
         side = 'right';
+      // A layer off a context bar opens on the side away from the selection (never over what it restyles),
+      // scrolling if it must; with under MIN_AVOIDING_HEIGHT of room there it falls back to the flip above.
+      let room = Infinity;
+      const keepOff = !passive && (side === 'top' || side === 'bottom') && anchorRef.current?.closest('.ofk-context') ? avoidRef.current : null;
+      if (keepOff) {
+        const away = keepOff.y + keepOff.height / 2 > anchor.bottom ? 'top' : 'bottom';
+        const awayRoom = away === 'top' ? anchor.top - gap - inset : vh - inset - anchor.bottom - gap;
+        if (awayRoom >= Math.min(self.height, MIN_AVOIDING_HEIGHT)) { side = away; room = awayRoom; }
+      }
       let x: number, y: number;
       let growsUp = side === 'top';
       if (side === 'bottom' || side === 'top') {
@@ -129,8 +149,8 @@ export function Popover({
         // with the anchor; a tall layer from a low anchor grows upward instead.
         const fitsBelow = anchor.top + self.height <= vh - laneBottom;
         const fitsAbove = anchor.bottom - self.height >= laneTop;
-        growsUp = !fitsBelow && fitsAbove;
-        y = growsUp ? anchor.bottom - self.height : anchor.top;
+        growsUp = align !== undefined && !fitsBelow && fitsAbove;
+        y = align === undefined ? (anchor.top + anchor.bottom - self.height) / 2 : growsUp ? anchor.bottom - self.height : anchor.top;
       }
       // A side layer from a control inside a toolbar lane (a hint beside Export) may share that lane.
       const minY = (side === 'left' || side === 'right') && anchor.top >= laneTop ? laneTop : inset;
@@ -146,7 +166,7 @@ export function Popover({
       setBox({
         left: x,
         top: y,
-        maxHeight: maxY - minY,
+        maxHeight: Math.min(maxY - minY, room),
         '--ofk-origin': `${originY} ${originX}`,
         '--ofk-arrow': `${Math.round(arrow)}px`,
         visibility: 'visible',
@@ -162,7 +182,7 @@ export function Popover({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, anchorRef, placement, gap, passive]);
+  }, [open, anchorRef, placement, gap, passive, avoid?.x, avoid?.y, avoid?.width, avoid?.height]);
   // Focus moves in once the layer is placed and visible (a hidden element
   // cannot take focus). A `data-autofocus` control wins over the first button.
   const visible = box.visibility === 'visible';

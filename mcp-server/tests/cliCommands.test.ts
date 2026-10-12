@@ -212,6 +212,8 @@ describe('openflowkit render / convert / validate', () => {
     const dropped = capture('Flowchart\nGood\nBad [oops\nGood -> Fine');
     expect(await main(['validate', '-'], dropped.io)).toBe(1);
     expect(dropped.err.join('\n')).toMatch(/line 3:\d+ error W101 .*dropped — Rewrite the line/);
+    // A terminal has no get_syntax tool: the hint names the command.
+    expect(dropped.err.join('\n')).toMatch(/`openflowkit op get_syntax` shows the form/);
     expect(await main(['render', '-'], capture('Flowchart\nGood\nBad [oops\nGood -> Fine').io)).toBe(0);
     const mermaid = capture('flowchart LR\n  A --> B\n  B --> \n  C -> -> D');
     expect(await main(['validate', '-'], mermaid.io)).toBe(1);

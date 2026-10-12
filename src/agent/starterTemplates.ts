@@ -147,8 +147,10 @@ title: Event pipeline
 flowchart right
 title: Simple process flow
 
-  Request [rounded, emerald, label: "Request received"] -> Review [label: "Manager reviews"]
-  Review -> Decision [diamond, amber, label: "Approved?"]
+  Review [label: "Manager reviews"]
+  Decision [diamond, amber, label: "Approved?"]
+  Request [rounded, emerald, label: "Request received"] -> Review
+  Review -> Decision
   Decision -> Done [rounded, emerald, label: "Order placed"] : Yes
   Decision -> Revise [label: "Ask for changes"] : No
   Revise -> Review

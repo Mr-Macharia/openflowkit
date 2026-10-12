@@ -232,10 +232,10 @@ export function projectRelations(index: ArchIndex, shown: ReadonlySet<string>): 
         // Two instances of the same container: the relation is internal to it (`api.auth -> api`).
         const fromTarget = index.byId.get(from)?.instanceOf;
         if (fromTarget && fromTarget === index.byId.get(to)?.instanceOf) continue;
-        candidates.push({
-          relation, from, to,
-          implied: relation.implied === true || relation.from !== from || relation.to !== to,
-        });
+        const implied = relation.implied === true || relation.from !== from || relation.to !== to;
+        // A projection onto the source's own boundary (or the reverse) would end in empty space.
+        if (implied && (elementAncestors(index, from).includes(to) || elementAncestors(index, to).includes(from))) continue;
+        candidates.push({ relation, from, to, implied });
       }
     }
   }
@@ -244,14 +244,19 @@ export function projectRelations(index: ArchIndex, shown: ReadonlySet<string>): 
   const covered = new Set(candidates.filter((candidate) => !candidate.implied).map((candidate) => relationPairKey(candidate.from, candidate.to)));
   const projections: ProjectedRelation[] = [];
   const slot = new Map<string, number>();
+  const merged = new Map<string, number>();
   for (const candidate of candidates) {
     const key = relationPairKey(candidate.from, candidate.to);
     if (!candidate.implied) projections.push(candidate);
     else if (covered.has(key)) continue;
     else if (!slot.has(key)) slot.set(key, projections.push(candidate) - 1);
     else if (candidateScore(candidate) > candidateScore(projections[slot.get(key)!]!)) projections[slot.get(key)!] = candidate;
+    if (candidate.implied && !covered.has(key)) merged.set(key, (merged.get(key) ?? 0) + 1);
   }
-  return projections;
+  return projections.map((projection) => {
+    const count = projection.implied ? merged.get(relationPairKey(projection.from, projection.to)) ?? 1 : 1;
+    return count > 1 ? { ...projection, merged: count } : projection;
+  });
 }
 
 /** Tag words used anywhere in the model, for the perspective filter. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dropDanglingConnectors, projectLegacyDocument, restoreLegacyDocumentSnapshot } from './legacyProjection';
+import { dropDanglingConnectors, projectLegacyDocument } from './legacyProjection';
 import { createTestConnector, createTestDocument, createTestNode } from '../../testing/builders/documentBuilder';
 import { validateSceneDocumentV1 } from './validation';
 
@@ -116,16 +116,14 @@ describe('legacy document projection', () => {
     });
   });
 
-  it('round-trips the exact legacy JSON snapshot without mutation', () => {
+  it('leaves the input untouched and stores no copy of the v1 document', () => {
     const input = createLegacyDocument();
     const before = structuredClone(input);
-    const document = projectLegacyDocument(input, options);
-    const restored = restoreLegacyDocumentSnapshot(document);
+    const document = projectLegacyDocument(input, { ...options, pageExtensions: { 'openflowkit.legacy.document': input, keep: 1 } });
 
     expect(input).toEqual(before);
-    expect(restored).toEqual(input);
-    expect(restored).not.toBe(input);
-    expect(restored?.nodes).not.toBe(input.nodes);
+    expect(document.extensions).toEqual({});
+    expect(document.pages[0]!.extensions).toEqual({ keep: 1 });
   });
 
   it('uses deterministic defaults for absent optional legacy fields', () => {
@@ -177,10 +175,9 @@ describe('legacy document projection', () => {
     const document = projectLegacyDocument(input, options);
 
     expect(document.pages[0].nodes.map((node) => node.kind)).toEqual(kinds);
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
-  it('preserves text, image, and annotation content through the legacy snapshot', () => {
+  it('keeps text, image, and annotation content', () => {
     const input = {
       nodes: [
         {
@@ -218,10 +215,9 @@ describe('legacy document projection', () => {
       },
       { kind: 'annotation', content: { label: 'Risk', subLabel: 'Rotate keys', color: 'yellow' } },
     ]);
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
-  it('preserves architecture and provider-icon identities through the legacy snapshot', () => {
+  it('preserves architecture and provider-icon identities ', () => {
     const input = {
       nodes: [
         {
@@ -258,7 +254,6 @@ describe('legacy document projection', () => {
       { archProvider: 'aws', archIconShapeId: 'compute-lambda' },
       { assetPresentation: 'icon', iconAssetId: 'sha256:icon' },
     ]);
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
   // React Flow merged v1's defaultEdgeOptions into every edge: no stored marker
@@ -320,7 +315,6 @@ describe('legacy document projection', () => {
 
     expect(document.pages[0].nodes[0].content).not.toHaveProperty('assetPresentation');
     expect(document.pages[0].nodes[0].content).toMatchObject({ label: 'Database', archProvider: 'database' });
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
   it('preserves container families, parent relationships, and structural state', () => {
@@ -358,7 +352,6 @@ describe('legacy document projection', () => {
       { kind: 'section', parentId: 'platform', content: { sectionLocked: true } },
       { kind: 'swimlane', parentId: 'payments', content: { sectionHidden: true } },
     ]);
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
   it('preserves sequence participants, notes, fragments, and message semantics', () => {
@@ -433,7 +426,6 @@ describe('legacy document projection', () => {
       seqMessageOrder: 1,
       seqFragment: fragment,
     });
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
   it('preserves browser and mobile wireframe variants and media references', () => {
@@ -477,7 +469,6 @@ describe('legacy document projection', () => {
       },
       { kind: 'mobile', content: { label: 'Checkout', variant: 'chat' } },
     ]);
-    expect(restoreLegacyDocumentSnapshot(document)).toEqual(input);
   });
 
   it('rejects malformed or non-JSON legacy documents', () => {
@@ -488,11 +479,6 @@ describe('legacy document projection', () => {
     expect(() =>
       projectLegacyDocument({ nodes: [{ id: '', position: {}, data: {} }], edges: [] }, options)
     ).toThrow(/node id/);
-  });
-
-  it('returns null when no recovery snapshot exists', () => {
-    const document = projectLegacyDocument(createLegacyDocument(), options);
-    expect(restoreLegacyDocumentSnapshot({ ...document, extensions: {} })).toBeNull();
   });
 });
 

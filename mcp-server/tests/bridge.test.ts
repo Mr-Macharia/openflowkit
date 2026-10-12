@@ -142,6 +142,24 @@ describe('live bridge', () => {
     expect(wrongQuery.status).toBe(401);
   });
 
+  it('refuses a browser no-cors request (no Origin, cross-site) but serves curl and Node', async () => {
+    bridge = new LiveBridge({ port: 0 });
+    const port = await bridge.start();
+    for (const site of ['cross-site', 'same-site']) {
+      const hijack = await fetch(`${bridgeUrls(port).next}?wait=1`, { headers: { 'sec-fetch-site': site } });
+      expect(hijack.status).toBe(403);
+      // No wildcard or echoed origin on the refusal.
+      expect(hijack.headers.get('access-control-allow-origin')).toBeNull();
+    }
+    expect((await fetch(bridgeUrls(port).health)).status).toBe(200);
+    expect((await fetch(bridgeUrls(port).health, { headers: { 'sec-fetch-site': 'none' } })).status).toBe(200);
+    const refused = await fetch(bridgeUrls(port).health, { headers: { origin: 'https://evil.example' } });
+    expect(refused.status).toBe(403);
+    expect(refused.headers.get('access-control-allow-origin')).toBeNull();
+    const allowed = await fetch(bridgeUrls(port).health, { headers: { origin: 'http://localhost:5173' } });
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+  });
+
   it('answers a browser preflight for the token header without needing the token', async () => {
     bridge = new LiveBridge({ port: 0, token: 'secret-token' });
     const port = await bridge.start();
@@ -242,6 +260,24 @@ describe('live bridge', () => {
       isError: true, text: `Another OpenFlowKit MCP server already owns port ${port}; this one can only edit files (openflow_open).`,
     });
 
+    const editor = await startEditor(port);
+    await editor.hello();
+    expect(bridge.status()).toEqual({ port, state: 'paired' });
+  });
+  // 2026-10-12: a stale server held the port, then exited; the second server stayed file-only forever.
+  it('a server that lost the port takes it when the holder exits, on the next whoami or editor tool', async () => {
+    const holder = new LiveBridge({ port: 0, log: () => undefined });
+    const port = await holder.start();
+    bridge = new LiveBridge({ port, log: () => undefined, retryMs: 0 });
+    await expect(bridge.start()).rejects.toThrow(/EADDRINUSE/);
+    const { server } = createServerWithDeps({ bridge, log: () => undefined });
+    const client = new Client({ name: 'test', version: '0' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(b), client.connect(a)]);
+    const whoami = async () => JSON.parse((await client.callTool({ name: 'whoami', arguments: {} }) as { content: { text: string }[] }).content[0]!.text) as { bridge: { state: string } };
+    expect((await whoami()).bridge.state).toBe('port-in-use');
+    await holder.stop();
+    expect((await whoami()).bridge.state).toBe('listening');
     const editor = await startEditor(port);
     await editor.hello();
     expect(bridge.status()).toEqual({ port, state: 'paired' });

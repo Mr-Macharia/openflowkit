@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
@@ -10,6 +11,11 @@ const deployedHeaders = Object.fromEntries(
     .map((line) => line.trim()).filter(Boolean)
     .map((line) => [line.slice(0, line.indexOf(':')), line.slice(line.indexOf(':') + 1).trim()]),
 );
+
+// The prod policy has no 'unsafe-inline', but the dev server's index.html gets plugin-react's inline
+// Fast Refresh preamble: allow exactly that script by hash, so dev and e2e still enforce the rest.
+const preambleHash = createHash('sha256').update(react.preambleCode.replace('__BASE__', '/')).digest('base64');
+deployedHeaders['Content-Security-Policy'] = deployedHeaders['Content-Security-Policy']!.replace("script-src 'self'", `script-src 'self' 'sha256-${preambleHash}'`);
 
 // Only the version reaches the bundle (usage beacons report it); importing package.json would ship all of it.
 const { version } = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as { version: string };

@@ -20,6 +20,12 @@ describe('MapOverview', () => {
     expect(screen.getByText('2 boxes · 1 connection')).toBeTruthy();
   });
 
+  it('shows no insights or connection count while files are still being read', () => {
+    render(<MapOverview model={model} arch={null} onSelect={vi.fn()} reading />);
+    expect(screen.getByText('2 boxes · reading…')).toBeTruthy();
+    expect(screen.queryByText(/largest files/)).toBeNull();
+  });
+
   it('insight rows select the box they name', () => {
     const onSelect = vi.fn();
     render(<MapOverview model={model} arch={null} onSelect={onSelect} />);
@@ -51,9 +57,9 @@ describe('MapOverview', () => {
   it('names a file once among the largest, even when two folders hold one by that name', () => {
     const twin = {
       ...model,
-      nodes: { ...model.nodes, 'x/demo.pb.go': node('x/demo.pb.go', 'demo.pb.go', 'file', 'root', 2610), 'y/demo.pb.go': node('y/demo.pb.go', 'demo.pb.go', 'file', 'root', 2610) },
+      nodes: { ...model.nodes, 'x/util.go': node('x/util.go', 'util.go', 'file', 'root', 2610), 'y/util.go': node('y/util.go', 'util.go', 'file', 'root', 2610) },
     } as MapModel;
     render(<MapOverview model={twin} arch={null} onSelect={vi.fn()} />);
-    expect(screen.getAllByText(/one of the largest/).map((b) => b.textContent)).toEqual(['demo.pb.go — one of the largest files', 'a.ts — one of the largest files']);
+    expect(screen.getAllByText(/one of the largest/).map((b) => b.textContent)).toEqual(['util.go — one of the largest files', 'a.ts — one of the largest files']);
   });
 });

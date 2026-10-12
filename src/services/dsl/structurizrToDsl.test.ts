@@ -868,3 +868,54 @@ describe('tag-refined kinds keep type filters whole', () => {
     expect(all!.result.nodes.map((node) => node.id).sort()).toEqual(['bank', 'shop']);
   });
 });
+
+describe('one-line view bodies and style blocks read like multi-line ones', () => {
+  const oneLine = `workspace {
+  model {
+    customer = person "Customer"
+    ibs = softwareSystem "Internet Banking" {
+      api = container "API"
+    }
+    email = softwareSystem "E-mail System" { tags "Existing System" }
+    customer -> ibs "Uses"
+    ibs -> email "Sends"
+  }
+  views {
+    container ibs "Containers" { include * exclude email autoLayout lr 300 200 }
+    styles {
+      element "Person" { shape Person background #08427b color #ffffff }
+      element "Existing System" { background #999999 }
+    }
+  }
+}`;
+  const multiLine = oneLine
+    .replace('{ include * exclude email autoLayout lr 300 200 }', '{\n include *\n exclude email\n autoLayout lr 300 200\n }')
+    .replace('{ shape Person background #08427b color #ffffff }', '{\n shape Person\n background #08427b\n color #ffffff\n }')
+    .replace('{ background #999999 }', '{\n background #999999\n }');
+
+  it('A1: include/exclude/autoLayout on one line become separate statements', () => {
+    const dsl = convert(oneLine).dsl;
+    expect(dsl).not.toMatch(/include (exclude|autoLayout|lr|300|200)/);
+    expect(dsl).toContain('view container of ibs right {');
+    expect(dsl).toBe(convert(multiLine).dsl);
+  });
+
+  it('A1: the excluded element is not drawn', async () => {
+    const names = (await compileWorkspace(convert(oneLine).dsl)).views.flatMap((item) => item.result.nodes.map((node) => node.id));
+    expect(names).toContain('ibs.api');
+    expect(names).not.toContain('email');
+  });
+
+  it('A2: one-line style properties copy the fill and report the text colour', () => {
+    const result = convert(oneLine);
+    expect(result.dsl).toContain('color: #08427b');
+    expect(result.dsl).toContain('color: #999999');
+    expect(result.losses).toContain('styles: element "Person" color (text colour) dropped');
+    expect(result.dsl).toBe(convert(multiLine).dsl);
+  });
+
+  it('T09: a duplicated identifier is reported with both lines', () => {
+    const result = convert('workspace {\n model {\n a = softwareSystem "A"\n a = softwareSystem "B"\n a -> a\n }\n}');
+    expect(result.losses).toContain('Identifier `a` is defined twice (lines 3, 4); the second wins.');
+  });
+});

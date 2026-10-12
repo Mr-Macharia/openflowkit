@@ -60,10 +60,14 @@ function mainLanguage(model: MapModel, node: MapNode): string | undefined {
   return [...lines].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0]?.[0];
 }
 
+/** What discovery notices about a service that is no language: a protocol or a runtime. The card says the language. */
+const NOT_A_LANGUAGE = new Set(['gRPC', 'Node']);
+
 function techOf(model: MapModel, node: MapNode): string | undefined {
   const found = !node.ai && node.desc ? UNIT_DESC.exec(node.desc)?.[1] : undefined;
+  if (found && !NOT_A_LANGUAGE.has(found)) return found;
   // A more box is a bucket of leftovers: the language most of them share would read as the box's own.
-  return found ?? (node.kind === 'external' || node.kind === 'more' ? undefined : mainLanguage(model, node));
+  return node.kind === 'external' || node.kind === 'more' ? found : mainLanguage(model, node) ?? found;
 }
 
 /** The quiet line under the name: how big the box is (never "0 files"). */

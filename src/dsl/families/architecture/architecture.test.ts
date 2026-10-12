@@ -313,6 +313,65 @@ views {
     expect(edge.appearance).toMatchObject({ dashPattern: 'dashed' });
   });
 
+  it('ends every relation in an arrowhead, solid or projected', async () => {
+    const container = (await compileWorkspace(CONTAINER)).views[0]!;
+    expect(container.result.connectors.length).toBeGreaterThan(0);
+    for (const edge of container.result.connectors) expect(edge.appearance.markerEnd).toBe('arrow');
+  });
+
+  it('drops a projection that ends in the source\'s own boundary', async () => {
+    const source = `architecture
+model {
+  system Payments {
+    container Ledger
+    container Audit
+    store LedgerDB
+    Ledger -> LedgerDB : reads
+    Ledger -> Audit : logs
+  }
+}
+views { view container of Payments { exclude Payments.LedgerDB } }
+`;
+    const edges = (await compileWorkspace(source)).views[0]!.result.connectors;
+    expect(edges.map((edge) => `${edge.source.nodeId}->${edge.target.nodeId}`)).toEqual(['payments.ledger->payments.audit']);
+  });
+
+  it('labels edges that merge several projected relations "N relationships"', async () => {
+    const source = `architecture
+model {
+  system Gateway {
+    container Refunds
+    container Charges
+  }
+  system Ledger {
+    container Books
+  }
+  Gateway.Refunds -> Ledger.Books : posts reversal
+  Gateway.Charges -> Ledger.Books : posts entry [gRPC]
+}
+views { view landscape }
+`;
+    const edges = (await compileWorkspace(source)).views[0]!.result.connectors;
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.labels.map((label) => label.text)).toEqual(['2 relationships']);
+  });
+
+  it('never lets a long edge label wrap inside its [tech] brackets', async () => {
+    const source = `architecture
+model {
+  system Gateway
+  system Bank
+  Gateway -> Bank : authorises card [tech: ISO / 8583]
+  Bank -> Gateway : ok [tech: HTTPS]
+}
+views { view landscape }
+`;
+    const edges = (await compileWorkspace(source)).views[0]!.result.connectors;
+    const text = (from: string) => edges.find((edge) => edge.source.nodeId === from)!.labels[0]!.text;
+    expect(text('gateway')).toBe('authorises card\n[ISO / 8583]');
+    expect(text('bank')).toBe('ok [HTTPS]');
+  });
+
   it('lays a boundary around its shown children', async () => {
     const container = (await compileWorkspace(CONTAINER)).views[0]!;
     const shop = container.result.groups[0]!;
@@ -396,6 +455,27 @@ views {
     const warning = compiled.views.flatMap((view) => view.result.diagnostics).find((item) => item.code === 'W122');
     expect(warning?.message).toBe('Unknown view target shop; the view shows nothing');
     expect(warning?.line).toBe(8);
+  });
+
+  it('resolves a unique partial path, and suggests the full path when it is ambiguous', async () => {
+    const model = (rel: string) => `architecture
+model {
+  system Payments {
+    container Gateway {
+      component Auth
+    }
+  }
+  system Shop {
+    container Web
+  }
+  ${rel}
+}
+`;
+    const unique = await compile(model('Shop.Web -> Gateway.Auth : signs in'));
+    expect(unique.diagnostics.filter((item) => item.code === 'W122')).toEqual([]);
+    const ambiguous = await compile(model('Shop.Web -> Nope.Auth : signs in').replace('container Web', 'container Web\n    container Auth'));
+    const [warning] = ambiguous.diagnostics.filter((item) => item.code === 'W122');
+    expect(warning?.hint).toMatch(/^did you mean Payments\.Gateway\.Auth/);
   });
 
   it('warns and drops unknown references, and keeps unknown lines verbatim', async () => {

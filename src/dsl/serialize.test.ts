@@ -12,6 +12,14 @@ describe('serialize', () => {
     expect(first).toContain('API --> DB : writes');
   });
 
+  it('names an explicit-id node by its id on edges, and declares `id = Label` once (§6.2)', async () => {
+    const text = await format('flowchart\napi = Order API\ndb = Orders DB\napi -> db : writes');
+    expect(text).toContain('api = Order API');
+    expect(text).toContain('api -> db : writes');
+    expect(text.match(/=/g)).toHaveLength(2);
+    expect(await format(text)).toBe(text);
+  });
+
   it('emits declarations only for nodes that need them', async () => {
     const scene = await compile('flowchart\nA [ellipse]\nA -> B\nB -> C : ok');
     const text = serialize(scene);
@@ -39,7 +47,9 @@ describe('serialize', () => {
 
   it('quotes reserved labels and emits explicit ids when needed', async () => {
     const scene = await compile('flowchart\n"group" -> custom = Long Name');
-    expect(serialize(scene)).toContain('"group" -> custom = Long Name');
+    const text = serialize(scene);
+    expect(text).toContain('custom = Long Name\n');
+    expect(text).toContain('"group" -> custom');
     expect(quote('Join')).toBe('Join');
     expect(quote('group')).toBe('"group"');
     expect(quote('Cache: L2')).toBe('"Cache: L2"');

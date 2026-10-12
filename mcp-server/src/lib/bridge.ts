@@ -36,6 +36,8 @@ export interface LiveBridgeOptions {
   /** Required on every request when set (OPENFLOWKIT_BRIDGE_TOKEN). */
   readonly token?: string;
   readonly callTimeoutMs?: number;
+  /** Least gap between attempts to take a port another process held (default 3 s). */
+  readonly retryMs?: number;
   readonly log?: (message: string) => void;
 }
 
@@ -46,6 +48,7 @@ export class LiveBridge {
   /** The paired editor dropped its poll without saying goodbye; calls say so until it pairs again. */
   private gone = false;
   private portInUse = false;
+  private lastListenAt = 0;
   /** When an editor last knocked with the wrong token; the editor then shows the error, and so must whoami. */
   private refusedAt: number | null = null;
   private parked: ServerResponse | null = null;
@@ -64,6 +67,7 @@ export class LiveBridge {
   /** Starts listening; resolves with the bound port (or rejects on EADDRINUSE). */
   async start(): Promise<number> {
     if (this.server) return this.options.port;
+    this.lastListenAt = Date.now();
     const server = createServer((request, response) => { void this.handle(request, response); });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -74,8 +78,15 @@ export class LiveBridge {
       this.portInUse = (error as { code?: string }).code === 'EADDRINUSE';
       throw error;
     }
+    this.portInUse = false;
     this.server = server;
     return (server.address() as { port: number }).port;
+  }
+
+  /** The port's holder may have exited since start(): listen again, at most once per `retryMs`. Callers: whoami, server_info, ops. */
+  async retryPort(): Promise<void> {
+    if (!this.portInUse || Date.now() - this.lastListenAt < (this.options.retryMs ?? 3000)) return;
+    await this.start().catch(() => undefined);
   }
 
   /** What whoami reports: whether this process can pair at all, and on which port. */
@@ -157,10 +168,12 @@ export class LiveBridge {
   // headers: without them the browser rejects the fetch and the editor flaps
   // between "connected" and "unavailable" every poll window.
   private respond(response: ServerResponse, status: number, body: unknown): void {
+    const origin = response.req.headers.origin;
     response.writeHead(status, {
       ...(status === 204 ? {} : { 'content-type': 'application/json;charset=utf-8' }),
       'cache-control': 'no-store',
-      'access-control-allow-origin': response.req.headers.origin ?? '*',
+      // Only an allowed origin may read a reply; a refused one learns nothing, not even its own 403.
+      ...(isAllowedBridgeOrigin(origin) && origin ? { 'access-control-allow-origin': origin } : {}),
       'access-control-allow-headers': `content-type, ${bridgeTokenHeader}`,
       'access-control-allow-methods': 'GET, POST, OPTIONS',
       // Chrome asks before a public page may reach 127.0.0.1.
@@ -171,7 +184,9 @@ export class LiveBridge {
 
   private reject401(response: ServerResponse, request: IncomingMessage): boolean {
     const origin = request.headers.origin;
-    if (!isAllowedBridgeOrigin(origin)) {
+    // A browser no-cors GET or <img> carries no Origin but does say which site sent it; curl and Node send neither.
+    const site = request.headers['sec-fetch-site'];
+    if (!isAllowedBridgeOrigin(origin) || (!origin && (site === 'cross-site' || site === 'same-site'))) {
       this.respond(response, 403, { error: 'Origin not allowed. The bridge is local-only.' });
       return true;
     }

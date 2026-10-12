@@ -3,7 +3,8 @@ import { SVG_BACKGROUND } from './canonicalSvg';
 // "PDF" is the browser's print-to-PDF: a hidden frame holding exactly the
 // exported SVGs, one page per sheet. Each sheet is an <img> of its SVG (still vector
 // in print, fonts embedded), so ids like `#clip-<node>` never collide across pages.
-// Deterministic HTML, so it is testable.
+// Deterministic HTML, so it is testable. It carries no script: the app's CSP has no 'unsafe-inline',
+// so the parent prints the frame once it has loaded.
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
@@ -28,7 +29,6 @@ export function buildPrintDocument(svgs: readonly string[], title: string, optio
   img { width: 100%; height: 100%; object-fit: contain; }
 </style></head>
 <body>${svgs.map((svg) => `<section class="sheet"><img alt="" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"></section>`).join('')}
-<script>window.addEventListener('load', function () { document.fonts.ready.then(function () { window.focus(); window.print(); }); });</script>
 </body></html>`;
 }
 
@@ -39,6 +39,9 @@ export function printSvgDocument(svgs: readonly string[], title: string, options
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
   frame.srcdoc = buildPrintDocument(svgs, title, options);
   frame.addEventListener('load', () => {
+    const view = frame.contentWindow;
+    // Fonts first, so the sheets never print in a fallback face; then the print dialog, then the frame goes.
+    void (frame.contentDocument?.fonts?.ready ?? Promise.resolve()).then(() => { view?.focus(); view?.print(); });
     window.setTimeout(() => frame.remove(), 60_000);
   });
   document.body.appendChild(frame);

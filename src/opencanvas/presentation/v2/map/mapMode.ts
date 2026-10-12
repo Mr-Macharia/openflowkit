@@ -121,10 +121,11 @@ export interface FreeArea { left: number; top: number; width: number; height: nu
  * The canvas the floating chrome leaves: `edges` are what the side panels leave (left, right), `chrome` where the
  * document bar ends (`top`), the right rail begins (`rail`), the camera controls begin (`bottom`) and the creation rail
  * ends (`tools`), all measured in
- * canvas pixels. A chrome so large it would leave under a third of the canvas (a phone) is ignored.
+ * canvas pixels. A chrome or panels so large they would leave under a third of the canvas (a phone) are ignored.
  */
 export function freeArea(size: { width: number; height: number }, edges: { left: number; right: number }, chrome: { top?: number; rail?: number; bottom?: number; tools?: number }): FreeArea {
-  const clear = edges.right - edges.left >= size.width / 2;
+  // Panels that leave under a third of the canvas (a phone) are ignored; two docked panels on a laptop leave about half.
+  const clear = edges.right - edges.left >= size.width / 3;
   const left = Math.max(clear ? edges.left : 0, chrome.tools === undefined ? 0 : chrome.tools + CHROME_GAP);
   const right = Math.min(clear ? edges.right : size.width, chrome.rail === undefined ? size.width : chrome.rail - CHROME_GAP);
   const top = chrome.top === undefined ? 0 : Math.max(0, chrome.top + CHROME_GAP);

@@ -10,7 +10,7 @@ import { planMotion } from '../../../application/map/planMotion';
 import type { CanvasCamera } from '../../../domain/camera/types';
 import type { SceneNode, ScenePage } from '../../../domain/document/types';
 import type { PixiRendererHost } from '../../../infrastructure/pixi/PixiRendererHost';
-import { clearance, fitAll, landOn, presetCamera, refitKind, sceneExtent, showsAll, type HeldFit, type TaggedScene } from './mapMode';
+import { clearance, fitAll, landOn, nudgeInto, presetCamera, refitKind, sceneExtent, showsAll, type HeldFit, type TaggedScene } from './mapMode';
 
 interface Options {
   readonly mapPage: ScenePage | null;
@@ -36,6 +36,9 @@ const firstBox = (model: MapModel | null, rects: ReadonlyMap<string, LaidRect>):
   const first = top.sort(topLeftFirst(rects))[0];
   return first ? rects.get(first) : undefined;
 };
+
+/** The box just grown must not sit under the panels or the floating chrome: the least pan that clears it (a box bigger than the free canvas keeps its start in). */
+const clearOfChrome = (cam: CanvasCamera, box: LaidRect, free: ReturnType<typeof clearance>): CanvasCamera => nudgeInto(box, cam, free) ?? cam;
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -119,7 +122,7 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
     // redone (a landing too, so a growing map is framed the same way at every size).
     const kind = focus ? (focus.id === null ? 'start' : null) : refitKind(fitted.current, cameraRef.current, cameraRef.current === mine.current);
     const camTo = kind === 'all' ? fitAll(extent, clearance(host)) : kind === 'start' ? presetCamera(extent, clearance(host), firstBox(model, rects))
-      : focus?.id && rects.has(focus.id) ? landOn(extent, rects.get(focus.id), clearance(host), cameraRef.current) : null;
+      : focus?.id && rects.has(focus.id) ? clearOfChrome(landOn(extent, rects.get(focus.id), clearance(host), cameraRef.current), rects.get(focus.id)!, clearance(host)) : null;
     fitted.current = kind && camTo ? { cam: camTo, all: kind === 'all' } : null;
     if (focus?.id === null && camTo && !showsAll(extent, camTo, clearance(host))) partialRef.current?.();
     const moving = items.some((item) => item.fade || (['x', 'y', 'width', 'height'] as const).some((key) => item.from[key] !== item.to[key]));

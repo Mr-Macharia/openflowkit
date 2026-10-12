@@ -65,6 +65,19 @@ describe('inspectSelection', () => {
     if (report.kind === 'connector') expect(report.code?.line).toBe(5);
   });
 
+  it('never turns a connector stroke into a CSS url() swatch (no beacon on open)', () => {
+    const base = page();
+    const stroked = (stroke: string) => ({ ...base, connectors: [{ ...base.connectors[0]!, appearance: { stroke } }] });
+    const swatch = (stroke: string) => {
+      const report = inspectSelection(stroked(stroke), [], ['e']);
+      return report.kind === 'connector' ? report.sections[0]!.rows.find((entry) => entry.label === 'Stroke') : undefined;
+    };
+    expect(swatch('url(https://attacker.example/x)')).toMatchObject({ value: 'url(https://attacker.example/x)' });
+    expect(swatch('url(https://attacker.example/x)')?.swatch).toBeUndefined();
+    expect(swatch('red;background:url(x)')?.swatch).toBeUndefined();
+    expect(swatch('#34d399')?.swatch).toBe('#34d399');
+  });
+
   it('lists several, and is empty for nothing or ids that are gone', () => {
     expect(inspectSelection(page(), ['start', 'login'], ['e'])).toEqual({
       kind: 'many', items: [{ id: 'start', name: 'Start' }, { id: 'login', name: 'Login' }, { id: 'e', name: 'Start → Login' }],

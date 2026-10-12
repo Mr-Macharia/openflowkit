@@ -246,6 +246,34 @@ function applyNodeStyleDirective(
   return true;
 }
 
+const CLICK_RE = /^click\s+([a-zA-Z0-9_][\w.-]*)\s+(.*)$/i;
+
+/** `click A "url" "tooltip"` (or `click A href "url"`) is a link; a callback or a tooltip has nowhere to go. */
+function applyClickDirective(
+  state: ReturnType<typeof createMermaidParseState>,
+  line: string,
+  lineNumber: number
+): boolean {
+  const match = line.match(CLICK_RE);
+  if (!match) {
+    return false;
+  }
+
+  const [, id, rest] = match;
+  const link = rest.match(/^(?:href\s+)?"([^"]*)"\s*(.*)$/i);
+  if (!link) {
+    state.diagnostics.push(`Click callback on ${id} dropped at line ${lineNumber}: "${line}"`);
+  } else {
+    if (!state.nodesMap.has(id)) registerMermaidNode(state, id);
+    state.nodesMap.get(id)!.link = link[1];
+    if (/^"[^"]*"/.test(link[2])) {
+      state.diagnostics.push(`Click tooltip on ${id} dropped at line ${lineNumber}: "${line}"`);
+    }
+  }
+
+  return true;
+}
+
 function applyClassAssignmentDirective(
   state: ReturnType<typeof createMermaidParseState>,
   line: string
@@ -402,6 +430,10 @@ function buildMermaidParseModel({ lines, lineNumbers }: { lines: string[]; lineN
       continue;
     }
 
+    if (applyClickDirective(state, line, lineNumber)) {
+      continue;
+    }
+
     const linkStyleMatch = parseLinkStyleLine(line);
     if (linkStyleMatch) {
       linkStyleMatch.indices.forEach((index) => state.linkStyles.set(index, linkStyleMatch.style));
@@ -422,7 +454,11 @@ function buildMermaidParseModel({ lines, lineNumbers }: { lines: string[]; lineN
 
     const standalone = parseNodeDeclaration(line);
     if (standalone) {
-      registerMermaidNode(state, line);
+      const id = registerMermaidNode(state, line);
+      // A bare id listed inside a subgraph joins it when nothing has claimed it yet (`A --> B` first, then `subgraph G` / `A` / `end`).
+      const listed = id ? state.nodesMap.get(id) : undefined;
+      const group = state.parentStack[state.parentStack.length - 1];
+      if (listed && group && !listed.parentId) listed.parentId = group;
       continue;
     }
 
@@ -455,6 +491,8 @@ function createFlowNodes(model: MermaidParseModel): FlowNode[] {
         subLabel: node.description ?? '',
         color: getDefaultColor(node.type),
         ...(node.shape ? { shape: node.shape } : {}),
+        ...(node.subroutine ? { mermaidSubroutine: true } : {}),
+        ...(node.link ? { link: node.link } : {}),
         ...(node.metadata?.sectionMermaidId
           ? { sectionMermaidId: node.metadata.sectionMermaidId }
           : {}),

@@ -17,12 +17,19 @@ export function Tooltip({
   const anchorRef = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  // A tip on a vertical rail opens beside it, away from the screen edge, so it never covers the next tool.
+  const [placement, setPlacement] = useState<'bottom-start' | 'left' | 'right'>('bottom-start');
   const openRef = useRef(false);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   function schedule(delay: number) {
     window.clearTimeout(timer.current);
     const warm = performance.now() - lastHiddenAt < foundation.motion.tooltipWarm;
-    timer.current = window.setTimeout(() => { openRef.current = true; setOpen(true); }, warm ? 0 : delay);
+    timer.current = window.setTimeout(() => {
+      const rail = anchorRef.current?.closest('[role="toolbar"][aria-orientation="vertical"]')?.getBoundingClientRect();
+      setPlacement(rail ? (rail.left + rail.right < window.innerWidth ? 'right' : 'left') : 'bottom-start');
+      openRef.current = true;
+      setOpen(true);
+    }, warm ? 0 : delay);
   }
   function hide() {
     window.clearTimeout(timer.current);
@@ -60,7 +67,8 @@ export function Tooltip({
         anchorRef={anchorRef}
         onClose={hide}
         passive
-        placement="bottom-start"
+        placement={placement}
+        gap={placement === 'bottom-start' ? undefined : foundation.space.sm}
         id={id}
         role="tooltip"
         className="ofk-tooltip"

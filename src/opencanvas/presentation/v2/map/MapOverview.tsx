@@ -9,14 +9,17 @@ export interface MapOverviewData {
   readonly arch: ArchModel | null;
   /** Select the box an insight names (a map node id). */
   readonly onSelect: (id: string) => void;
+  /** Still reading files: sizes and links are partial, so no insights or connection count yet. */
+  readonly reading?: boolean;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What to look at first when nothing is selected: size, a few insights that each select their box, and the model's flows. */
-export function MapOverview({ model, arch, onSelect }: MapOverviewData): React.JSX.Element | null {
+export function MapOverview({ model, arch, onSelect, reading }: MapOverviewData): React.JSX.Element | null {
   const boxes = Object.keys(model.nodes).length - (model.nodes[model.root] ? 1 : 0);
   const rows = useMemo((): { id: string; text: string; note?: string }[] => {
+    if (reading) return [];
     const { twoWay, largest, unreferenced } = insights(model);
     const name = (id: string) => model.nodes[id]?.name ?? id;
     // Engine-made folds are no box anyone can name or reveal.
@@ -28,12 +31,12 @@ export function MapOverview({ model, arch, onSelect }: MapOverviewData): React.J
         .map((id) => ({ id, text: `${name(id)} — one of the largest files`, note: `(${model.nodes[id].loc.toLocaleString('en-US')} lines)` })),
       ...unreferenced.slice(0, 1).map((id) => ({ id, text: `${name(id)} is not imported by anything here` })),
     ].filter(real);
-  }, [model]);
+  }, [model, reading]);
   if (boxes <= 0) return null;
   const flows = arch?.flows ?? [];
   return (
     <div className="ofk-v2-model-detail" aria-label="Map overview">
-      <strong>{boxes === 1 ? '1 box' : `${boxes} boxes`} · {plural(model.links.length, 'connection')}</strong>
+      <strong>{boxes === 1 ? '1 box' : `${boxes} boxes`} · {reading ? 'reading…' : plural(model.links.length, 'connection')}</strong>
       {rows.length > 0 ? <ul className="ofk-v2-model-list" aria-label="Worth a look">
         {rows.map((r) => <li key={`${r.id}:${r.text}`}>
           <button type="button" className="ofk-v2-map-link" onClick={() => onSelect(r.id)}>{r.text}</button>

@@ -556,9 +556,15 @@ function separateLanes(connectors: readonly SceneConnector[], boxes: ReadonlyMap
     const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
     const out = horizontal ? (b.x >= a.x ? 'right' : 'left') : (b.y >= a.y ? 'bottom' : 'top');
     const into = ({ right: 'left', left: 'right', bottom: 'top', top: 'bottom' } as const)[out];
-    // Both ends of a lane sit at the same ratio, so it runs straight; the earlier edge takes the first lane.
-    const ratio = index < twin ? 0.3 : 0.7;
-    return { ...connector, source: endpoint(from, out, ratio), target: endpoint(to, into, ratio) };
+    // Both ends of a lane sit at the same spot across the two nodes' overlap, so it runs straight whatever
+    // their widths; the earlier edge takes the first lane. Nodes that do not overlap fall back to one ratio.
+    const lane = index < twin ? 0.3 : 0.7;
+    const [oa, ob, sa, sb] = [worldOrigin(boxes, from)!, worldOrigin(boxes, to)!, boxes.get(from)!.size, boxes.get(to)!.size];
+    const [aLow, aLength, bLow, bLength] = horizontal ? [oa.y, sa.height, ob.y, sb.height] : [oa.x, sa.width, ob.x, sb.width];
+    const low = Math.max(aLow, bLow);
+    const length = Math.min(aLow + aLength, bLow + bLength) - low;
+    const at = (start: number, size: number) => length > 8 ? Math.min(0.95, Math.max(0.05, (low + length * lane - start) / size)) : lane;
+    return { ...connector, source: endpoint(from, out, at(aLow, aLength)), target: endpoint(to, into, at(bLow, bLength)) };
   });
 }
 

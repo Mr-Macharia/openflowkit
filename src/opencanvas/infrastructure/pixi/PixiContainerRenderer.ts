@@ -20,7 +20,7 @@ import type { PixiNodeDebugRecord } from './pixiNodeDebug';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
 import { decoratePixiText } from './pixiText';
 import { PixiTextPool } from './pixiTextPool';
-import { labelReadable } from './viewportProjection';
+import { labelReadable, MIN_TITLE_SCREEN_PX } from './viewportProjection';
 
 function containerShape(kind: PixiContainerNodeVisual['presentation']['kind']): string {
   if (kind === 'group') return 'group-frame';
@@ -119,7 +119,7 @@ export class PixiContainerRenderer {
     if (!visibleNodeIds) return;
     for (const [nodeId, label] of this.labelByNodeId) {
       label.visible = visibleNodeIds.has(nodeId) && nodeId !== this.editingNodeId
-        && labelReadable(zoom, this.labelFontByNodeId.get(nodeId) ?? 14);
+        && labelReadable(zoom, this.labelFontByNodeId.get(nodeId) ?? 14, MIN_TITLE_SCREEN_PX);
     }
   }
 

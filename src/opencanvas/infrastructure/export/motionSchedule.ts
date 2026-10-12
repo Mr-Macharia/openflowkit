@@ -12,13 +12,18 @@ export function motionBitrate(width: number, height: number, fps: number): numbe
   return Math.round(0.1 * width * height * fps);
 }
 
-/** Export size for a viewBox at the picked width, even-sided. */
+/**
+ * Export size for a viewBox at the picked width, even-sided. A wide diagram would come out a thin strip with
+ * unreadable labels, so it grows wider than the pick until it is half the pick tall, up to 2.5x the pick wide.
+ */
 export function motionCanvasSize(
   viewBox: { readonly width: number; readonly height: number }, size: MotionSize,
 ): { readonly width: number; readonly height: number } {
+  const aspect = viewBox.width / viewBox.height;
+  const width = Math.min(size * 2.5, Math.max(size, (size / 2) * aspect));
   return {
-    width: Math.round(size / 2) * 2,
-    height: Math.max(2, Math.round((viewBox.height / viewBox.width) * size / 2) * 2),
+    width: Math.round(width / 2) * 2,
+    height: Math.max(2, Math.round(width / aspect / 2) * 2),
   };
 }
 

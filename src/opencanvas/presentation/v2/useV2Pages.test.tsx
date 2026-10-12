@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentCommand } from '../../domain/commands/types';
-import { createTestDocument } from '../../testing/builders/documentBuilder';
+import { createTestDocument, createTestNode } from '../../testing/builders/documentBuilder';
 import { useV2Pages } from './useV2Pages';
 
 // Page ops are unit-tested as commands at the source (productionPages.test.ts);
@@ -26,12 +26,14 @@ function setup() {
   let counter = 0;
   const selected: string[] = [];
   const announce = vi.fn();
+  const toast = vi.fn();
+  const undo = vi.fn();
   const hook = renderHook(
     (props: { pageId: string | null }) => useV2Pages({
       document, pageId: props.pageId, readOnly: false, commit,
       onSelect: (pageId) => selected.push(pageId),
       mintId: (prefix) => `${prefix}-new-${++counter}`,
-      announce,
+      announce, toast, undo, revision: () => 0,
     }),
     { initialProps: { pageId: document.pages[0]!.id } },
   );
@@ -40,7 +42,7 @@ function setup() {
     run(hook.result.current);
     hook.rerender({ pageId: hook.result.current.activePage?.id ?? null });
   });
-  return { hook, commit, selected, announce, document: () => document, act: act1 };
+  return { hook, commit, selected, announce, toast, undo, document: () => document, act: act1 };
 }
 
 describe('useV2Pages', () => {
@@ -66,6 +68,52 @@ describe('useV2Pages', () => {
     expect(document().pages.map(({ name }) => name)).toEqual(['Page 1', 'Page 2 Copy']);
   });
 
+  it('add hands back the new page so the menu can open its rename', () => {
+    const { hook } = setup();
+    let added: { id: string; name: string } | undefined;
+    act(() => { added = hook.result.current.add(); });
+    expect(added).toEqual({ id: 'page-new-1', name: 'Page 2' });
+  });
+
+  it('deleting a page with content offers Undo; an empty page just goes', () => {
+    const { toast, undo, selected, document, act: act1 } = setup();
+    act1((api) => api.add());
+    const empty = document().pages[1]!;
+    act1((api) => api.remove(empty.id));
+    expect(toast).not.toHaveBeenCalled();
+    const withContent = createTestDocument({ nodes: [createTestNode('n1')] });
+    expect(withContent.pages[0]!.nodes.length).toBeGreaterThan(0);
+    let revision = 4;
+    const commit = vi.fn(() => { revision += 1; });
+    const pages = { ...withContent, pages: [withContent.pages[0]!, { ...withContent.pages[0]!, id: 'second', name: 'Second' }] };
+    const hook = renderHook(() => useV2Pages({
+      document: pages, pageId: 'second', readOnly: false, commit,
+      onSelect: (id) => selected.push(id), mintId: (prefix) => `${prefix}-x`, announce: vi.fn(), toast, undo, revision: () => revision,
+    }));
+    act(() => hook.result.current.remove('second'));
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Deleted Second', action: expect.objectContaining({ label: 'Undo' }) }));
+    toast.mock.calls[0]![0].action.onClick();
+    expect(undo).toHaveBeenCalledOnce();
+    expect(selected.at(-1)).toBe('second');
+  });
+
+  // The toast's Undo is the editor's undo: after any later edit it would revert that edit instead.
+  it('the delete toast undoes nothing once another edit has landed', () => {
+    const withContent = createTestDocument({ nodes: [createTestNode('n1')] });
+    const pages = { ...withContent, pages: [withContent.pages[0]!, { ...withContent.pages[0]!, id: 'second', name: 'Second' }] };
+    let revision = 0;
+    const toast = vi.fn();
+    const undo = vi.fn();
+    const hook = renderHook(() => useV2Pages({
+      document: pages, pageId: 'second', readOnly: false, commit: () => { revision += 1; },
+      onSelect: vi.fn(), mintId: (prefix) => `${prefix}-x`, announce: vi.fn(), toast, undo, revision: () => revision,
+    }));
+    act(() => hook.result.current.remove('second'));
+    revision += 1; // the user moved a shape while the toast was up
+    toast.mock.calls[0]![0].action.onClick();
+    expect(undo).not.toHaveBeenCalled();
+  });
+
   it('never removes the last page and says why', () => {
     const { commit, announce, document, act: act1 } = setup();
     const only = document().pages[0]!;
@@ -79,7 +127,7 @@ describe('useV2Pages', () => {
     const commit = vi.fn();
     const hook = renderHook(() => useV2Pages({
       document, pageId: document.pages[0]!.id, readOnly: true, commit,
-      onSelect: vi.fn(), mintId: (prefix) => `${prefix}-new-1`, announce: vi.fn(),
+      onSelect: vi.fn(), mintId: (prefix) => `${prefix}-new-1`, announce: vi.fn(), toast: vi.fn(), undo: vi.fn(), revision: () => 0,
     }));
     act(() => hook.result.current.add());
     act(() => hook.result.current.rename(document.pages[0]!.id, 'Nope'));
@@ -93,7 +141,7 @@ describe('useV2Pages', () => {
     const locked = document.pages[0]!.id;
     const hook = renderHook(() => useV2Pages({
       document, pageId: 'pinned', readOnly: false, lockedPageId: locked, commit,
-      onSelect: vi.fn(), mintId: (prefix) => `${prefix}-new-1`, announce: vi.fn(),
+      onSelect: vi.fn(), mintId: (prefix) => `${prefix}-new-1`, announce: vi.fn(), toast: vi.fn(), undo: vi.fn(), revision: () => 0,
     }));
     const api = hook.result.current;
     expect(api.isLocked(locked)).toBe(true);

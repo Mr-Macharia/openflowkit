@@ -125,20 +125,14 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
   const [mountError, setMountError] = useState<string | null>(null);
 
   // No React state per move: the renderer preview goes through refs, and the
-  // context bar follows the drag by direct DOM writes. React re-renders only
-  // on operation end (commit/selection/camera), when contextAnchor settles.
-  const previewFrameRef = useRef<number | null>(null);
-  const pendingPreviewRef = useRef<DOMRect | null>(null);
+  // context bar fades out for the gesture (it would cover what you align against).
   // Safari trackpad pinch: gesturestart anchors, gesturechange scales from it.
   const pinchRef = useRef<{ zoom: number; anchor: Point2d } | null>(null);
-  useEffect(() => () => {
-    if (previewFrameRef.current !== null) cancelAnimationFrame(previewFrameRef.current);
-  }, []);
-  // Latest React-rendered bar anchor; the drag-follow path restores exactly
-  // this on operation end when no re-render follows (anchor truly unchanged).
+  // Latest React-rendered bar anchor; a gesture's end restores the bar to exactly
+  // this when no re-render follows (anchor truly unchanged).
   const anchorForRestoreRef = useRef<DOMRect | null>(null);
-  // Label plates the bar keeps off; the restore below writes the DOM directly, so it reads them here.
-  const labelPlatesRef = useRef<readonly DOMRect[]>([]);
+  // What the bar keeps off (label plates, neighbour shapes); the restore below writes the DOM directly, so it reads it here.
+  const avoidRef = useRef<readonly DOMRect[]>([]);
   // Bar width is measured (node and connector bars differ); side panels
   // shrink the visible canvas the bar is clamped into.
   const [barWidth, setBarWidth] = useState(320);
@@ -183,36 +177,18 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
     mintId: props.mintId,
     ...(props.extendConnectorCommand ? { extendConnectorCommand: props.extendConnectorCommand } : {}),
     snapToGrid: props.snapToGrid,
-    // Renderer preview is immediate; the context bar follows the drag by
-    // direct DOM writes (no setState per move), restored to the React anchor
-    // on operation end.
+    // Renderer preview is immediate; the context bar fades out while a shape moves or resizes
+    // and returns, at the settled anchor, on drop.
     onTransformPreview: (result) => {
       const bar = props.sectionRef.current?.querySelector<HTMLElement>('[data-context-bar]');
-      if (!result) {
-        if (previewFrameRef.current !== null) cancelAnimationFrame(previewFrameRef.current);
-        previewFrameRef.current = null;
-        pendingPreviewRef.current = null;
-        if (bar && anchorForRestoreRef.current) {
-          const restore = contextBarStyle(anchorForRestoreRef.current, barLayout(bar), labelPlatesRef.current);
-          if (restore.left !== undefined) bar.style.left = `${restore.left}px`;
-          if (restore.top !== undefined) bar.style.top = `${restore.top}px`;
-        }
-        return;
+      if (!bar) return;
+      if (result) { bar.dataset.gesture = 'true'; return; }
+      delete bar.dataset.gesture;
+      if (anchorForRestoreRef.current) {
+        const restore = contextBarStyle(anchorForRestoreRef.current, barLayout(bar), avoidRef.current);
+        if (restore.left !== undefined) bar.style.left = `${restore.left}px`;
+        if (restore.top !== undefined) bar.style.top = `${restore.top}px`;
       }
-      const camera = props.cameraRef.current;
-      const point = worldToScreen(camera, result.bounds);
-      pendingPreviewRef.current = new DOMRect(point.x, point.y,
-        result.bounds.width * camera.zoom, result.bounds.height * camera.zoom);
-      if (previewFrameRef.current !== null || !bar) return;
-      previewFrameRef.current = requestAnimationFrame(() => {
-        previewFrameRef.current = null;
-        const pending = pendingPreviewRef.current;
-        pendingPreviewRef.current = null;
-        if (!pending) return;
-        const follow = contextBarStyle(pending, barLayout(bar));
-        if (follow.left !== undefined) bar.style.left = `${follow.left}px`;
-        if (follow.top !== undefined) bar.style.top = `${follow.top}px`;
-      });
     },
   });
 
@@ -424,7 +400,6 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
       });
     });
   }, [contextAnchor, selectionIds, pageProjection, props.page, props.camera]);
-  labelPlatesRef.current = labelPlates;
 
   // Shapes in the band the bar could take, above or below the selection: the bar keeps off them too,
   // so it never sits on a neighbour or on the shapes a selected line joins. Containers hold everything; skipped.
@@ -444,6 +419,7 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
       });
     return [...labelPlates, ...shapes];
   }, [contextAnchor, labelPlates, selectionIds, barWidth, props.hostRef]);
+  avoidRef.current = avoid;
 
   useLayoutEffect(() => {
     const bar = props.sectionRef.current?.querySelector<HTMLElement>('[data-context-bar]');
@@ -576,6 +552,7 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
             } : null);
           }}
           style={contextBarStyle(contextAnchor, { width: barWidth, ...edges }, avoid)}
+          selection={contextAnchor}
           onRemoveIcons={props.onRemoveIcons}
           onSetIcon={props.onSetIcon}
           onNodeStyleCommitted={(patch) => {

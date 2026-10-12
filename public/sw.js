@@ -2,7 +2,7 @@
 // navigation, finds these bytes, and installs this worker over v1's. The removal starts at
 // install: activation waits for v1's worker to finish its in-flight fetches, which a long
 // request can hold open indefinitely. If activation does come, open tabs are reloaded onto
-// the network. v2 never registers a worker.
+// the network (a real load, not a hash change: see below). v2 never registers a worker.
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   // Not awaited: unregister is a registration job, and it queues behind this install job.
@@ -14,6 +14,13 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const tabs = await self.clients.matchAll({ type: 'window' });
-    await Promise.all(tabs.map((tab) => tab.navigate(tab.url).catch(() => undefined)));
+    // `tab.url` is where the tab was created, and navigating to it unchanged is only a hash change for a
+    // tab that moved within v1's hash routes: v1 would keep running and 404 on its next chunk. A changed
+    // query makes it a real load; v2 strips the param on boot.
+    await Promise.all(tabs.map((tab) => {
+      const url = new URL(tab.url);
+      url.searchParams.set('ofk-reload', '1');
+      return tab.navigate(url.href).catch(() => undefined);
+    }));
   })());
 });

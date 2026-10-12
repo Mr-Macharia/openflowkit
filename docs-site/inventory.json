@@ -113,7 +113,8 @@
         "Select",
         "Hand",
         "Add to / remove from the selection",
-        "Select inside a group (Esc: back to the group)"
+        "Select inside a group (Esc: back to the group)",
+        "Cancel a drag or draw"
       ]
     },
     {
@@ -517,7 +518,8 @@
       "page": "openflow-dsl",
       "shortcuts": [
         "Diagram as code",
-        "Convert pasted Mermaid / Structurizr / D2 (code panel)",
+        "Generate the diagram (in the code panel)",
+        "Convert pasted Mermaid / Structurizr / D2 (in the code panel)",
         "Leave the code editor (again: close it)"
       ]
     },
@@ -780,8 +782,8 @@
       "notes": "Canvas | Map switch in the document bar on every document (M): the architecture model as boxes inside boxes; a click opens a box in place, a click on an arrow lists its relations (or, on a repo map, its file:line evidence). The Map toolbar sets the depth (Top level, One level in, All levels) and Edit as drawing (Shift+M) copies the map to an ordinary Canvas page. Arrow keys walk between boxes. Repo maps (#/map/github/owner/repo) open in the editor, read-only.",
       "shortcuts": [
         "Canvas / Map",
-        "Move between boxes (Map)",
-        "Edit map as drawing (Map)"
+        "Move between boxes (in Map)",
+        "Edit map as drawing (in Map)"
       ],
       "page": "map-mode"
     },

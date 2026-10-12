@@ -35,7 +35,7 @@ import { projectPageConnectors } from '../../domain/connectors/routeProjection';
 import { buildNodeWorldMatrices, nodeWorldBounds } from '../../domain/scene/worldGeometry';
 import { buildNodeStateMap } from '../../domain/scene/nodeState';
 import { descendantIds } from '../../domain/scene/queries';
-import { resolveNodeSizingPolicy } from '../../domain/node-sizing/model';
+import { resolveLabelSizing } from '../../domain/node-sizing/labelWrap';
 import { measurePortableText, SUBLABEL_FONT, truncateTextToWidth } from '../../domain/text/measurement';
 import { SEQUENCE_ACTIVATION_WIDTH, sequenceHeadShape } from '../../domain/nodes/sequenceNodePresentation';
 import { isJsonObject } from '../../domain/document/json';
@@ -457,7 +457,7 @@ function labelElement(style: NodeStyle, box: Bounds2d, label: string, subLabel: 
   const baseline = style.textVerticalAlign === 'top' ? 'hanging' : style.textVerticalAlign === 'bottom' ? 'auto' : 'middle';
   // Label and sub-label wrap like the canvas draws them (PixiNodeRenderer): the node's width less
   // padding, its sizing policy's line cap and overflow; the sub-label is 11px/400.
-  const sizing = resolveNodeSizingPolicy(node);
+  const sizing = resolveLabelSizing(node, style);
   const wrapped = sizing.overflow !== 'visible';
   const wrap = !wrapped ? {}
     : { maxWidth: Math.max(1, node.size.width - padding * 2), maxLines: sizing.maxLines, overflow: sizing.overflow };
@@ -772,7 +772,7 @@ function exportNode(
   const outline = nodeOutline(node);
   const label = typeof node.content.label === 'string' ? node.content.label : node.id;
   const subLabel = typeof node.content.subLabel === 'string' ? node.content.subLabel : '';
-  const clip = resolveNodeSizingPolicy(node).clipContent
+  const clip = resolveLabelSizing(node, style).clipContent
     ? `clip-${node.id.replace(/[^A-Za-z0-9_-]/g, '-')}`
     : null;
   const shadowId = `shadow-${node.id.replace(/[^A-Za-z0-9_-]/g, '-')}`;

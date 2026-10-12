@@ -101,7 +101,7 @@ export function V2CameraControls(props: V2CameraControlsProps): React.JSX.Elemen
         label="Zoom"
         placement="top-start"
       >
-        <MenuItem onSelect={props.onZoomIn} shortcut={platformKeys('⌘+')}>Zoom in</MenuItem>
+        <MenuItem onSelect={props.onZoomIn} shortcut={platformKeys('⌘=')}>Zoom in</MenuItem>
         <MenuItem onSelect={props.onZoomOut} shortcut={platformKeys('⌘−')}>Zoom out</MenuItem>
         <MenuItem onSelect={props.onFitView} shortcut={platformKeys('⇧1')}>Zoom to fit</MenuItem>
         <MenuSeparator />

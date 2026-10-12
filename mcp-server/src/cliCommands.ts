@@ -205,17 +205,18 @@ const DROPPED_CODES = new Set(['W101', 'W111', 'W112', 'W150']);
 const DROPPED_IN_PART = new Set(['W102', 'W122']);
 const isDropped = ({ code, severity, message }: Diagnostic): boolean => severity === 'warning'
   && (DROPPED_CODES.has(code) || (DROPPED_IN_PART.has(code) && /\bdropped\b/.test(message)));
-const DROPPED_HINT = 'Rewrite the line (get_syntax shows the form) or delete it; until then it is left out of the diagram.';
+const droppedHint = (form: string) => `Rewrite the line (${form} shows the form) or delete it; until then it is left out of the diagram.`;
 
 /**
  * `check` for a validator (`openflowkit validate`, validate_openflow_dsl): every dropped line is an error with
  * a fix, so a draft that silently loses an edge does not pass. Unknown words and other guesses stay warnings.
  */
-export async function checkForValidation(source: string): Promise<Checked> {
+export async function checkForValidation(source: string, terminal = false): Promise<Checked> {
   const checked = await check(source, 'validate', 'none');
+  const hint = droppedHint(terminal ? '`openflowkit op get_syntax`' : 'get_syntax');
   return {
     ...checked,
-    issues: checked.issues.map((issue) => (isDropped(issue) ? { ...issue, severity: 'error', hint: issue.hint ?? DROPPED_HINT } : issue)),
+    issues: checked.issues.map((issue) => (isDropped(issue) ? { ...issue, severity: 'error', hint: issue.hint ?? hint } : issue)),
   };
 }
 
@@ -296,7 +297,7 @@ async function runCompile(command: 'render' | 'convert', args: readonly string[]
 
 async function runValidate(args: readonly string[], io: CliIo): Promise<number> {
   const { values, positionals } = parse(args, { strict: { type: 'boolean' }, json: { type: 'boolean' } });
-  const checked = await checkForValidation(await readInput(positionals[0], io));
+  const checked = await checkForValidation(await readInput(positionals[0], io), true);
   const bad = failed(checked, Boolean(values.strict));
   const { lint } = checked;
   if (values.json) io.out(JSON.stringify(summary(checked, !bad), null, 2));

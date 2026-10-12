@@ -84,4 +84,9 @@ describe('documentFromFileText', () => {
     expect(documentFromFileText(JSON.stringify({ format: 'openflowkit.scene', schemaVersion: 99, pages: [] }), 'x'))
       .toMatchObject({ error: expect.stringContaining('newer') });
   });
+
+  it('T13: a number too large to read is named, not reported as "not a diagram"', () => {
+    const text = '{"nodes":[{"id":"a","type":"process","position":{"x":1e400,"y":0},"data":{}}],"edges":[]}';
+    expect(documentFromFileText(text, 'x')).toEqual({ error: `It has a number OpenFlowKit can’t read (nodes[0].position.x). ${OPENS}` });
+  });
 });

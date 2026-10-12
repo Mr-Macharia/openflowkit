@@ -133,7 +133,7 @@ Costs: Jan 8, Feb 9, Mar 7, Apr 11, May 12
   await page.getByRole('radio', { name: '720 px' }).check();
   await page.getByRole('radio', { name: '12 fps' }).check();
   const download = page.waitForEvent('download', { timeout: 120_000 });
-  await page.getByRole('button', { name: /Export GIF/ }).click();
+  await page.getByRole('button', { name: /Download GIF/ }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/\.gif$/);
   const bytes = await readFile((await file.path())!);
@@ -207,7 +207,7 @@ test('a 1080p export keeps the canvas painting and the dialog live', { tag: '@lo
     return { task: value('TaskDuration'), script: value('ScriptDuration'), layout: value('LayoutDuration'), style: value('RecalcStyleDuration') };
   };
   const taskBefore = await metrics();
-  await page.getByRole('button', { name: /Export MP4/ }).click();
+  await page.getByRole('button', { name: /Download MP4/ }).click();
   // The dialog must stay live: progress counts frames, and Cancel is offered.
   await expect(page.getByRole('progressbar', { name: 'Encoding progress' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Cancel/ })).toBeVisible();

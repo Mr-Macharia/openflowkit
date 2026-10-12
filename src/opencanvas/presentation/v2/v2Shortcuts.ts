@@ -36,6 +36,10 @@ export function platformKeys(glyphs: string, apple = isApplePlatform()): string 
   }).join(' / ');
 }
 
+/** A shortcut sheet row's keys by its label, for a tooltip that must not restate them. */
+export const shortcutFor = (label: string): string | undefined =>
+  shortcutGroups().flatMap((group) => group.rows).find((row) => row.label === label)?.keys;
+
 type GlyphRow = readonly [label: string, glyphs: string, tokens: readonly string[]];
 
 /** Rows are written in Mac glyphs once and formatted for this platform by `platformKeys`. */
@@ -74,10 +78,10 @@ export function shortcutGroups(apple = isApplePlatform()): readonly ShortcutGrou
         ['Zoom to 100%', '⇧0 / ⌘0 / ⌘1', ['0', '1', 'Digit0', meta]],
         ['Zoom in / out', '⌘= / ⌘−', ['=', '+', '-']],
         ['Find on canvas', '⌘F', ['f', meta]],
-        ['Layers', 'L', ['l']],
+        ['Layers', 'L / ⇧L', ['l']],
         ['Canvas / Map', 'M', ['m']],
-        ['Move between boxes (Map)', 'Arrows', []],
-        ['Edit map as drawing (Map)', '⇧M', ['KeyM']],
+        ['Move between boxes (in Map)', 'Arrows', []],
+        ['Edit map as drawing (in Map)', '⇧M', ['KeyM']],
         // The dispatcher reads metaKey/ctrlKey for this, never altKey: Alt is
         // taken by resize-from-centre.
         ['Snap bypass (hold while dragging)', '⌘', []],
@@ -86,19 +90,20 @@ export function shortcutGroups(apple = isApplePlatform()): readonly ShortcutGrou
         ['From the centre (resize, draw); a copy (move) — hold while dragging', '⌥', []],
         ['Add to / remove from the selection', '⇧Click / ⌘Click', []],
         ['Select inside a group (Esc: back to the group)', 'Double-click', []],
+        ['Cancel a drag or draw', 'Esc', []],
       ],
     },
     {
       title: 'Edit',
       rows: [
-        ['Undo / redo', '⌘Z / ⇧⌘Z', ['z', 'y']],
+        ['Undo / redo', '⌘Z / ⇧⌘Z / ⌘Y', ['z', 'y']],
         ['Copy / cut / paste', '⌘C / ⌘X / ⌘V', ['c', 'x', 'KeyC']],
         ['Copy / paste style', '⌥⌘C / ⌥⌘V', []],
         ['Duplicate', '⌘D', ['d']],
         ['Delete / unplace', '⌫', ['Delete', 'Backspace']],
         ['Remove from model', '⇧⌘⌫', []],
         ['Nudge (10 px with Shift)', 'Arrows', ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']],
-        ['Edit label', '↵ / F2', ['Enter', 'F2']],
+        ['Edit label', '↵ / F2 / ⇧↵ / ⌘↵', ['Enter', 'F2']],
         ['Name a blank selected shape by typing', 'Any letter', []],
         ['Select all', '⌘A', []],
         ['Lock / unlock', '⌘L', []],
@@ -131,7 +136,8 @@ export function shortcutGroups(apple = isApplePlatform()): readonly ShortcutGrou
       rows: [
         ['Architecture model', '⌥M', ['KeyM']],
         ['Diagram as code', '⌥C', ['KeyC']],
-        ['Convert pasted Mermaid / Structurizr / D2 (code panel)', '⇧⌘M', []],
+        ['Generate the diagram (in the code panel)', '⌘↵', []],
+        ['Convert pasted Mermaid / Structurizr / D2 (in the code panel)', '⇧⌘M', []],
         ['Inspect selection', '⌥I', ['KeyI']],
         ['AI assistant', '⌘J', ['j']],
         ['This cheatsheet', '?', ['?']],

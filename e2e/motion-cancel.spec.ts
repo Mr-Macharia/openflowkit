@@ -38,7 +38,7 @@ test('cancelling an encode leaves the panel usable', async ({ page }) => {
   await page.getByRole('radio', { name: '1440 px' }).check();
   await page.getByRole('radio', { name: '30 fps' }).check();
 
-  const exportButton = page.getByRole('button', { name: /Export MP4/ });
+  const exportButton = page.getByRole('button', { name: /Download MP4/ });
   await exportButton.click();
   const cancel = page.getByRole('button', { name: 'Cancel' });
   await expect(cancel).toBeVisible({ timeout: 20_000 });

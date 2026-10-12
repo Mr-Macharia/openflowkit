@@ -1,5 +1,6 @@
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { MAX_DSL_BYTES } from '../../discovery/dslLink';
 import { decodeLegacyViewerParam } from './legacyViewerLink';
 
 const DSL = 'flow: "Checkout"\n[start] Cart\n[end] Paid ✓\nCart -> Paid';
@@ -17,5 +18,11 @@ describe('decodeLegacyViewerParam', () => {
 
   it('rejects a mangled link instead of returning garbage', async () => {
     await expect(decodeLegacyViewerParam('~not-zlib')).rejects.toThrow();
+  });
+
+  it('refuses a decompression bomb instead of inflating it into memory', async () => {
+    const bomb = `~${deflateSync(Buffer.alloc(MAX_DSL_BYTES + 1, 97), { level: 9 }).toString('base64url')}`;
+    expect(bomb.length).toBeLessThan(5_000);
+    await expect(decodeLegacyViewerParam(bomb)).rejects.toThrow(/too large/i);
   });
 });

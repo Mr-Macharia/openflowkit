@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { putRecord } from '../indexedDbHelpers';
 import { ASSETS_STORE_NAME, FLOW_PERSISTENCE_DB_NAME, PERSISTED_DOCUMENTS_STORE_NAME, V2_DOCUMENTS_STORE_NAME, openFlowPersistenceDatabase } from '../indexedDbSchema';
-import { V1_BACKUP_FORMAT, V1_IMPORT_MARKER_KEY, buildV1Backup, importV1Workspace, isV1Backup, openV1Backup, readV1ImportMarker } from './v1Import';
+import { V1_BACKUP_FORMAT, V1_IMPORT_MARKER_KEY, buildV1Backup, importV1Workspace, isV1Backup, openV1Backup, readV1ImportMarker, withoutV1Params } from './v1Import';
 import { createV2Repository } from './v2Repository';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped v1 fixture JSON
@@ -54,6 +54,16 @@ describe('importV1Workspace', () => {
     expect(Object.values(readV1ImportMarker(storage)!.docs).map((entry) => entry.status)).toEqual(rows.map(() => 'imported'));
     expect(first.firstRun).toBe(true);
     expect(await run(storage)).toEqual({ imported: [], failures: [], firstRun: false });
+  });
+
+  it('lists imported diagrams by when they were last edited in v1, with that time', async () => {
+    await run(memoryStorage());
+    const listed = await createV2Repository(indexedDB).listDocuments();
+    const loaded = await Promise.all(listed.map((summary) => createV2Repository(indexedDB).loadDocument(summary.id)));
+    const updated = loaded.map((result) => (result.status === 'ok' ? result.record.document.updatedAt : ''));
+    expect(listed.map((summary) => summary.savedAt)).toEqual(updated);
+    expect([...updated].sort().reverse()).toEqual(updated);
+    expect(new Set(updated).size).toBe(rows.length);
   });
 
   it('never overwrites a copy that already exists, and retries what failed', async () => {
@@ -147,3 +157,12 @@ describe('v1 backup file', () => {
   });
 });
 
+
+describe('withoutV1Params', () => {
+  it('drops a v1 room link and the cutover reload marker, keeps the rest, and leaves clean URLs alone', () => {
+    expect(withoutV1Params('?room=r1&secret=s3')).toBe('');
+    expect(withoutV1Params('?utm_source=x&room=r1&secret=s3&ofk-reload=1')).toBe('?utm_source=x');
+    expect(withoutV1Params('?utm_source=x')).toBeNull();
+    expect(withoutV1Params('')).toBeNull();
+  });
+});

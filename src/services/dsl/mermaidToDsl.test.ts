@@ -204,6 +204,23 @@ describe('mermaidToDsl', () => {
   });
 
   // https://mermaid.js.org/syntax/sequenceDiagram.html#messages — all eight arrows in one block.
+  it('keeps the alias and kind of database/queue/actor participants and reports the kinds it cannot draw', () => {
+    const { dsl, losses } = convert(`sequenceDiagram
+  autonumber
+  database D as UsersDB
+  queue Q as Jobs
+  collections C as Cache
+  actor U as User
+  boundary B as Gateway
+  U->>D: read`);
+    const lines = dsl.split('\n');
+    for (const line of ['participant d = UsersDB [db]', 'participant q = Jobs [queue]', 'participant c = Cache [db]', 'participant u = User [actor]', 'participant b = Gateway']) {
+      expect(lines).toContain(line);
+    }
+    expect(losses.some((loss) => loss.includes('boundary'))).toBe(true);
+    expect(losses.some((loss) => loss.includes('autonumber'))).toBe(true);
+  });
+
   it('keeps the cross end of -x and --x, and the other six arrows as they were', async () => {
     const { dsl, losses } = convert(`sequenceDiagram
   Alice->John: Hello John, how are you?
@@ -351,6 +368,46 @@ describe('mermaidToDsl', () => {
     const compiled = await compile(dsl);
     expect(compiled.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
     expect(compiled.connectors).toHaveLength(4);
+  });
+
+  it('keeps click links and [[subroutine]] shapes, and reports callbacks and tooltips', async () => {
+    const { dsl, losses } = convert(`flowchart LR
+  API[API] --> W[[Worker]]
+  classDef hot fill:#f96
+  class API,W hot
+  click API "https://example.com/api" "API docs"
+  click W call doIt()`);
+    expect(dsl).toContain('w = Worker [component, #f96]');
+    expect(dsl).toContain('API [#f96, link: "https://example.com/api"]');
+    expect(losses.some((loss) => /tooltip/i.test(loss))).toBe(true);
+    expect(losses.some((loss) => /callback/i.test(loss))).toBe(true);
+    const compiled = await compile(dsl);
+    expect(compiled.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+  });
+
+  it('keeps mindmap shapes and reports the ones it cannot draw', async () => {
+    const { dsl, losses } = convert(`mindmap
+  root((Platform))
+    Ledger[Ledger service]
+    Risk)Fraud(
+      Burst))Alarm((
+    Soft(Rounded)
+    Hex{{Hexagon}}`);
+    for (const line of ['central: Platform [circle]', '- Ledger service [rect]', '- Fraud', '  - Alarm', '- Rounded [rounded]', '- Hexagon [hexagon]']) {
+      expect(dsl.split('\n')).toContain(line);
+    }
+    expect(losses.filter((loss) => /cloud|bang/.test(loss))).toHaveLength(2);
+    const compiled = await compile(dsl);
+    expect(compiled.diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+  });
+
+  it('turns class member generics into angle brackets and reports ER attribute comments', () => {
+    const cls = convert('classDiagram\n  class Invoice {\n    -List~LineItem~ items\n    +find() Map~String, List~int~~\n  }');
+    expect(cls.dsl).toContain('-List<LineItem> items');
+    expect(cls.dsl).toContain('+find() Map<String, List<int>>');
+    const er = convert('erDiagram\n  CUSTOMER {\n    string email UK "login name"\n    string name\n  }');
+    expect(er.losses).toEqual([expect.stringContaining('login name')]);
+    expect(er.diagnostics.map((item) => [item.code, item.line])).toEqual([['W180', 3]]);
   });
 
   it('keeps a subgraph direction only when no link leaves the subgraph, as Mermaid does', () => {
@@ -578,7 +635,7 @@ describe('mermaidToDsl', () => {
 
   it('converts mindmaps by indentation', async () => {
     const { dsl } = convert('mindmap\n  root((Product))\n    Growth\n      SEO\n    Retention');
-    expect(dsl).toBe('mindmap\ncentral: Product\n- Growth\n  - SEO\n- Retention\n');
+    expect(dsl).toBe('mindmap\ncentral: Product [circle]\n- Growth\n  - SEO\n- Retention\n');
     const compiled = await compile(dsl);
     expect(compiled.nodes).toHaveLength(4);
   });

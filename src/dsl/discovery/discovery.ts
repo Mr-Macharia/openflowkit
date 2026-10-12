@@ -680,6 +680,8 @@ function terraformKind(type: string): DiscoveredUnitKind {
 const NODE_FRAMEWORKS: ReadonlyArray<readonly [string, string]> = [
   ['next', 'Next.js'], ['@nestjs/core', 'NestJS'], ['express', 'Express'],
   ['fastify', 'Fastify'], ['koa', 'Koa'], ['hono', 'Hono'],
+  // Meta-frameworks before the library they sit on.
+  ['astro', 'Astro'], ['nuxt', 'Nuxt'], ['@sveltejs/kit', 'SvelteKit'],
   ['react', 'React'], ['vue', 'Vue'], ['svelte', 'Svelte'], ['@angular/core', 'Angular'],
 ];
 
@@ -897,7 +899,8 @@ const SKIP_HOSTS = new Set([
 
 function skipHost(host: string): boolean {
   const lower = host.toLowerCase().replace(/^www\./, '');
-  return SKIP_HOSTS.has(lower) || lower.endsWith('.local') || lower.endsWith('.example')
+  // A name with no dot is no public service: a Durable Object or service-binding stub (`fetch('https://quota/…')`), a compose host.
+  return !lower.includes('.') || SKIP_HOSTS.has(lower) || lower.endsWith('.local') || lower.endsWith('.example')
     || lower === 'example.org' || lower === 'example.net' || lower.startsWith('docs.')
     || lower.endsWith('.readthedocs.io') || /^\d+\.\d+\.\d+\.\d+$/.test(lower);
 }

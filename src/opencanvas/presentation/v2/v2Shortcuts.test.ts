@@ -76,8 +76,8 @@ describe('keyboard cheatsheet', () => {
   it('writes redo and ungroup in full, never as a bare Shift letter', () => {
     const keys = (apple: boolean, label: string) =>
       shortcutGroups(apple).flatMap(({ rows }) => rows).find((row) => row.label === label)?.keys;
-    expect(keys(true, 'Undo / redo')).toBe('⌘Z / ⇧⌘Z');
-    expect(keys(false, 'Undo / redo')).toBe('Ctrl+Z / Ctrl+Shift+Z');
+    expect(keys(true, 'Undo / redo')).toBe('⌘Z / ⇧⌘Z / ⌘Y');
+    expect(keys(false, 'Undo / redo')).toBe('Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y');
     expect(keys(true, 'Group / ungroup')).toBe('⌘G / ⇧⌘G');
     expect(shortcutGroups(true).flatMap(({ rows }) => rows).some(({ keys }) => keys.includes(' + '))).toBe(false);
   });

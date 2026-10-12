@@ -4,7 +4,7 @@ import { basicNodeOutlinePoints } from '../../domain/nodes/basicNodeOutline';
 import { basicNodeDecorations } from '../../domain/nodes/basicNodeDecorations';
 import { drawDashedPath } from './PixiConnectorRenderer';
 import { buildNodeStateMap } from '../../domain/scene/nodeState';
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import { applyMatrixToPoint } from '../../domain/geometry/matrix';
 import type { ScenePage } from '../../domain/document/types';
 import type { SceneIndex } from '../../domain/scene/types';
@@ -24,11 +24,11 @@ import { drawPixiNodeOutline } from './pixiNodeOutline';
 import type { PixiNodeDebugRecord } from './pixiNodeDebug';
 import { isBackdropNode, isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
 import { isSequenceParticipant } from './sequenceNodeVisual';
-import { resolveNodeSizingPolicy } from '../../domain/node-sizing/model';
+import { resolveLabelSizing } from '../../domain/node-sizing/labelWrap';
 import { measurePortableText, SUBLABEL_FONT } from '../../domain/text/measurement';
-import { decoratePixiText } from './pixiText';
+import { decoratePixiText, isTitle, markTitle } from './pixiText';
 import { PixiTextPool } from './pixiTextPool';
-import { labelReadable, type SemanticDetailLevel } from './viewportProjection';
+import { labelReadable, MIN_TITLE_SCREEN_PX, type SemanticDetailLevel } from './viewportProjection';
 import { numericColorToHex } from '../../domain/color/adaptiveColor';
 
 const NODE_FILL = 0xffffff;
@@ -67,6 +67,8 @@ export class PixiNodeRenderer {
   private readonly labelByNodeId = new Map<string, Container>();
   /** Font size per label, for the on-screen readability check. */
   private readonly labelFontByNodeId = new Map<string, number>();
+  /** A node whose label names it (a title Text): the whole label stays to the title floor, its other Texts to the body floor. */
+  private readonly secondaryByNodeId = new Map<string, readonly Text[]>();
   // Label Text objects rasterize to a texture on creation (~0.5–1 ms each), so
   // a redraw reuses last draw's instances with the same text and style
   // instead of destroying and re-creating every label.
@@ -133,6 +135,7 @@ export class PixiNodeRenderer {
     this.mindmapRenderer.beginDraw(page.nodes);
     this.labelByNodeId.clear();
     this.labelFontByNodeId.clear();
+    this.secondaryByNodeId.clear();
     const debugRecords: PixiNodeDebugRecord[] = [];
     const nodeStates = buildNodeStateMap(page);
     const bands = page.nodes.filter((node) => !isContainerNodeKind(node.kind) && isBackdropNode(node));
@@ -161,6 +164,7 @@ export class PixiNodeRenderer {
       if (family) {
         this.labels.addChild(family.label);
         this.labelByNodeId.set(node.id, family.label);
+        this.trackTitle(node.id, family.label);
         debugRecords.push(family.debug);
         continue;
       }
@@ -215,7 +219,7 @@ export class PixiNodeRenderer {
       });
       if (detailLevel === 'overview') continue;
       const labelText = typeof node.content.label === 'string' ? node.content.label : node.id;
-      const sizing = resolveNodeSizingPolicy(node);
+      const sizing = resolveLabelSizing(node, style);
       const baseLayout = resolveNodeContentLayout(node.content);
       // Style keys win over the stored content layout: one place to set alignment.
       const pad = style.textPadding;
@@ -235,7 +239,7 @@ export class PixiNodeRenderer {
         ...(wrap === null ? {} : { maxWidth: wrap, maxLines: sizing.maxLines, overflow: sizing.overflow }),
       });
       const textColor = pixiPaintColor(style.textColor, visual?.text ?? 0x1e293b).color;
-      const label = this.texts.styled(labelMeasurement.displayText, style, textColor, wrap);
+      const label = markTitle(this.texts.styled(labelMeasurement.displayText, style, textColor, wrap));
       const subStyle = subLabelStyle(style);
       const subLabel =
         typeof node.content.subLabel === 'string' && node.content.subLabel.length > 0
@@ -309,7 +313,7 @@ export class PixiNodeRenderer {
       }
       this.labels.addChild(content);
       this.labelByNodeId.set(node.id, content);
-      this.labelFontByNodeId.set(node.id, style.fontSize);
+      this.trackTitle(node.id, content);
     }
     this.texts.flush();
     this.debugRecords = debugRecords;
@@ -319,13 +323,34 @@ export class PixiNodeRenderer {
     return this.debugRecords;
   }
 
+  /** Records a label's title font and its other Texts, once per draw, so a zoom tick only compares numbers. */
+  private trackTitle(nodeId: string, label: Container): void {
+    let titleFont = 0;
+    const secondary: Text[] = [];
+    const visit = (node: Container): void => {
+      if (node instanceof Text) {
+        if (isTitle(node)) titleFont = Math.max(titleFont, Number(node.style.fontSize));
+        else secondary.push(node);
+        return;
+      }
+      for (const child of node.children) visit(child as Container);
+    };
+    visit(label);
+    if (titleFont === 0) return;
+    this.labelFontByNodeId.set(nodeId, titleFont);
+    this.secondaryByNodeId.set(nodeId, secondary);
+  }
+
   setLabelVisibility(visibleNodeIds: ReadonlySet<string> | null, zoom: number): void {
     this.labels.visible = visibleNodeIds !== null;
     if (!visibleNodeIds) return;
     for (const [nodeId, label] of this.labelByNodeId) {
+      const secondary = this.secondaryByNodeId.get(nodeId);
+      // A titled node reads down to the title floor; the rest of its text (tech, description) keeps the body floor.
       label.visible = visibleNodeIds.has(nodeId) && nodeId !== this.editingNodeId
-        && labelReadable(zoom, this.labelFontByNodeId.get(nodeId) ?? FAMILY_LABEL_FONT)
+        && labelReadable(zoom, this.labelFontByNodeId.get(nodeId) ?? FAMILY_LABEL_FONT, secondary ? MIN_TITLE_SCREEN_PX : undefined)
         && !this.freeformRenderer.isMediaLoaded(nodeId);
+      if (secondary && label.visible) for (const text of secondary) text.visible = labelReadable(zoom, Number(text.style.fontSize));
     }
   }
 

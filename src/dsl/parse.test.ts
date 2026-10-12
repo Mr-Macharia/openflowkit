@@ -113,6 +113,29 @@ describe('parse for non-graph families', () => {
     }
   });
 
+  it('says how to keep a node whose name is a keyword', () => {
+    const [warning] = parse('architecture\nqueue [label: "Order events", tech: Kafka]').diagnostics.filter((item) => item.code === 'W101');
+    expect(warning?.message).toMatch(/`queue` is a keyword/);
+    expect(warning?.hint).toBe('queue name [...]  or  "queue" [...]');
+  });
+
+  it('warns when `word "Label"` reads as one label, and keeps parsing it', () => {
+    for (const [line, hint] of [['group edge "Edge" {\n  A\n}', 'edge = "Edge"'], ['api "Checkout API"', 'api = "Checkout API"']] as const) {
+      const parsed = parse(`flowchart\n${line}`);
+      const [warning] = parsed.diagnostics.filter((item) => item.code === 'W101');
+      expect(warning?.hint).toBe(hint);
+      expect(warning?.message).toMatch(/one label/);
+    }
+    expect(parse('flowchart\napi = "Checkout API"').diagnostics.filter((item) => item.code === 'W101')).toEqual([]);
+  });
+
+  it('gives one diagnostic for a Mermaid shape written inline on an edge', () => {
+    const found = parse('flowchart\nStart -> Check{Valid?}').diagnostics.filter((item) => item.severity !== 'info');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.code).toBe('W101');
+    expect(found[0]?.hint).toBe('Check = "Valid?" [diamond]');
+  });
+
   it('reports a line with an arrow and no endpoints once', () => {
     for (const line of ['A ->', '-> B', 'A -> [', 'A -> B {']) {
       const codes = parse(`flowchart\n${line}`).diagnostics.filter((item) => item.severity !== 'info').map((item) => item.code);

@@ -301,6 +301,12 @@ test('a repo that is not found, an unreachable GitHub and a repo with nothing to
   // Most often a typo: the address comes back, ready to fix; home stays one click away.
   await expect(alert(page).getByRole('textbox', { name: 'Map a GitHub repo' })).toHaveValue('acme/shop');
   await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible();
+  // A state screen has no side panel, and a failed read leaves no document behind (Recents lists only maps that drew).
+  const model = page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Architecture model', exact: true });
+  await expect(model).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('complementary', { name: 'Architecture model' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to home' }).click();
+  await expect(page.getByText('acme/shop', { exact: true })).toHaveCount(0);
 
   await page.unroute('https://api.github.com/repos/acme/shop/git/trees/**');
   await page.route('https://api.github.com/repos/acme/shop/git/trees/**', (route) => route.abort('connectionrefused'));
@@ -313,6 +319,8 @@ test('a repo that is not found, an unreachable GitHub and a repo with nothing to
   await serveGitHub(page, { 'README.md': '# nothing\n', 'LICENSE': 'MIT\n' });
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByText('Nothing to map here.')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Dockerfiles, compose files, Kubernetes manifests/)).toBeVisible();
+  await expect(model).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('a crowded level draws its strongest arrows and offers the rest @gate', async ({ page }) => {

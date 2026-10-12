@@ -204,6 +204,8 @@ describe('map camera', () => {
     const noPanel = freeArea(size, { left: 0, right: 1440 }, { top: 66, rail: 1373, bottom: 920 });
     expect(noPanel.left + noPanel.width).toBe(1373 - 8);
     expect(freeArea(size, { left: 0, right: 1440 }, {})).toEqual({ left: 0, top: 0, width: 1440, height: 1000 });
+    // Layers and the code panel both open on a laptop leave under half the width: still kept clear of, not ignored.
+    expect(freeArea({ width: 1280, height: 800 }, { left: 280, right: 860 }, {})).toEqual({ left: 280, top: 0, width: 580, height: 800 });
     // A phone: the chrome would leave a sliver, so it is ignored.
     expect(freeArea({ width: 390, height: 844 }, { left: 0, right: 390 }, { top: 66, rail: 40, bottom: 800 }).width).toBe(390);
     // A landing with no box in view starts at the free area's top-left, below the bar.

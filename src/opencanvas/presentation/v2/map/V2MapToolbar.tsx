@@ -1,6 +1,7 @@
+import { IconPencil } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
 import type { Depth, LinkKind } from '../../../../dsl/map/types';
-import { Button, Menu, MenuItem, Toolbar, Tooltip } from '../../design-system';
+import { Button, Icon, Menu, MenuItem, Toolbar, Tooltip } from '../../design-system';
 import { platformKeys } from '../v2Shortcuts';
 
 /** What each kind of connection is called, as the arrows say it ("calls", "uses"): the Connections menu, the box panel and the CLI viewer. */
@@ -55,7 +56,7 @@ export function V2MapToolbar(p: V2MapToolbarProps): React.JSX.Element {
           <>
             <span className="ofk-v2-divider" aria-hidden="true" />
             <Tooltip content="Copies this map to a new Canvas page you can rearrange and draw on" shortcut={platformKeys('⇧M')}>
-              <Button variant="quiet" disabled={!p.canPin} onClick={p.onPin}>Edit as drawing</Button>
+              <Button variant="quiet" disabled={!p.canPin} onClick={p.onPin}><Icon icon={IconPencil} />Edit as drawing</Button>
             </Tooltip>
           </>
         ) : null}

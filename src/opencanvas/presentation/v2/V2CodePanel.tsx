@@ -152,7 +152,7 @@ export function V2CodePanel({
           <Button variant="primary" onClick={onGenerate} busy={generating} disabled={generating || !code.trim()}>
             <Icon icon={IconPlayerPlay} /> {generating ? 'Generating…' : 'Generate diagram'} <kbd>{platformKeys('⌘↵')}</kbd>
           </Button>
-          {errors.length ? <p>Bad lines are skipped; the rest still renders.</p> : null}
+          {errors.length ? <p>{convertFrom ? 'Fix the marked lines to convert.' : 'Bad lines are skipped; the rest still renders.'}</p> : null}
         </footer>
       </div>
     </Panel>

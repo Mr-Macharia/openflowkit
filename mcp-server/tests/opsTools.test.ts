@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -135,7 +135,7 @@ describe('op tools', () => {
 
   it('persists a document through openflow_open and openflow_save', async () => {
     const target = await client();
-    const dir = await mkdtemp(join(tmpdir(), 'openflowkit-ops-'));
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
     tempDirs.push(dir);
     const path = join(dir, 'eval.openflow.json');
 
@@ -156,7 +156,7 @@ describe('op tools', () => {
 
   it('openflow_save writes the SVG beside the file only when svg is true', async () => {
     const target = await client();
-    const dir = await mkdtemp(join(tmpdir(), 'openflowkit-ops-'));
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
     tempDirs.push(dir);
     const created = await call(target, 'openflow_create', { name: 'Pictured' });
     await run(target, 'create_diagram', { documentId: created.id, dsl: 'flowchart\n  A -> B' });
@@ -174,7 +174,7 @@ describe('op tools', () => {
 
   it('openflow_save keeps the saved file and returns svgError when the SVG cannot be written', async () => {
     const target = await client();
-    const dir = await mkdtemp(join(tmpdir(), 'openflowkit-ops-'));
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
     tempDirs.push(dir);
     const created = await call(target, 'openflow_create', { name: 'Blocked' });
     await run(target, 'create_diagram', { documentId: created.id, dsl: 'flowchart\n  A -> B' });
@@ -186,8 +186,50 @@ describe('op tools', () => {
     expect(existsSync(join(dir, 'blocked.openflow.json'))).toBe(true);
   });
 
+  it('openflow_save stays inside the working directory, follows no symlink out, and writes only document files', async () => {
+    const target = await client();
+    const created = await call(target, 'openflow_create', { name: 'Confined' });
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
+    tempDirs.push(dir);
+    const outside = await mkdtemp(join(tmpdir(), 'openflowkit-outside-'));
+    tempDirs.push(outside);
+    await symlink(outside, join(dir, 'link'));
+
+    await expect(call(target, 'openflow_save', { documentId: created.id, path: join(outside, 'x.openflow.json') }))
+      .rejects.toThrow(/inside the server's working directory/);
+    await expect(call(target, 'openflow_save', { documentId: created.id, path: join(dir, 'link', 'x.openflow.json') }))
+      .rejects.toThrow(/inside the server's working directory/);
+    expect(existsSync(join(outside, 'x.openflow.json'))).toBe(false);
+    await expect(call(target, 'openflow_save', { documentId: created.id, path: join(dir, '.zshrc') }))
+      .rejects.toThrow(/\.openflow\.json, \.ofk or \.json/);
+    expect(existsSync(join(dir, '.zshrc'))).toBe(false);
+    for (const name of ['a.openflow.json', 'b.ofk', 'c.json']) {
+      await call(target, 'openflow_save', { documentId: created.id, path: join(dir, name) });
+      expect(existsSync(join(dir, name))).toBe(true);
+    }
+  });
+
+  it('export path refuses a symlink that leads outside the working directory', async () => {
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
+    tempDirs.push(dir);
+    const outside = await mkdtemp(join(tmpdir(), 'openflowkit-outside-'));
+    tempDirs.push(outside);
+    await symlink(outside, join(dir, 'link'));
+    const bridge = {
+      connected: true, health: () => ({ pages: [] }),
+      call: async () => ({ files: [{ mime: 'image/svg+xml', text: '<svg/>' }] }),
+    } as unknown as LiveBridge;
+    const { server } = createServerWithDeps({ log: () => undefined, bridge });
+    const live = new Client({ name: 'test', version: '0.0.0' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(b), live.connect(a)]);
+    const result = await live.callTool({ name: 'export', arguments: { format: 'svg', path: join(dir, 'link', 'x.svg') } });
+    expect(result.isError).toBe(true);
+    expect(existsSync(join(outside, 'x.svg'))).toBe(false);
+  });
+
   it('openflow_save in live mode asks the editor for the first page', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'openflowkit-ops-'));
+    const dir = await mkdtemp(join(process.cwd(), '.tmp-ops-'));
     tempDirs.push(dir);
     const calls: { input: { format: string }; pageId?: string }[] = [];
     const bridge = {
@@ -239,7 +281,7 @@ describe('op tools', () => {
     expect(await call(target, 'validate_openflow_dsl', { dsl: 'flowchart\nA [sparkly] -> B' })).toMatchObject({ ok: true });
     // Every line dropped: nothing would be drawn, so it is not ok.
     const dropped = await call(target, 'validate_openflow_dsl', { dsl: 'flowchart\nA -> [[[ broken' });
-    expect(dropped).toMatchObject({ ok: false, diagnostics: [expect.objectContaining({ code: 'W101', line: 2 }), expect.objectContaining({ code: 'E001' })] });
+    expect(dropped).toMatchObject({ ok: false, diagnostics: [expect.objectContaining({ code: 'W101', line: 2, hint: expect.stringContaining('(get_syntax shows') }), expect.objectContaining({ code: 'E001' })] });
     const { id: documentId } = await call(target, 'openflow_create', { name: 'Broken' });
     await expect(call(target, 'create_diagram', { documentId, dsl: 'flowchart\nA -> [[[ broken' })).rejects.toThrow(/Nothing to draw[\s\S]*W101/);
     expect(await run(target, 'list_diagrams', { documentId })).toEqual({ diagrams: [] });
@@ -262,6 +304,7 @@ describe('op tools', () => {
       connected: true,
       health: () => ({ ok: true, protocol: 1, name: 'openflowkit', version: '0.0.0', connected: true, documentId: 'live-doc', documentName: 'Live', pageId: 'p1', pages: [{ pageId: 'p1', name: 'Page 1', nodes: 1, connectors: 0 }], lastSeenMs: 5 }),
       status: () => ({ port: 43119, state: 'paired' }),
+      retryPort: async () => undefined,
       call: async (op: string, input: unknown) => { calls.push({ op, input }); return { frameId: 'dsl-live' }; },
     } as unknown as LiveBridge;
     const { server } = createServerWithDeps({ bridge, log: () => undefined });

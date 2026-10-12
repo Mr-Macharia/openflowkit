@@ -11,7 +11,7 @@ import type { SceneDocumentV1 } from '../../domain/document/types';
 import { isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
 import { Button, Icon, Popover, PopoverHeader, Segmented, Tooltip, type ToastItem } from '../design-system';
 import { track } from '../../../services/usage/usage';
-import { createShareLink, browserStorage, deleteShare, forgetShare, latestShareFor, rememberShare, ShareError } from '../../../services/share/shareClient';
+import { appBaseUrl, createShareLink, browserStorage, deleteShare, forgetShare, latestShareFor, rememberShare, ShareError } from '../../../services/share/shareClient';
 import { getTurnstileToken } from '../../../services/share/turnstile';
 import { dslLink } from '../../../services/discovery/dslLink';
 import {
@@ -153,8 +153,16 @@ export function V2ExportMenu({
         track('export_image');
         onToast('Print dialog opened', 'info', { description: 'Choose “Save as PDF” to keep a file.' });
       } else if (action === 'copy-png') {
-        const [file] = await buildV2Export({ ...request, format: 'png', scale });
-        if (!file?.bytes || !(await copyImageToClipboard(file.bytes, 'image/png'))) {
+        // Started inside the click, resolved later: the clipboard write must begin while the gesture is live.
+        let buildError: unknown;
+        const png = buildV2Export({ ...request, format: 'png', scale }).then(([file]) => {
+          if (!file?.bytes) throw new Error('Nothing to copy');
+          return file.bytes;
+        });
+        png.catch((error: unknown) => { buildError = error; });
+        const copied = await copyImageToClipboard(png, 'image/png');
+        if (buildError !== undefined) throw buildError;
+        if (!copied) {
           onToast('Couldn’t copy the image', 'danger', { description: 'This browser can’t copy images to the clipboard.' });
         } else {
           track('export_image');
@@ -178,7 +186,7 @@ export function V2ExportMenu({
   async function copyShareLink(): Promise<void> {
     setSharing('snapshot');
     try {
-      const link = await createShareLink(whole, { appUrl: window.location.href, getTurnstileToken });
+      const link = await createShareLink(whole, { appUrl: appBaseUrl(window.location.href), getTurnstileToken });
       rememberShare(browserStorage(), document.id, link.id, link.deleteToken);
       track('share_view');
       setShareTick((tick) => tick + 1);
@@ -208,7 +216,7 @@ export function V2ExportMenu({
     if (!mermaidTarget || !scene) return;
     setSharing('code');
     try {
-      const url = await dslLink(frameSource(scene), window.location.href);
+      const url = await dslLink(frameSource(scene), appBaseUrl(window.location.href), whole.name);
       if (!url) {
         onToast('Too long for an editable link', 'danger', { description: canShare ? 'Share a view-only link instead, or send the file.' : 'Send the file instead.' });
         return;
@@ -249,7 +257,7 @@ export function V2ExportMenu({
     { value: 'snapshot', icon: IconLock, title: 'View-only link', available: canShare,
       detail: canShare ? 'Every page, encrypted in your browser.' : 'Needs a share server.' },
     { value: 'code', icon: IconCode, title: 'Editable copy', available: Boolean(mermaidTarget),
-      detail: mermaidTarget ? 'Its code, in the link. Nothing uploaded.' : 'Needs a diagram made from code.' },
+      detail: mermaidTarget ? 'This page only. Its code, in the link, nothing uploaded.' : 'Needs a diagram made from code.' },
   ] as const;
   // The chosen kind, or the one that works here; neither → the file.
   const kind = linkKinds.find(({ value, available }) => available && value === linkKind)?.value
@@ -282,6 +290,7 @@ export function V2ExportMenu({
             { value: 'page', label: 'Page' },
             { value: 'document', label: 'All pages', title: effectiveFormat === 'pdf' ? 'One sheet per page' : 'One file per page' },
           ]} />
+        <p className="ofk-caption ofk-v2-export-caption">{caption}</p>
         {effectiveFormat === 'png' ? (
           <Segmented<'1' | '2'> label="Size" showLabel value={scale === 2 ? '2' : '1'}
             onChange={(value) => setScale(value === '2' ? 2 : 1)}
@@ -316,7 +325,6 @@ export function V2ExportMenu({
             </Button>
           </Tooltip>
         </div>
-        <p className="ofk-caption">{caption}</p>
         </>}
         {sharingOnly ? (
           <div className="ofk-v2-share">

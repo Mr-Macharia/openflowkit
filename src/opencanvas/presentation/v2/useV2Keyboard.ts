@@ -56,7 +56,7 @@ interface V2KeyboardOptions {
   readonly onToggleCode: () => void;
   readonly onToggleModel: () => void;
   readonly onToggleInspect: () => void;
-  /** M: Canvas ↔ Map, where the page has a model; false when it has none, so the key falls through. */
+  /** M: Canvas ↔ Map on any page; false when it could not switch, so the key falls through. */
   readonly onToggleMap: () => boolean;
   /** ⌘F: the find bar, in place of the browser's. */
   readonly onFind: () => void;
@@ -183,7 +183,7 @@ export function useV2Keyboard(options: V2KeyboardOptions) {
               ? { x: 0, y: -amount }
               : { x: 0, y: amount };
       opts.onNudge(delta);
-    // M switches Canvas and Map on a model page, ahead of type-to-edit: it is a mode key there, not the start of a label.
+    // M switches Canvas and Map on any page, ahead of type-to-edit: it is a mode key there, not the start of a label.
     } else if (!command && !event.shiftKey && !event.altKey && key === 'm' && opts.onToggleMap()) {
     // ⇧0/⇧1/⇧2 (by code) sit above type-to-edit: they zoom, never type ")", "!" or "@" into a label.
     } else if (!command && !event.altKey && event.shiftKey

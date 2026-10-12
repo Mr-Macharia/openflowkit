@@ -38,12 +38,20 @@ export const ICON_CONCEPTS: Readonly<Record<string, readonly string[]>> = {
   file: ['file', 'document', 'folder'],
 };
 
+const squash = (text: string): string => text.toLowerCase().replace(/[^a-z]/g, '');
+
+// The whole phrase first, then its words from the last ("message queue" is a queue). A query
+// that names one of a concept's terms ("kafka") searches itself before the rest of the concept.
 const conceptFor = (query: string): { key: string; terms: readonly string[] } => {
-  const needle = query.trim().toLowerCase().replace(/[^a-z]/g, '');
-  for (const [key, terms] of Object.entries(ICON_CONCEPTS)) {
-    if (key === needle || terms.some((term) => term.replace(/[^a-z]/g, '') === needle)) return { key, terms };
+  const asked = query.trim();
+  const words = asked.split(/\s+/);
+  for (const needle of [squash(asked), ...words.reverse().map(squash)]) {
+    for (const [key, terms] of Object.entries(ICON_CONCEPTS)) {
+      if (key !== needle && !terms.some((term) => squash(term) === needle)) continue;
+      return { key, terms: squash(asked) === key ? terms : [asked, ...terms.filter((term) => squash(term) !== squash(asked))] };
+    }
   }
-  return { key: query.trim(), terms: [query.trim()] };
+  return { key: asked, terms: [asked] };
 };
 
 export const getSyntax = defineOp({
@@ -82,16 +90,16 @@ export const findIconsFor = defineOp({
   }),
   async run({ concept, limit }, context) {
     const { key, terms } = conceptFor(concept);
+    const answers = await Promise.all(terms.map((term) => context.capabilities.searchIcons(term, limit)));
+    // Round-robin over terms, so one term with many variants ("rds") can't fill every slot.
     const seen = new Set<string>();
     const matches: IconMatch[] = [];
-    for (const term of terms) {
-      if (matches.length >= limit) break;
-      for (const match of await context.capabilities.searchIcons(term, limit)) {
+    for (let rank = 0; matches.length < limit && answers.some((answer) => rank < answer.length); rank += 1) {
+      for (const match of answers.map((answer) => answer[rank]).filter(Boolean)) {
         const id = `${match.provider}/${match.slug}`;
-        if (seen.has(id)) continue;
+        if (seen.has(id) || matches.length >= limit) continue;
         seen.add(id);
         matches.push(match);
-        if (matches.length >= limit) break;
       }
     }
     return { command: null, output: { concept: key, matches } };

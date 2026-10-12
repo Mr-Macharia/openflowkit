@@ -235,6 +235,15 @@ describe('real repo shapes', () => {
     expect(found.units.map((u) => u.kind)).toEqual(['container', 'container', 'container']);
   });
 
+  it('a single-label host (a Durable Object stub, a compose name) is no external service, and Astro names its site', () => {
+    const { found, unit } = byName([
+      { path: 'worker/index.ts', content: "const r = await env.QUOTA.get(id).fetch('https://quota/hit');\n" },
+      { path: 'site/package.json', content: '{"name":"site","dependencies":{"astro":"^5","react":"^19"}}' },
+    ]);
+    expect(found.units.filter((u) => u.kind === 'external')).toEqual([]);
+    expect(unit('site')!.tech).toBe('Astro');
+  });
+
   // saleor/saleor: one Django app at the root, its code in a package folder, its stores in pyproject only.
   it('reads pyproject dependencies, and a lone root app owns the code in its folders', () => {
     const { found, unit } = byName([

@@ -9,7 +9,7 @@ import {
   buildInsertShapeCommand,
   buildSetNodeLabelCommand,
 } from '../../domain/commands/sceneEdits';
-import { buildV2Export, buildV2JsonExport, buildV2SvgExport } from './v2Export';
+import { buildV2Export, buildV2JsonExport, buildV2SvgExport, slug } from './v2Export';
 
 function labeledConnectedDocument() {
   const steps: ((page: ScenePage) => DocumentCommand)[] = [
@@ -55,5 +55,14 @@ describe('v2 export', () => {
     expect(filename).toBe('journey-doc.svg');
     expect(svg).toContain('Checkout flow');
     expect(svg).toContain('data-connector-id="edge-1"');
+  });
+});
+
+describe('slug', () => {
+  it('keeps letters and digits of any script, folds accents, and never returns empty', () => {
+    expect(slug('Pipeline 🚀 «ünï» & <b>tags</b>', 'x')).toBe('pipeline-uni-b-tags-b');
+    expect(slug('流程图 2', 'x')).toBe('流程图-2');
+    expect(slug('Диаграмма', 'x')).toBe('диаграмма');
+    expect(slug('🚀', 'diagram')).toBe('diagram');
   });
 });

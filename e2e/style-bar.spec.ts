@@ -57,6 +57,25 @@ test('fill swatch recolours the shape, undoes as one step, and sticks to the nex
   await expect.poll(() => fills(page)).toEqual([BLUE_PASTEL, BLUE_PASTEL]);
 });
 
+// Enter used to commit and then blur into a second, stale commit: an uncaught precondition error (the fixture fails on it).
+test('typing an opacity and pressing Enter commits once, with no page error, as one undo step @gate', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForSelector('[data-testid="v2-canvas"]');
+  await page.mouse.click(400, 300);
+  await page.keyboard.press('r');
+  await page.mouse.click(400, 300);
+  await expect.poll(() => count(page)).toBe(1);
+  await page.locator('[data-context-bar]').getByRole('button', { name: 'Fill', exact: true }).click();
+  const opacity = page.getByRole('dialog', { name: 'Fill', exact: true }).getByRole('spinbutton', { name: 'Opacity', exact: true });
+  await opacity.fill('40');
+  await opacity.press('Enter');
+  await expect(opacity).toHaveValue('40');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Meta+z');
+  await page.locator('[data-context-bar]').getByRole('button', { name: 'Fill', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Fill', exact: true }).getByRole('spinbutton', { name: 'Opacity', exact: true })).toHaveValue('100');
+});
+
 test('right-click selects the shape and opens its menu; ⌘G groups two shapes', async ({ page }) => {
   await page.goto('/');
   await page.waitForSelector('[data-testid="v2-canvas"]');

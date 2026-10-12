@@ -66,6 +66,26 @@ describe('closedBoxSize', () => {
   });
 });
 
+describe('closedBoxSize cards', () => {
+  it('sizes an icon card to what it says, not the Canvas card\'s 152px', async () => {
+    const arch = (await archOf(NESTED))!;
+    const look: MapLook = { arch: { ...arch, elements: arch.elements.map((e) => ({ ...e, icon: 'tabler/box' })) }, swatch: paletteResolver('pastel') };
+    const node = { id: arch.elements.find((e) => e.name === 'Web')!.id, kind: 'part' as const, name: 'Web', parent: null, children: [], files: 1, loc: 0 };
+    const { height } = closedBoxSize(look, node);
+    expect(height).toBeGreaterThanOrEqual(80);
+    expect(height).toBeLessThan(110);
+  });
+});
+
+describe('mapScene captions', () => {
+  it('writes a box\'s kind line without brackets', async () => {
+    const page = await sceneAt((await archOf(NESTED))!, 'detailed');
+    const lines = page.nodes.map((n) => n.content.subLabel).filter((t): t is string => typeof t === 'string');
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.filter((t) => /^\[/.test(t))).toEqual([]);
+  });
+});
+
 describe('mapScene', () => {
   it('has no C4 model in the graph-style architecture fixtures (04-07, 10, 11, aws-3tier), so they are not drawn', async () => {
     const names = Object.keys(fixtures).filter((k) => WANTED.test(k));

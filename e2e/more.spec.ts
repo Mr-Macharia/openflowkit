@@ -40,8 +40,8 @@ test('Insert opens by mouse and keyboard with one level of sections; Pointer and
   await page.keyboard.press('Escape');
 
   // Hand lives in Pointer, Eraser moved from More to Draw; each lights its group.
-  const pointer = rail(page).getByRole('button', { name: 'Pointer', exact: true });
-  await rail(page).getByRole('button', { name: 'Pointer options', exact: true }).click();
+  const pointer = rail(page).getByRole('button', { name: 'Select', exact: true });
+  await rail(page).getByRole('button', { name: 'Select options', exact: true }).click();
   await page.getByRole('option', { name: 'Hand' }).click();
   await expect.poll(async () => (await state(page)).tool).toBe('hand');
   await expect(pointer).toHaveAttribute('aria-pressed', 'true');

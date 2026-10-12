@@ -68,9 +68,9 @@ describe('V2CreationToolbar Shapes', () => {
       onMoreOpenChange={vi.fn()} onPickMore={vi.fn()} />;
     const { rerender } = render(bar('select'));
     const icon = (name: string) => screen.getByRole('button', { name, exact: true } as never).querySelector('svg')!.getAttribute('class');
-    expect(icon('Pointer')).toContain('tabler-icon-pointer');
+    expect(icon('Select')).toContain('tabler-icon-pointer');
     rerender(bar('hand'));
-    expect(icon('Pointer')).toContain('tabler-icon-hand-stop');
+    expect(icon('Select')).toContain('tabler-icon-hand-stop');
     rerender(bar('eraser'));
     expect(icon('Draw')).toContain('tabler-icon-eraser');
     expect(icon('Connector')).toContain('tabler-icon-arrow-curve-left');
@@ -83,8 +83,8 @@ describe('V2CreationToolbar Shapes', () => {
       onPickEmoji={vi.fn()} recentEmoji={[]} librarySection="icons" onInsertImage={vi.fn()} moreOpen={false}
       onMoreOpenChange={vi.fn()} onPickMore={vi.fn()} />);
     const named = (name: string) => screen.getByRole('button', { name, exact: true } as never);
-    named('Pointer').focus();
-    fireEvent.keyDown(named('Pointer'), { key: 'ArrowDown' });
+    named('Select').focus();
+    fireEvent.keyDown(named('Select'), { key: 'ArrowDown' });
     expect(named('Shapes')).toHaveFocus();
     fireEvent.keyDown(named('Shapes'), { key: 'ArrowDown' });
     expect(named('Connector')).toHaveFocus();

@@ -109,3 +109,18 @@ test('a full disk reports every diagram as failed and keeps v1 rows @gate', asyn
     rmSync(profile, { recursive: true, force: true });
   }
 });
+
+test('Home shows v1 diagrams with their own names, v1 edit times and previews @gate', async ({ page }) => {
+  await seedV1(page);
+  await bootAndWaitForImport(page);
+  await page.goto('/#/home');
+  const cards = page.locator('[data-doc-id^="v1-"]');
+  await expect(cards).toHaveCount(expected.length);
+  // A preview is drawn for each diagram that has content, one by one; empty ones keep the placeholder.
+  const previews = page.locator('img.ofk-home-preview-image');
+  await expect.poll(() => previews.count(), { timeout: 25_000 }).toBeGreaterThan(expected.length / 2);
+  // The card shows the v1 edit time, never "just now"; and the wall of identical names is gone.
+  const text = await cards.allInnerTexts();
+  expect(text.filter((card) => /just now/i.test(card))).toEqual([]);
+  expect(text.filter((card) => card.includes('Untitled Flow')).length).toBeLessThan(expected.length / 2);
+});

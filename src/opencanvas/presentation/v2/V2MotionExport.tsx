@@ -4,7 +4,7 @@
 // preview, the stills and the files share.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  IconCopy, IconDownload, IconPlayerPause, IconPlayerPlay, IconPlayerSkipBack, IconPlayerSkipForward, IconX,
+  IconDownload, IconPlayerPause, IconPlayerPlay, IconPlayerSkipBack, IconPlayerSkipForward, IconX,
 } from '@tabler/icons-react';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { stepWindows, timelineDuration } from '../../domain/animation/frame';
@@ -18,7 +18,7 @@ import { animatedSvgFor, animateBlockFromText, motionFileStem, motionFrameSvgFor
 import { V2MotionSteps } from './V2MotionSteps';
 import { loadIconArt } from './v2IconArt';
 import { track } from '../../../services/usage/usage';
-import { copyImageToClipboard, downloadV2Export } from './v2Export';
+import { downloadV2Export } from './v2Export';
 
 type MotionOutput = 'svg' | MotionFormat;
 
@@ -175,26 +175,6 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
       abortRef.current = null;
     }
   }
-  async function copy(): Promise<void> {
-    if (empty || !timeline || !page || output === 'svg') return;
-    setBusy(true);
-    setFailure(null);
-    try {
-      const file = await renderMotionFile({
-        document, timeline, pageId: page.id, filenameStem: motionFileStem(request),
-        format: output, size, fps, theme, iconArt,
-      });
-      const copied = await copyImageToClipboard(file.bytes, file.mime);
-      if (copied) { track('export_motion'); onToast(`${output.toUpperCase()} copied`, 'success'); }
-      else setFailure('This browser cannot copy that format to the clipboard — download it instead.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'The export failed.';
-      setFailure(message);
-      onToast(message, 'danger');
-    } finally {
-      setBusy(false);
-    }
-  }
   const orderOptions = [
     { value: 'auto', label: 'Connections', title: 'Follow the connectors between shapes, in order' },
     ...flows.map((flow) => ({ value: flow.id, label: flow.name, title: `Replay the "${flow.name}" flow` })),
@@ -311,7 +291,7 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
             options={MOTION_FPS.map((value) => ({ value: String(value) as '12' | '24' | '30', label: `${value} fps` }))} />
           <Segmented<'720' | '1080' | '1440'> label="Width" value={String(size) as '720' | '1080' | '1440'}
             onChange={(value) => setSize(Number(value) as MotionSize)}
-            options={MOTION_SIZES.map((value) => ({ value: String(value) as '720' | '1080' | '1440', label: `${value} px`, title: `${value} pixels wide; the height follows the diagram` }))} />
+            options={MOTION_SIZES.map((value) => ({ value: String(value) as '720' | '1080' | '1440', label: `${value} px`, title: `${value} pixels wide, or more for a wide diagram so its labels stay readable` }))} />
         </>
       ) : null}
       <div className="ofk-motion-fields">
@@ -346,13 +326,8 @@ export function V2MotionExport({ document, pageId, onToast, onAnimateBlock, code
       <div className="ofk-v2-export-actions">
         <Button variant="primary" disabled={empty || busy}
           onClick={() => { if (output === 'svg') void download(); else void encode(); }}>
-          <Icon icon={IconDownload} /> {output === 'svg' ? 'Download SVG' : `Export ${FORMAT_OPTIONS.find((option) => option.value === output)?.label ?? output}`}
+          <Icon icon={IconDownload} /> Download {FORMAT_OPTIONS.find((option) => option.value === output)?.label ?? output}
         </Button>
-        {output !== 'svg' ? (
-          <Button variant="quiet" disabled={empty || busy} onClick={() => { void copy(); }}>
-            <Icon icon={IconCopy} /> Copy
-          </Button>
-        ) : null}
       </div>
       {/* Where the file plays lives under the format pick; this line is the math. */}
       <p className="ofk-caption">

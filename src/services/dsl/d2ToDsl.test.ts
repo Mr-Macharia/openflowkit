@@ -143,3 +143,10 @@ describe('looksLikeD2', () => {
     expect(looksLikeD2('API [aws/lambda] -> DB [cylinder]')).toBe(false);
   });
 });
+
+describe('d2ToDsl nesting depth', () => {
+  it('T08: absurdly deep braces return an error instead of overflowing the stack', () => {
+    const deep = 'a: ' + '{'.repeat(5000) + '}'.repeat(5000);
+    expect(d2ToDsl(deep)).toEqual({ error: 'Nested more than 200 levels deep' });
+  });
+});

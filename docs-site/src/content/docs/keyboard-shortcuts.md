@@ -7,8 +7,7 @@ description: Every keyboard shortcut in the editor, generated from the shortcut 
 Built from the app's own source (`src/opencanvas/presentation/v2/v2Shortcuts.ts`) on every docs build, so it can't drift. To change it, edit the source.
 :::
 
-Keys are shown with `⌘`; on Windows and Linux read the same rows as `Ctrl`. The app
-renders this list itself, from the same data, so it cannot drift from what the keys do.
+Keys are shown with `⌘`; on Windows and Linux read the same rows as `Ctrl`. This list is made from the same table as the ? sheet in the app.
 
 ## Tools
 
@@ -43,28 +42,29 @@ renders this list itself, from the same data, so it cannot drift from what the k
 | Zoom to 100% | `⇧0 / ⌘0 / ⌘1` |
 | Zoom in / out | `⌘= / ⌘−` |
 | Find on canvas | `⌘F` |
-| Layers | `L` |
+| Layers | `L / ⇧L` |
 | Canvas / Map | `M` |
-| Move between boxes (Map) | `Arrows` |
-| Edit map as drawing (Map) | `⇧M` |
+| Move between boxes (in Map) | `Arrows` |
+| Edit map as drawing (in Map) | `⇧M` |
 | Snap bypass (hold while dragging) | `⌘` |
 | Keep proportions, one axis, 45° lines, 15° turns (hold while dragging) | `⇧` |
 | From the centre (resize, draw); a copy (move) — hold while dragging | `⌥` |
 | Add to / remove from the selection | `⇧Click / ⌘Click` |
 | Select inside a group (Esc: back to the group) | `Double-click` |
+| Cancel a drag or draw | `Esc` |
 
 ## Edit
 
 | Action | Keys |
 | --- | --- |
-| Undo / redo | `⌘Z / ⇧⌘Z` |
+| Undo / redo | `⌘Z / ⇧⌘Z / ⌘Y` |
 | Copy / cut / paste | `⌘C / ⌘X / ⌘V` |
 | Copy / paste style | `⌥⌘C / ⌥⌘V` |
 | Duplicate | `⌘D` |
 | Delete / unplace | `⌫` |
 | Remove from model | `⇧⌘⌫` |
 | Nudge (10 px with Shift) | `Arrows` |
-| Edit label | `↵ / F2` |
+| Edit label | `↵ / F2 / ⇧↵ / ⌘↵` |
 | Name a blank selected shape by typing | `Any letter` |
 | Select all | `⌘A` |
 | Lock / unlock | `⌘L` |
@@ -96,7 +96,8 @@ renders this list itself, from the same data, so it cannot drift from what the k
 | --- | --- |
 | Architecture model | `⌥M` |
 | Diagram as code | `⌥C` |
-| Convert pasted Mermaid / Structurizr / D2 (code panel) | `⇧⌘M` |
+| Generate the diagram (in the code panel) | `⌘↵` |
+| Convert pasted Mermaid / Structurizr / D2 (in the code panel) | `⇧⌘M` |
 | Inspect selection | `⌥I` |
 | AI assistant | `⌘J` |
 | This cheatsheet | `?` |

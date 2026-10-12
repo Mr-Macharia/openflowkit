@@ -10,6 +10,8 @@ import { frameInsets, GROUP_INSETS, layoutEdges, type LayoutNodeInput } from '..
 import { AUTO_ICON_SHAPES, PERSON_ICON } from '../../autoIcon';
 import type { FamilyContext, FamilyScene } from '../types';
 import type { SwatchResolver } from '../../../opencanvas/domain/nodes/nodePalette';
+import { LABEL_WRAP_WIDTH } from '../../../opencanvas/domain/connectors/labelStyle';
+import { measurePortableText } from '../../../opencanvas/domain/text/measurement';
 
 /**
  * A view + model → scene. Boundaries are containers whose shown children live
@@ -94,7 +96,7 @@ export async function compileArchitectureView(
   }
 
   const connectors: SceneConnector[] = projected.map((projection) =>
-    relationConnector(projection.relation, projection.from, projection.to, projection.implied));
+    relationConnector(projection.relation, projection.from, projection.to, projection.implied, projection.merged));
 
   const layoutNodes: LayoutNodeInput[] = [
     ...boundaryNodes.map((node) => ({
@@ -123,11 +125,19 @@ export async function compileArchitectureView(
     size: laid.root.width > 0 && laid.root.height > 0 ? laid.root : { width: 640, height: 420 },
     meta: {
       viewTitle: view.name,
-      viewKey: 'Solid: direct relationship · Dashed: projected relationship',
+      // Only the kinds of line this view draws: a legend line describing nothing is noise.
+      ...(legend(projected) ? { viewKey: legend(projected) } : {}),
       arch: { model: model as unknown as Record<string, unknown>, view: view.id },
       ...(selection.unsupported.length ? { archUnsupported: selection.unsupported.map((rule) => rule.raw ?? '') } : {}),
     },
   };
+}
+
+function legend(projected: readonly { readonly implied: boolean }[]): string {
+  return [
+    projected.some((projection) => !projection.implied) ? 'Solid: direct relationship' : '',
+    projected.some((projection) => projection.implied) ? 'Dashed: goes through other parts' : '',
+  ].filter(Boolean).join(' · ');
 }
 
 export function boundaryNode(element: ArchElement, parentId: string | null, zIndex: number, context: Pick<FamilyContext, 'origin'>): SceneNode {
@@ -235,15 +245,15 @@ export function elementNode(element: ArchElement, parentId: string | null, zInde
  * (`from`/`to` may be ancestors of the relation's own ends). The model-aware
  * commands reuse it so a relation drawn later looks exactly like a compiled one.
  */
-export function relationConnector(relation: ArchRelation, from: string, to: string, implied: boolean): SceneConnector {
-  const label = relationLabel(relation.label, relation.tech);
+export function relationConnector(relation: ArchRelation, from: string, to: string, implied: boolean, merged = 1): SceneConnector {
+  const label = merged > 1 ? `${merged} relationships` : relationLabel(relation.label, relation.tech);
   const id = relation.from === from && relation.to === to ? relation.id : `${relation.id}@${from}->${to}`;
   return {
     id,
     source: endpoint(from), target: endpoint(to),
     route: { kind: 'orthogonal', ownership: 'automatic' }, waypoints: [],
     labels: label ? [{ id: `${id}:label`, text: label, pathRatio: 0.5, offset: { x: 0, y: 0 }, metadata: {} }] : [],
-    appearance: implied ? { dashPattern: 'dashed' } : {},
+    appearance: { markerEnd: 'arrow', ...(implied ? { dashPattern: 'dashed' } : {}) },
     semantics: {},
     metadata: {
       model: { relationId: relation.id, ...(implied ? { implied: true } : {}), ...(relation.tags.length ? { tags: relation.tags } : {}) },
@@ -254,7 +264,12 @@ export function relationConnector(relation: ArchRelation, from: string, to: stri
 }
 
 function relationLabel(label: string | undefined, tech: string | undefined): string | undefined {
-  if (label && tech) return `${label} [${tech}]`;
+  if (label && tech) {
+    // A label that must wrap breaks before the bracket, not inside it (`[ISO / 8583]` stays whole).
+    const joined = `${label} [${tech}]`;
+    const wraps = measurePortableText(joined, { fontSize: 12, fontWeight: 500, overflow: 'visible' }).width > LABEL_WRAP_WIDTH;
+    return wraps && /\s/.test(tech) ? `${label}\n[${tech}]` : joined;
+  }
   if (label) return label;
   if (tech) return `[${tech}]`;
   return undefined;

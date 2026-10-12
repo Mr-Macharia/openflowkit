@@ -18,7 +18,7 @@ import type { PixiNodeDebugRecord, PixiMediaState } from './pixiNodeDebug';
 import { drawPixiLocalRect, drawPixiNodeOutline } from './pixiNodeOutline';
 import { pixiPaintColor } from './pixiColor';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
-import { decoratePixiText } from './pixiText';
+import { decoratePixiText, markTitle } from './pixiText';
 import type { PixiTextPool } from './pixiTextPool';
 
 interface PixiArchitectureNodeDrawResult {
@@ -150,7 +150,7 @@ export class PixiArchitectureNodeRenderer {
       const resource = this.texts.plain(layout.resource.displayText, { size: 10, weight: '600', fill: subInk });
       resource.anchor.set(1, 0);
       resource.position.set(node.size.width - 16, 15);
-      const title = this.texts.styled(layout.title.displayText, style, ink, wrap);
+      const title = markTitle(this.texts.styled(layout.title.displayText, style, ink, wrap));
       title.position.set(layout.titleX, layout.titleY);
       content.addChild(provider, resource, title);
       decoratePixiText(content, title, style, ink);
@@ -170,7 +170,7 @@ export class PixiArchitectureNodeRenderer {
     const anchor = text.anchor === 'start' ? 0 : text.anchor === 'end' ? 1 : 0.5;
     text.lines.forEach((line, index) => {
       if (!line) return;
-      const title = this.texts.styled(line, style, ink, null);
+      const title = markTitle(this.texts.styled(line, style, ink, null));
       title.anchor.set(anchor, 0);
       title.position.set(text.x, text.top + index * text.lineHeight);
       content.addChild(title);

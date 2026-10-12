@@ -247,6 +247,28 @@ describe('mermaidParser', () => {
     expect(dbNode?.extent).toBeUndefined();
   });
 
+  it('puts bare ids listed in a subgraph into it when edges mentioned them first', () => {
+    const result = parseMermaid(`flowchart LR
+  A[Web] --> P[Payment service]
+  P --> S[(Orders DB)]
+  subgraph Backend
+    P
+    S
+  end`);
+    const group = result.nodes.find((n) => n.type === 'section');
+    expect(result.nodes.find((n) => n.id === 'P')?.parentId).toBe(group?.id);
+    expect(result.nodes.find((n) => n.id === 'S')?.parentId).toBe(group?.id);
+    expect(result.nodes.find((n) => n.id === 'A')?.parentId).toBeUndefined();
+  });
+
+  it('normalises a long = or - run in linear time', () => {
+    for (const ch of ['=', '-']) {
+      const started = performance.now();
+      parseMermaid(`flowchart TD\nA ${ch.repeat(16000)}`);
+      expect(performance.now() - started).toBeLessThan(50);
+    }
+  });
+
   it('parses subgraph declarations with explicit ids and human labels', () => {
     const input = `
             flowchart TD

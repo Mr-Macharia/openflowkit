@@ -34,20 +34,28 @@ const DIRS: Readonly<Partial<Record<string, Dir>>> = { ArrowLeft: 'left', ArrowR
 export function useMapControls({ model, open, setOpen, focusRef, shown, hostRef, cameraRef, updateCamera, primaryId, select, clearSelection, pendingRef, notify }: Options) {
   // The level the reader clicked, while it still holds: on a shallow map two levels open the same boxes.
   const [clicked, setClicked] = useState<{ model: MapModel; open: ReadonlySet<string>; depth: Depth } | null>(null);
+  // Where the map started (entering, or what this browser remembered): the level it shows is true until the reader changes the boxes.
+  const [origin, setOrigin] = useState<{ model: MapModel; open: ReadonlySet<string> } | null>(null);
+  if (model && origin?.model !== model) setOrigin({ model, open });
+  // A level is lit only while the open boxes are that level's: after a click on a box the map is custom, and no level is guessed.
   const depth = useMemo(() => {
     if (!model) return null;
-    return clicked && clicked.model === model && sameOpen(clicked.open, open) ? clicked.depth : depthOf(model, open);
-  }, [model, open, clicked]);
+    if (clicked && clicked.model === model) return sameOpen(clicked.open, open) ? clicked.depth : null;
+    return origin?.model === model && sameOpen(origin.open, open) ? depthOf(model, open) : null;
+  }, [model, open, clicked, origin]);
   const change = useCallback((next: ReadonlySet<string>, fit: boolean) => {
     if (sameOpen(next, open)) return;
-    focusRef.current = fit ? { id: null } : null;
     // A selected box that is about to leave the map (collapsed away) hands the selection to the box around it, now,
-    // while that box is still drawn: the editor drops a selection whose box vanishes.
+    // while that box is still drawn: the editor drops a selection whose box vanishes. The camera then follows the selected
+    // box (a depth change with a box picked would otherwise dim all but it, from wherever the camera was); none picked: re-fit the map.
     const id = primaryId();
-    if (model && id && !visible(model, next).includes(id)) {
-      const around = nearestDrawn(model, id, new Set(visible(model, next)));
-      if (around) select(around); else clearSelection();
+    let focus: string | null = null;
+    if (model && id) {
+      const drawn = new Set(visible(model, next));
+      focus = drawn.has(id) ? id : nearestDrawn(model, id, drawn);
+      if (focus === null) clearSelection(); else if (focus !== id) select(focus);
     }
+    focusRef.current = fit ? { id: focus } : null;
     setOpen(next);
   }, [model, open, setOpen, focusRef, primaryId, select, clearSelection]);
   const setDepth = useCallback((value: Depth) => {

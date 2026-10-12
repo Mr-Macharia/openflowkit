@@ -15,7 +15,10 @@ export function V2FromDslPage(): React.JSX.Element {
   useEffect(() => {
     let live = true;
     decodeDslPayload(new URLSearchParams(search).get('d')).then(
-      (source) => { if (live) navigate(`/d/${mintV2Id('doc')}`, { replace: true, state: { source } satisfies V2StartIntent }); },
+      (source) => {
+        const name = new URLSearchParams(search).get('t')?.trim().slice(0, 200);
+        if (live) navigate(`/d/${mintV2Id('doc')}`, { replace: true, state: { source, ...(name ? { name } : {}) } satisfies V2StartIntent });
+      },
       (error: unknown) => { if (live) setFailure({ search, message: error instanceof Error ? error.message : 'This link could not be read.' }); },
     );
     return () => { live = false; };

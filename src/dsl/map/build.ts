@@ -13,6 +13,9 @@ import type { Evidence, MapFacts, MapLink, MapModel, MapNode, MapNodeKind, MapOv
 const TEXT_MAX = 140;
 const OUTSIDE = 'root#outside';
 
+// A file that lives in a folder named for tooling: a folder of only these is no module.
+const TOOLING = /(^|\/)(scripts?|tools|hack|bin|ci)\//i;
+
 const push = (map: Map<string, string[]>, key: string, value: string) => {
   const list = map.get(key);
   if (list) list.push(value);
@@ -72,7 +75,7 @@ export function buildMap(facts: MapFacts, overlay: MapOverlay = {}): MapModel {
 
   // Anything that can sit in a box: a folder, a part, an overlay group, an outside service, a file.
   // `make` builds it under a parent id, so a box can decide late whether it is kept or folded away.
-  interface Item { key: string; label: string; noun: string; degree: number; make: (parent: string) => void }
+  interface Item { key: string; label: string; noun: string; degree: number; make: (parent: string) => void; /** Tooling, not product: waits in `more` beside real boxes, whatever the room. */ minor?: boolean }
   const fileItem = (f: string): Item => ({ key: f, label: baseName(f).split('.')[0], noun: 'file', degree: degree.get(f) ?? 0, make: (p) => addFile(f, p) });
   const folderItem = (dir: string, files: string[], kind: MapNodeKind = 'folder'): Item => ({
     key: dir, label: baseName(dir), noun: kind === 'part' ? 'module' : 'folder', degree: sum(files), make: (p) => folder(dir, p, files, kind),
@@ -89,7 +92,10 @@ export function buildMap(facts: MapFacts, overlay: MapOverlay = {}): MapModel {
   // One box, the same rule at every level (root, parts, folders, groups, outside): planBudget keeps the
   // best-connected sub-boxes, fold.ts groups the loose files, and what is left waits in `${id}#more`.
   const fillBox = (id: string, subs: Item[], files: string[], limit = MAX_CHILDREN) => {
-    const plan = planBudget(subs.map((s) => ({ id: s.key, degree: s.degree })), limit);
+    // Minor boxes (a folder of scripts) go to `more` first; a box holding only minor ones keeps them.
+    const minor = subs.some((s) => !s.minor) ? subs.filter((s) => s.minor) : [];
+    const plan = planBudget(subs.filter((s) => !minor.includes(s)).map((s) => ({ id: s.key, degree: s.degree })), limit);
+    plan.folded.push(...minor.map((s) => s.key));
     const byKey = new Map(subs.map((s) => [s.key, s]));
     for (const k of plan.keep) byKey.get(k)!.make(id);
     const here = new Set(files);
@@ -188,7 +194,10 @@ export function buildMap(facts: MapFacts, overlay: MapOverlay = {}): MapModel {
   }
   // Everything outside a declared part: top-level folders become parts, root files fold loosely.
   const top = split('', rest);
-  for (const seg of [...top.sub.keys()].sort(compare)) items.push(folderItem(seg, top.sub.get(seg)!, 'part'));
+  for (const seg of [...top.sub.keys()].sort(compare)) {
+    const files = top.sub.get(seg)!;
+    items.push({ ...folderItem(seg, files, 'part'), ...(files.every((f) => TOOLING.test(f)) ? { minor: true } : {}) });
+  }
 
   // Config and tooling files at the repo root are not part of the product: one quiet group, so they
   // neither compete with the parts for the top level nor get ranked into it.
