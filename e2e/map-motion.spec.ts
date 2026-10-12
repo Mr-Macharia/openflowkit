@@ -197,7 +197,11 @@ test('the map is fully drawn the moment the motion state says idle: arrows at al
   await click(page, 'shop.api');
   await expect.poll(async () => (await mapNodes(page))).toContain('shop.api.orders');
   await idle(page);
-  await page.waitForTimeout(100);
+  // Until a sampled frame shows idle: on software WebGL one frame can outlast any fixed wait (CI 2026-10-12: 3/3 retries).
+  await expect.poll(() => page.evaluate(() => {
+    const samples = (window as unknown as { __samples: { running: boolean }[] }).__samples;
+    return samples.length > 0 && !samples[samples.length - 1]!.running;
+  })).toBe(true);
   const samples = await page.evaluate(() => { const w = window as unknown as { __samples: { t: number; running: boolean; active: boolean; alpha: number }[]; __stop: boolean }; w.__stop = true; return w.__samples; });
   expect(samples.some((m) => m.running)).toBe(true);
   // Not running means every arrow is at full opacity, and no box is still being drawn by the move.
