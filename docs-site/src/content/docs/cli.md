@@ -12,7 +12,7 @@ The CLI needs version **0.2.0 or newer** of the package; older versions have no 
 command. It needs Node 20.11 or newer.
 
 ```sh
-npx -y -p @vrun-design/openflowkit-mcp@0.2.0 openflowkit --help
+npx -y -p @vrun-design/openflowkit-mcp@0.2.1 openflowkit --help
 # or install it once
 npm install -g @vrun-design/openflowkit-mcp
 ```
