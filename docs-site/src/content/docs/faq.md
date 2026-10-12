@@ -107,7 +107,7 @@ the work.
 | The canvas asks for WebGL | Turn on hardware acceleration in the browser settings, or try another browser |
 | Ollama doesn't answer from the hosted app | Ollama rejects other origins by default. Quit the Ollama app and run `OLLAMA_ORIGINS='*' ollama serve` |
 | A plain-`http` model server on another machine is blocked | The app's security policy only allows HTTPS, plus `http` on `localhost` and `127.0.0.1`. Put the server behind HTTPS |
-| `npx … openflowkit` says the command doesn't exist | The CLI needs `@vrun-design/openflowkit-mcp` 0.2.0 or newer |
+| `npx … openflowkit` says the command doesn't exist | Use `npx -y openflowkit@latest …`; the CLI needs 0.2.0 or newer |
 
 ## Where to go next
 

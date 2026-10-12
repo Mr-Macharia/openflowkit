@@ -14,6 +14,6 @@ npx -y openflowkit mcp                             # the MCP server for Claude C
 
 Install it once with `npm i -g openflowkit`, then run `openflowkit …`.
 
-For Claude Code: `claude mcp add openflowkit -- npx -y openflowkit mcp`. The engine is [`@vrun-design/openflowkit-mcp`](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp); both names run the same thing. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
+For Claude Code: `claude mcp add openflowkit -- npx -y openflowkit mcp`. The engine is [`@openflowkit/openflowkit-mcp`](https://www.npmjs.com/package/@openflowkit/openflowkit-mcp); both names run the same thing. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
 
 MIT licensed.

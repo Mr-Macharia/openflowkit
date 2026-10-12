@@ -24,7 +24,7 @@ function notes(tag) {
     const { version } = JSON.parse(read('mcp-server/package.json'));
     if (version !== mcp[1]) fail(`tag ${tag} but mcp-server/package.json is ${version}`);
     return `MCP server ${version}: \`npx -y openflowkit@${version} mcp\` ` +
-      `([npm](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp/v/${version})). ` +
+      `([npm](https://www.npmjs.com/package/openflowkit/v/${version})). ` +
       'Changes are under "For developers" in [CHANGELOG.md](https://github.com/openflowkit/openflowkit/blob/main/CHANGELOG.md).';
   }
   const app = /^v(\d+\.\d+\.\d+)$/.exec(tag);

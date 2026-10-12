@@ -20,7 +20,7 @@
 <p align="center">
   <a href="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml"><img src="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml/badge.svg" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-  <a href="https://www.npmjs.com/package/@vrun-design/openflowkit-mcp"><img src="https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?label=mcp%20server" alt="MCP server version on npm"></a>
+  <a href="https://www.npmjs.com/package/@openflowkit/openflowkit-mcp"><img src="https://img.shields.io/npm/v/@openflowkit/openflowkit-mcp?label=mcp%20server" alt="MCP server version on npm"></a>
   <a href="https://www.npmjs.com/package/openflowkit"><img src="https://img.shields.io/npm/v/openflowkit?label=cli" alt="CLI version on npm"></a>
 </p>
 

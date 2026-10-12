@@ -16,9 +16,9 @@ npm install -g openflowkit
 
 <img src="/screens/cli-welcome.png" width="1200" height="1003" loading="lazy" alt="Running npx openflowkit: a welcome box, OPEN FLOWKIT in orange block letters, and three commands to try" />
 
-`openflowkit` on npm is a short name for `@vrun-design/openflowkit-mcp`, which also ships the
+`openflowkit` on npm is a short name for `@openflowkit/openflowkit-mcp`, which also ships the
 [MCP server](/mcp-server/); either package gives you the same `openflowkit` command. Pin a
-version in CI, for example `npx -y openflowkit@0.2.2 validate diagram.ofk`.
+version in CI, for example `npx -y openflowkit@0.2.3 validate diagram.ofk`.
 
 ## Commands
 

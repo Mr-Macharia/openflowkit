@@ -13,7 +13,10 @@ export type Run = (queries: readonly Query[]) => Promise<Row[][]>;
 
 export const RANGES = [7, 30, 90] as const;
 export type RangeDays = (typeof RANGES)[number];
-export const WORKERS_FREE_REQUESTS = 100_000;
+/** Requests a month included in Workers Paid ($5); beyond it, $0.30 per million. */
+export const WORKERS_PAID_REQUESTS = 10_000_000;
+/** Day-N retention: back exactly N days after the first day. */
+export const RETENTION_DAYS = [1, 7, 30] as const;
 /** Unread feedback older than this is not shown. ponytail: a year of unread is a reading problem, not a query one. */
 const UNREAD_DAYS = 365;
 const DAY_MS = 86_400_000;
@@ -54,6 +57,10 @@ export interface Stats {
   /** dau = today (partial); wau/mau = the last 7/30 days whatever the range; active = people in the range. */
   readonly reach: { dau: number; wau: number; mau: number; avgDau: number; stickiness: number | null; newThisWeek: number; active: number };
   readonly activation: { people: number; activated: number; rate: number | null };
+  /** Of new people in the range, by where they came from: who created something on day one. */
+  readonly activationBySource: readonly { name: string; people: number; activated: number; rate: number | null }[];
+  /** Day 1, 7, 30: of people first seen in the range at least N days ago, the share back exactly on day N. */
+  readonly dayRetention: readonly { day: (typeof RETENTION_DAYS)[number]; size: number; rate: number | null }[];
   readonly sessionsPerPerson: number | null;
   readonly medianMinutes: number | null;
   readonly adoption: readonly { family: string; people: number; share: number | null }[];
@@ -63,7 +70,8 @@ export interface Stats {
   readonly share: { view: number; edit: number; sharedSessions: number; copied: number };
   readonly retention: readonly { cohort: string; size: number; week1: RetentionCell; week4: RetentionCell }[];
   readonly errorsPer1k: number | null;
-  readonly budget: { rows: number; share: number };
+  /** Usage beacons (Worker requests) in the last 30 days against the Paid plan's monthly allowance. */
+  readonly budget: { requests: number; share: number };
   readonly thumbs: readonly { feature: string; up: number; down: number }[];
   readonly pmf: { very: number; somewhat: number; not: number; total: number; veryShare: number | null };
   /** "What would you pay for" from feedback prompts; the Pro waitlist's picks are in `pro.features`. */
@@ -129,7 +137,7 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
        SELECT s FROM d ORDER BY s LIMIT 1 OFFSET (SELECT MAX(COUNT(*) - 1, 0) / 2 FROM d)`, from),
     q('SELECT source AS name, COUNT(DISTINCT user) AS people FROM sessions WHERE day >= ? GROUP BY source ORDER BY people DESC, name LIMIT 10', from),
     q('SELECT country AS name, COUNT(DISTINCT user) AS people FROM sessions WHERE day >= ? GROUP BY country ORDER BY people DESC, name LIMIT 10', from),
-    q('SELECT COUNT(*) AS n FROM sessions WHERE day = ?', today),
+    q('SELECT COALESCE(SUM(beacons), 0) AS n FROM sessions WHERE day >= ?', d30),
     q(`SELECT feature, SUM(rating = 'up') AS up, SUM(rating = 'down') AS down FROM feedback
        WHERE created_at >= ? AND kind = 'feature' GROUP BY feature ORDER BY feature`, from),
     q('SELECT pmf, COUNT(*) AS n FROM feedback WHERE created_at >= ? AND pmf IS NOT NULL GROUP BY pmf', from),
@@ -144,6 +152,13 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
        FROM feedback WHERE created_at >= ? AND kind = 'pro'`, from),
     q(`WITH p AS (SELECT price FROM feedback WHERE created_at >= ? AND kind = 'pro' AND price IS NOT NULL)
        SELECT price FROM p ORDER BY price LIMIT 1 OFFSET (SELECT MAX(COUNT(*) - 1, 0) / 2 FROM p)`, from),
+    q(`SELECT source AS name, COUNT(*) AS people, SUM(made > 0) AS activated FROM (SELECT user, source, SUM(${sum(FAMILIES.created)}) AS made
+       FROM sessions WHERE first_seen >= ? AND day >= ? AND day = first_seen GROUP BY user)
+       GROUP BY source ORDER BY people DESC, name LIMIT 10`, from, from),
+    ...RETENTION_DAYS.map((n) => q(`SELECT COUNT(*) AS size,
+       SUM(EXISTS(SELECT 1 FROM sessions s WHERE s.user = c.user AND s.day = date(c.first_seen, '+${n} day'))) AS back
+       FROM (SELECT DISTINCT user, first_seen FROM sessions WHERE first_seen >= ? AND first_seen <= ? AND day = first_seen) c`,
+    from, shiftDay(today, -n))),
     ...cohorts.map((start) => q(`SELECT COUNT(*) AS size,
        SUM(EXISTS(SELECT 1 FROM sessions s WHERE s.user = c.user AND s.day >= ? AND s.day < ?)) AS w1,
        SUM(EXISTS(SELECT 1 FROM sessions s WHERE s.user = c.user AND s.day >= ? AND s.day < ?)) AS w4
@@ -151,7 +166,10 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
     shiftDay(start, 7), shiftDay(start, 14), shiftDay(start, 28), shiftDay(start, 35), start, shiftDay(start, 7))),
   ]);
   const [daily, fresh, [reachRow = {}], [totalsRow = {}], [adoptionRow = {}], [activationRow = {}], median, sources, countries,
-    [todayRow = {}], thumbs, pmfRows, [payRow = {}], [emailRow = {}], comments, [proOpenedRow = {}], [proRow = {}], proMedian, ...cohortRows] = results;
+    [budgetRow = {}], thumbs, pmfRows, [payRow = {}], [emailRow = {}], comments, [proOpenedRow = {}], [proRow = {}], proMedian,
+    bySource, ...rest] = results;
+  const dayRows = rest.slice(0, RETENTION_DAYS.length);
+  const cohortRows = rest.slice(RETENTION_DAYS.length);
   const unread = await loadUnread(run, unreadFrom);
 
   const byDay = new Map(daily.map((row) => [String(row.day), row]));
@@ -165,7 +183,7 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
   const answers = Object.fromEntries(pmfRows.map((row) => [String(row.pmf), num(row.n)]));
   const pmf = { very: num(answers.very), somewhat: num(answers.somewhat), not: num(answers.not) };
   const pmfTotal = pmf.very + pmf.somewhat + pmf.not;
-  const rows = num(todayRow.n);
+  const requests = num(budgetRow.n);
   const plans = Object.fromEntries(PRO_PLANS.map((plan) => [plan, num(proRow[plan])])) as Record<ProPlan, number>;
   const joined = PRO_PLANS.reduce((total, plan) => total + plans[plan], 0);
   const proOpened = num(proOpenedRow.n);
@@ -179,6 +197,13 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
     }),
     reach: { dau: num(reachRow.dau), wau: num(reachRow.wau), mau, avgDau, stickiness: ratio(avgDau, mau), newThisWeek: num(reachRow.new_week), active },
     activation: { ...activation, rate: ratio(activation.activated, activation.people) },
+    activationBySource: bySource.map((row) => ({
+      name: String(row.name), people: num(row.people), activated: num(row.activated), rate: ratio(num(row.activated), num(row.people)),
+    })),
+    dayRetention: RETENTION_DAYS.map((day, i) => {
+      const row = dayRows[i]?.[0] ?? {};
+      return { day, size: num(row.size), rate: ratio(num(row.back), num(row.size)) };
+    }),
     sessionsPerPerson: ratio(totals.session, active),
     medianMinutes: median[0] ? num(median[0].s) / 60 : null,
     adoption: families.map(([family]) => ({ family, people: num(adoptionRow[family]), share: ratio(num(adoptionRow[family]), adoptionBase) })),
@@ -196,7 +221,7 @@ export async function loadStats(run: Run, now: Date, days: RangeDays): Promise<S
       };
     }),
     errorsPer1k: totals.session > 0 ? (1000 * totals.app_error) / totals.session : null,
-    budget: { rows, share: rows / WORKERS_FREE_REQUESTS },
+    budget: { requests, share: requests / WORKERS_PAID_REQUESTS },
     thumbs: thumbs.map((row) => ({ feature: String(row.feature), up: num(row.up), down: num(row.down) })),
     pmf: { ...pmf, total: pmfTotal, veryShare: ratio(pmf.very, pmfTotal) },
     pay: Object.fromEntries(PAY_OPTIONS.map((option) => [option, num(payRow[option])])) as Record<PayOption, number>,

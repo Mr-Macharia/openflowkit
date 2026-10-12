@@ -9,7 +9,7 @@ your first PR. The code rules are in [AGENTS.md](AGENTS.md#code-rules); setup is
 ```
  text (OpenFlow DSL, or Mermaid / Structurizr / D2 converted first)
    │  src/dsl/document.ts       parseDocument: header, family, title, directives, segments
-   │  src/dsl/animate.ts        the animate block is lifted out before the family runs
+   │  src/dsl/compile.ts        lifts the animate block (animate.ts) before the family runs
    ▼
  family                         src/dsl/families/<name>  (statements → scene records)
    │  src/dsl/layout.ts         LayoutPort; ELK in a worker in the app, headless ELK in the CLI
@@ -31,25 +31,27 @@ equals `format(x)`, and `src/dsl/roundTrip.test.ts` holds that line.
 
 Every diagram from text is a **frame** whose `metadata.dsl` keeps its source, a hash and the
 family. The code panel (`src/opencanvas/presentation/v2/useV2CodeWorkspace.ts`) re-binds to a
-frame by that metadata, and compares hashes to tell a hand-edited frame from a generated one.
+frame by that metadata; `src/dsl/frameScene.ts` compares the hash to tell a hand-edited frame
+from a generated one.
 
 ## Layers
 
 | Layer | Path | Rule |
 |---|---|---|
-| Language | `src/dsl/` | Pure TypeScript. Tokenizer, families, compile, serialize, discovery, map model. |
+| Language | `src/dsl/` | Pure TypeScript. Tokenizer (`tokenize.ts`), families, compile, serialize, discovery, map model. |
 | Domain | `src/opencanvas/domain/` | Pure. The document model, geometry, connectors, node styles, and **commands**: immutable edits that return their exact inverse (`commands/execute.ts`). |
 | Application | `src/opencanvas/application/` | Use cases over the domain: session and history, DSL → command, selection, the AI assistant, Map navigation. |
 | Infrastructure | `src/opencanvas/infrastructure/` | Pixi renderers and overlays (`pixi/`), exporters (`export/`). |
 | Presentation | `src/opencanvas/presentation/` | React. `v2/` is the editor and home, `design-system/` the shared components and tokens. |
-| Services | `src/services/` | I/O: IndexedDB storage, AI providers, GitHub reads, share links, importers, ELK runtime. |
+| Services | `src/services/` | I/O: IndexedDB storage (`openflowkit-persistence`), AI providers (Anthropic, OpenAI, Google, Ollama wire formats), GitHub reads, share links, feedback, importers, ELK runtime. |
 
 Domain and language code import no React, Pixi or DOM. That is what lets the same compiler run
 in the browser, in the MCP server and in the CLI. The editor page
 (`src/opencanvas/presentation/v2/V2EditorPage.tsx`) wires the hooks together. Most behaviour
 lives in the `useV2*` hooks beside it.
 
-Heavy work stays off the main thread: ELK layout (`src/services/elk-layout/runtime.ts`), repo-map
+Heavy work stays off the main thread: ELK layout (`src/services/elk-layout/runtime.ts`; main thread
+only in unit tests), repo-map
 loading (`src/services/map/map.worker.ts`) and GIF/MP4/WebM encoding
 (`src/opencanvas/infrastructure/export/motion.worker.ts`).
 
@@ -76,8 +78,13 @@ its input with zod and returns **one reversible command** plus a JSON-safe resul
   commits through the same session as a mouse edit, so it is one undo step.
 - **File mode.** With no editor paired, `src/agent/host.ts` gives the ops a headless host:
   headless ELK, canonical SVG, no raster.
-- **CLI.** `mcp-server/src/cli.ts` and `cliCommands.ts`: `render`, `convert`, `validate` and `op`
-  over the same registry, plus `discover`, `drift`, `build` and `map`.
+- **CLI.** `mcp-server/src/cli.ts` and `cliCommands.ts`: `render`, `convert`, `validate`, `op` and
+  `ops` over the same registry, plus `discover`, `drift`, `build`, `map`, and `mcp` (starts the
+  server). Bare `openflowkit` at a terminal prints a welcome (`mcp-server/src/lib/welcome.ts`).
+- **Remote MCP Apps.** `mcp-server/src/http.ts` (`npm run start:http`) serves `render_diagram` with
+  an inline viewer from `mcp-server/src/remote/`; it stores nothing.
+- **In the browser (WebMCP).** `src/agent/webMcp.ts` registers the ops with a browser agent that
+  supports WebMCP; `webMcpTools.ts` loads lazily.
 - **In-app assistant** (bring your own key). `src/opencanvas/application/ai/` builds the prompt
   and runs the same ops on a draft. The result is a proposal the user applies or dismisses.
   Provider wiring is in `src/services/ai/providers.ts`.
@@ -101,13 +108,15 @@ manifest disagree.
 - **Map mode in the editor**: `src/opencanvas/presentation/v2/map/useV2MapMode.ts`, with
   navigation, focus and motion in `src/opencanvas/application/map/`, drawn by the same Pixi host.
 - **Offline map page.** `openflowkit map . --html` inlines the model into the DOM viewer in
-  `src/viewer/map/` (built by `vite.map-viewer.config.ts`).
+  `src/viewer/map/` (built by `vite.map-viewer.config.ts` into `mcp-server/src/generated-viewer/`).
 
 ## Outside the app
 
 | Path | What |
 |---|---|
-| `worker/` | Cloudflare Worker for share links. It stores ciphertext only; the key stays in the link's `#` fragment. |
+| `worker/` | Cloudflare Worker for share links (`share.openflowkit.com`, R2 plus a Quota Durable Object). It stores ciphertext only; the key stays in the link's `#` fragment. |
+| `mcp-server/`, `cli/` | npm packages. `@openflowkit/openflowkit-mcp` is the engine (bins `openflowkit`, `openflowkit-mcp`); `openflowkit` is the public name and pins the engine at the same version. The root package is private. |
+| `Dockerfile`, `nginx/` | Self-hosting: build the app, serve `dist` with nginx on port 3045. `docker-publish.yml` pushes the image to GHCR. |
 | `docs-site/` | Astro Starlight docs. The DSL reference is generated from `src/dsl/grammar.md`. |
 | `skills/`, `plugin/`, `.claude-plugin/` | The agent skill and the Claude Code / Codex plugin packaging. |
 | `e2e/` | Playwright. Specs tagged `@gate` are the merge gate; `@local` needs a real GPU. |
@@ -115,7 +124,7 @@ manifest disagree.
 
 ## Where to start reading
 
-1. `src/dsl/compile.ts`: text → scene in about 200 lines.
+1. `src/dsl/compile.ts`: text → scene in about 230 lines.
 2. `src/dsl/families/state.ts`: a small, complete family.
 3. `src/opencanvas/domain/commands/execute.ts`: how every edit applies and inverts.
 4. `src/opencanvas/presentation/v2/useV2CodeWorkspace.ts`: the code panel's Generate, end to end.

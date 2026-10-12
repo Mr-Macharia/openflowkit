@@ -45,3 +45,6 @@ stress/*.json
 .codex-skill-edits/
 tsconfig.tsbuildinfo
 blob-report
+
+# Local renders (launch art, covers); never committed.
+/output/

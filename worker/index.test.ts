@@ -245,7 +245,8 @@ describe('usage beacon (POST /e)', () => {
       version: '2.1.0', returning: 1, country: 'IN',
     });
     expect(row.user).toMatch(/^[0-9a-f]{32}$/);
-    expect(Object.keys(row).slice(-USAGE_EVENTS.length)).toEqual([...USAGE_EVENTS]);
+    expect(Object.keys(row).slice(-USAGE_EVENTS.length - 1)).toEqual([...USAGE_EVENTS, 'beacons']);
+    expect(row.beacons).toBe(1);
     expect(USAGE_EVENTS.map((event) => row[event])).toEqual(USAGE_EVENTS.map((event) =>
       ({ session: 1, created_draw: 2, active_seconds: 300 } as Record<string, number>)[event] ?? 0));
   });
@@ -325,10 +326,9 @@ describe('usage beacon (POST /e)', () => {
 
   it('the migrations declare an integer column for every usage event (a new event needs a migration)', () => {
     const migration = (name: string) => readFileSync(new URL(`./migrations/${name}`, import.meta.url), 'utf8');
-    const table = /CREATE TABLE sessions \(([\s\S]*?)\n\);/.exec(migration('0001_init.sql'))?.[1] ?? '';
-    const added = migration('0003_pro_waitlist.sql').match(/ALTER TABLE sessions ADD COLUMN \w+ INTEGER NOT NULL DEFAULT 0/g) ?? [];
-    const declared = new Set([...`${table}\n${added.map((line) => line.slice('ALTER TABLE sessions ADD COLUMN '.length)).join('\n')}`
-      .matchAll(/^\s*"?(\w+)"?\s+INTEGER NOT NULL DEFAULT 0/gm)].map((match) => match[1]));
+    // 0004 rebuilt the table (one row per person per day); its definition is the current schema.
+    const table = /CREATE TABLE sessions_by_day \(([\s\S]*?)\n\);/.exec(migration('0004_sessions_by_day.sql'))?.[1] ?? '';
+    const declared = new Set([...table.matchAll(/^\s*"?(\w+)"?\s+INTEGER NOT NULL DEFAULT 0/gm)].map((match) => match[1]));
     expect(USAGE_EVENTS.filter((event) => !declared.has(event))).toEqual([]);
   });
 });

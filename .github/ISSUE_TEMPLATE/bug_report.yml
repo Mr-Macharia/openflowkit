@@ -40,7 +40,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: The commit SHA for a checkout, or the `@vrun-design/openflowkit-mcp` version for the MCP server and CLI.
+      description: The commit SHA for a checkout, or the `openflowkit` version (`npx openflowkit --version`) for the MCP server and CLI.
   - type: input
     id: environment
     attributes:

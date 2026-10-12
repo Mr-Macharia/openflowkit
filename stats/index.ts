@@ -106,7 +106,7 @@ export function accessToken(request: Request): string | null {
 
 export const GROWTH_SOURCES = {
   stars: { url: 'https://api.github.com/repos/openflowkit/openflowkit', pick: (body: Record<string, unknown>) => body.stargazers_count },
-  npm: { url: 'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp', pick: (body: Record<string, unknown>) => body.downloads },
+  npm: { url: 'https://api.npmjs.org/downloads/point/last-week/openflowkit', pick: (body: Record<string, unknown>) => body.downloads },
 } as const;
 export type Growth = Record<keyof typeof GROWTH_SOURCES, number | null>;
 
@@ -258,14 +258,18 @@ export function renderPage(stats: Stats, growth: Growth): string {
       tile('Very disappointed', pct(stats.pmf.veryShare), `${int(stats.pmf.total)} answers · 40% is the bar`),
     ].join('')}</div>`),
     section('Daily active people', dailyChart(stats), `Last ${days} days. Today is partial. Hover a day for its numbers.`),
-    section('Retention', `<div class="scroll"><table><thead><tr><th>Cohort (week of)</th><th>People</th><th>Week 1</th><th>Week 4</th></tr></thead><tbody>${
+    section('Retention', `<div class="tiles">${stats.dayRetention.map((row) =>
+      tile(`Day ${row.day}`, pct(row.rate, 0), `${int(row.size)} new people old enough`)).join('')}</div><div class="scroll"><table><thead><tr><th>Cohort (week of)</th><th>People</th><th>Week 1</th><th>Week 4</th></tr></thead><tbody>${
       stats.retention.map((row) => `<tr><td>${row.cohort}</td><td>${int(row.size)}</td><td>${retentionLabel(row.week1)}</td><td>${retentionLabel(row.week4)}</td></tr>`).join('')
-    }</tbody></table></div>`, 'Cohort = the Monday week a person was first seen. Week 1 = days 7–13 after it starts, week 4 = days 28–34. * window still open; — not started or no one in the cohort.'),
+    }</tbody></table></div>`, 'Day N = of people first seen in the range at least N days ago, back exactly N days later. Cohort = the Monday week a person was first seen. Week 1 = days 7–13 after it starts, week 4 = days 28–34. * window still open; — not started or no one in the cohort.'),
     section('Activation', `<div class="tiles">${[
       tile('Created on day one', pct(stats.activation.rate), `${int(stats.activation.activated)} of ${int(stats.activation.people)} new people`),
       tile('Sessions per person', fixed(stats.sessionsPerPerson, 2), `${int(reach.active)} active people`),
       tile('Median engaged minutes', fixed(stats.medianMinutes), 'per person per active day'),
-    ].join('')}</div>`, `Last ${days} days.`),
+    ].join('')}</div>${stats.activationBySource.length
+      ? `<div class="scroll"><table><thead><tr><th>Came from</th><th>New people</th><th>Created on day one</th></tr></thead><tbody>${stats.activationBySource.map((row) =>
+        `<tr><td>${esc(named(SOURCE_NAMES, row.name))}</td><td>${int(row.people)}</td><td>${pct(row.rate, 0)} · ${int(row.activated)}</td></tr>`).join('')}</tbody></table></div>`
+      : ''}`, `Last ${days} days.`),
     section('Feature adoption', bars(stats.adoption.map((row) => ({
       label: FAMILY_LABELS[row.family] ?? row.family, value: row.share ?? 0, display: `${pct(row.share, 0)} · ${int(row.people)}`,
     })), 1), `Share of the ${int(reach.active)} people active in the last ${days} days who used each at least once.`),
@@ -274,7 +278,7 @@ export function renderPage(stats: Stats, growth: Growth): string {
     section('Share loop', `<div class="tiles">${[
       tile('View links made', int(stats.share.view)),
       tile('Edit links made', int(stats.share.edit)),
-      tile('Sessions from a link', int(stats.share.sharedSessions)),
+      tile('Link visits that went on to edit', int(stats.share.sharedSessions), 'viewers who only read send nothing'),
       tile('Viewers who copied to edit', int(stats.share.copied), 'shared visits that became users'),
     ].join('')}</div>`, `Last ${days} days.`),
     section('Product fit and money', `<div class="pair"><div><h3>If OpenFlowKit went away</h3>${stats.pmf.total ? bars((['very', 'somewhat', 'not'] as const).map((answer) => ({
@@ -293,16 +297,16 @@ export function renderPage(stats: Stats, growth: Growth): string {
         : empty('No answers yet.')}</div></div><h3>Would pay for</h3>${stats.pro.joined ? bars(Object.entries(stats.pro.features)
       .filter(([option]) => option !== 'free').sort(([, a], [, b]) => b - a).map(([option, n]) => ({
         label: named(PAY_NAMES, option), value: n, display: `${pct(n / stats.pro.joined, 0)} · ${int(n)}`,
-      }))) : empty('No one yet.')}`, `Last ${days} days. A waitlist, not sales: nobody has paid. The fair-price slider is optional, so it can sum below joins.`),
+      }))) : empty('No one yet.')}`, `Last ${days} days. A waitlist, not sales: nobody has paid. The fair-price slider starts at the plan's founding price.`),
     section('Growth outside the app', `<div class="tiles">${[
       tile('GitHub stars', int(growth.stars), 'openflowkit/openflowkit'),
-      tile('npm downloads', int(growth.npm), 'MCP server, last week'),
+      tile('npm downloads', int(growth.npm), '`openflowkit`, last week'),
     ].join('')}</div>`, 'Fetched server-side, cached for an hour. — means the source did not answer.'),
     section('Health', `<div class="tiles">${tile('Errors per 1k sessions', fixed(stats.errorsPer1k), `last ${days} days`)}</div>`
-      + `<div class="meter${budgetWarn ? ' warn' : ''}"><div class="meter-label">Today's beacons vs the Workers Free limit <b>${int(stats.budget.rows)} of 100,000 (${pct(stats.budget.share)})</b></div>`
+      + `<div class="meter${budgetWarn ? ' warn' : ''}"><div class="meter-label">Usage beacons, last 30 days, vs the 10M requests Workers Paid includes <b>${int(stats.budget.requests)} (${pct(stats.budget.share)})</b></div>`
       + `<div class="meter-track"><div class="meter-fill" style="width:${Math.min(100, 100 * stats.budget.share).toFixed(2)}%"></div></div>`
-      + (budgetWarn ? '<p class="warning"><b>Warning:</b> over 60% — move to Workers Paid ($5/month) before share links start failing.</p>' : '')
-      + '<p class="note">Counts beacon rows only; share-link requests also use the account-wide limit.</p></div>'),
+      + (budgetWarn ? '<p class="warning"><b>Warning:</b> over 60%. Past 10M a month, requests cost $0.30 per million.</p>' : '')
+      + '<p class="note">Counts beacons only; share links use the same allowance.</p></div>'),
   ].join('\n');
   return htmlDocument('OpenFlowKit stats', `<header><div><h1>OpenFlowKit stats</h1><p class="note">Updated ${esc(when(stats.generatedAt))} · all days are UTC</p></div>`
     + `<nav class="range" aria-label="Range">${range}</nav></header><main>${body}</main>`);

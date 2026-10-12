@@ -41,6 +41,8 @@ export interface StorageLike {
 }
 export interface D1DatabaseLike {
   prepare(sql: string): { bind(...values: unknown[]): { run(): Promise<unknown> } };
+  /** One transaction; only the nightly fold needs it. */
+  batch?(statements: unknown[]): Promise<unknown>;
 }
 export interface Env {
   SHARES: R2BucketLike;
@@ -239,10 +241,35 @@ async function userKey(salt: string, uid: string): Promise<string> {
 
 // Quoted: `returning` is an SQLite keyword. Event columns come from the contract, so code and table can't drift
 // (index.test.ts checks the migration declares each one).
-const SESSION_COLUMNS = ['received_at', 'day', 'user', 'first_seen', 'source', 'entry', 'version', 'returning', 'country', ...USAGE_EVENTS];
+const SESSION_COLUMNS = ['received_at', 'day', 'user', 'first_seen', 'source', 'entry', 'version', 'returning', 'country', ...USAGE_EVENTS, 'beacons'];
 const insert = (table: string, columns: readonly string[]): string =>
   `INSERT INTO ${table} (${columns.map((column) => `"${column}"`).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
-const INSERT_SESSION = insert('sessions', SESSION_COLUMNS);
+/**
+ * One row per person per day (migration 0004): a later beacon adds its counts and leaves the day's first source,
+ * entry, version and country. Only counters change on a repeat, so it writes the row and no index entries, which
+ * keeps D1 inside the Workers Paid allowance (50M rows written, 5 GB) at 100k people a day.
+ */
+export const INSERT_SESSION = `${insert('sessions', SESSION_COLUMNS)} ON CONFLICT (user, day) DO UPDATE SET ${
+  [...USAGE_EVENTS, 'beacons'].map((column) => `"${column}" = "${column}" + excluded."${column}"`).join(', ')}`;
+
+/** Days of per-person rows kept: every stats range (90 days) and retention window (day 30, week 4 of a 6-week cohort) fits. */
+export const KEEP_USAGE_DAYS = 100;
+/**
+ * The nightly cron: each day past the window becomes one `usage_daily` row (people, new people, every event total),
+ * then its per-person rows go, in one transaction. Storage stops growing with time; the long-run trend stays.
+ */
+export async function pruneUsage(
+  db: { prepare(sql: string): { bind(...values: unknown[]): unknown }; batch(statements: unknown[]): Promise<unknown> }, now: Date,
+): Promise<void> {
+  const cutoff = new Date(now.getTime() - KEEP_USAGE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const totals = [...USAGE_EVENTS, 'beacons'].map((column) => `'${column}', SUM("${column}")`).join(', ');
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO usage_daily (day, people, new_people, totals)
+      SELECT day, COUNT(DISTINCT user), COUNT(DISTINCT CASE WHEN first_seen = day THEN user END), json_object(${totals})
+      FROM sessions WHERE day < ? GROUP BY day`).bind(cutoff),
+    db.prepare('DELETE FROM sessions WHERE day < ?').bind(cutoff),
+  ]);
+}
 
 async function usageBeacon(request: Request, env: Env, now: Date): Promise<Response> {
   const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
@@ -257,7 +284,7 @@ async function usageBeacon(request: Request, env: Env, now: Date): Promise<Respo
   if (!env.DB || !env.USAGE_SALT) return new Response(null, { status: 204 });
   await env.DB.prepare(INSERT_SESSION).bind(
     receivedAt, day, await userKey(env.USAGE_SALT, beacon.uid), beacon.firstSeen, beacon.source, beacon.entry,
-    beacon.version, beacon.returning ? 1 : 0, country(request), ...USAGE_EVENTS.map((event) => beacon.counts[event]),
+    beacon.version, beacon.returning ? 1 : 0, country(request), ...USAGE_EVENTS.map((event) => beacon.counts[event]), 1,
   ).run();
   return new Response(null, { status: 204 });
 }
@@ -391,4 +418,8 @@ export async function handle(request: Request, env: Env, fetcher: typeof fetch =
 
 export default {
   fetch: (request: Request, env: Env): Promise<Response> => handle(request, env),
+  // wrangler.toml [triggers]: once a night.
+  scheduled: async (_controller: unknown, env: Env): Promise<void> => {
+    if (env.DB?.batch) await pruneUsage(env.DB as Required<D1DatabaseLike>, new Date());
+  },
 };

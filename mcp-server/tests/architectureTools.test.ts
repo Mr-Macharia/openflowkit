@@ -150,6 +150,10 @@ describe('architecture discovery', () => {
     const model = await modelOfDsl(discoveryToDsl(discovery, 'Fixture'));
     const clean = driftReport(model, discovery);
     expect(clean).toMatchObject({ missing: [], undrawn: [], changed: [] });
+    const withContext: ArchModelData = { ...model, elements: [...model.elements,
+      { id: 'dev', kind: 'person', name: 'Developer', parent: null, tags: [], links: [] },
+      { id: 'gh', kind: 'external', name: 'GitHub', parent: null, tags: [], links: [] }] };
+    expect(driftReport(withContext, discovery).undrawn).toEqual([]);
 
     await write(root, 'docker-compose.yml', 'services:\n  cache:\n    image: redis:7\n');
     const shrunk = await runArchitectureDiscovery(root);

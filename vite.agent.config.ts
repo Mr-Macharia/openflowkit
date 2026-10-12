@@ -2,7 +2,6 @@ import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
 // Bundles the pure agent action registry for the MCP server (Node, no DOM).
-// Types for the bundle live in mcp-server/src/generated-agent.d.ts.
 export default defineConfig({
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   publicDir: false,

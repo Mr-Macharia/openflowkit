@@ -24,7 +24,7 @@ describe('claude code and codex plugins', () => {
   it('launches the real package through npx', () => {
     expect(plugin.mcpServers).toBe('./.mcp.json');
     expect(codex.mcpServers).toBe('./.mcp.json');
-    // `openflowkit` (cli/) is the public name; `openflowkit mcp` runs the server from @vrun-design/openflowkit-mcp.
+    // `openflowkit` (cli/) is the public name; `openflowkit mcp` runs the server from @openflowkit/openflowkit-mcp.
     expect(mcp.mcpServers.openflowkit).toEqual({ command: 'npx', args: ['-y', alias.name, 'mcp'] });
     expect(alias.dependencies[pkg.name]).toBe(pkg.version);
   });

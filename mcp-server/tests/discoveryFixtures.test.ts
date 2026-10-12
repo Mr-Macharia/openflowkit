@@ -242,10 +242,11 @@ describe('discovery invents nothing', () => {
 describe('discovery on this repository', () => {
   // On 2026-10-07 it reported 12 invented services (Stripe, BigQuery…) from tests, evals,
   // icon data and its own rule source. A real new dependency belongs in this list.
-  // Two `openflowkit` units, both real: the app (root package.json) and the npm CLI alias in cli/.
+  // The app (root package.json, `openflowkit-app`) and the npm CLI alias in cli/ (`openflowkit`) are distinct names,
+  // so `openflowkit drift .` can tell them apart in architecture.ofk.
   it('reports the app, the docs site, the MCP server and the Workers, and nothing it made up', async () => {
     const discovery = await runArchitectureDiscovery(fileURLToPath(new URL('../..', import.meta.url)));
-    expect(discovery.units.map((unit) => unit.name).sort()).toEqual(['openflowkit', 'openflowkit', 'openflowkit-data', 'openflowkit-docs', 'openflowkit-mcp', 'openflowkit-share', 'openflowkit-shares', 'openflowkit-stats']);
+    expect(discovery.units.map((unit) => unit.name).sort()).toEqual(['openflowkit', 'openflowkit-app', 'openflowkit-data', 'openflowkit-docs', 'openflowkit-mcp', 'openflowkit-share', 'openflowkit-shares', 'openflowkit-stats']);
   });
 });
 

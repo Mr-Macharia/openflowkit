@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { USAGE_EVENTS, PAY_OPTIONS } from '../src/services/usage/usageEvents.ts';
 import {
-  DASH, RANGES, WORKERS_FREE_REQUESTS, fixed, inlineParams, int, loadStats, pct, retentionLabel,
+  DASH, RANGES, WORKERS_PAID_REQUESTS, fixed, inlineParams, int, loadStats, pct, retentionLabel,
 } from '../stats/queries.ts';
 
 const WORKER_DIR = fileURLToPath(new URL('../worker/', import.meta.url));
@@ -63,6 +63,12 @@ try {
     { metric: `Sessions per active person (${days} days)`, value: fixed(s.sessionsPerPerson, 2) },
     { metric: `Median engaged minutes per active day (${days} days)`, value: fixed(s.medianMinutes) },
   ]);
+  table(`Day-N retention (of people first seen in the last ${days} days at least N days ago, back on day N)`, s.dayRetention.map((row) => ({
+    day: row.day, people: int(row.size), back: pct(row.rate),
+  })));
+  table(`Activation by source (new people, ${days} days)`, s.activationBySource.map((row) => ({
+    source: row.name, people: int(row.people), created_day_one: pct(row.rate),
+  })));
   table('Weekly retention (cohort = first-seen week; * = window still running)', s.retention.map((row) => ({
     cohort: row.cohort, people: int(row.size), week1: retentionLabel(row.week1), week4: retentionLabel(row.week4),
   })));
@@ -73,15 +79,15 @@ try {
   table(`Share loop (${days} days)`, [
     { step: 'share links made (view)', count: int(s.share.view) },
     { step: 'share links made (edit)', count: int(s.share.edit) },
-    { step: 'sessions opened from a link', count: int(s.share.sharedSessions) },
+    { step: 'link visits that went on to edit (read-only viewers send nothing)', count: int(s.share.sharedSessions) },
     { step: 'viewers who copied to edit', count: int(s.share.copied) },
   ]);
   console.log(`\nErrors: ${fixed(s.errorsPer1k)} per 1k sessions (${days} days)`);
   table(`Top sources (${days} days, by people; a person can appear under several)`, s.sources);
   table(`Top countries (${days} days, by people)`, s.countries);
-  // ponytail: share-link requests aren't in D1, so this counts beacon rows only. Upgrade: the Workers analytics API.
-  console.log(`\nWorker budget: ${int(s.budget.rows)} beacons today of ${int(WORKERS_FREE_REQUESTS)} requests/day on Workers Free (${pct(s.budget.share)}; share links not counted).`);
-  if (s.budget.share >= 0.6) console.log('  WARNING: over 60% — upgrade to Workers Paid ($5/month) before share links start failing.');
+  // ponytail: share-link requests aren't in D1, so this counts beacons only. Upgrade: the Workers analytics API.
+  console.log(`\nWorker budget: ${int(s.budget.requests)} beacons in 30 days of ${int(WORKERS_PAID_REQUESTS)} requests/month on Workers Paid (${pct(s.budget.share)}; share links not counted).`);
+  if (s.budget.share >= 0.6) console.log('  WARNING: over 60%. Past 10M a month, requests cost $0.30 per million.');
 
   table(`Feature thumbs (${days} days)`, s.thumbs.map((row) => ({ ...row, up_share: pct(row.up + row.down ? row.up / (row.up + row.down) : null) })));
   table(`PMF: "How would you feel if you could no longer use OpenFlowKit?" (${days} days)`, ['very', 'somewhat', 'not'].map((answer) => ({
@@ -113,6 +119,6 @@ async function publicNumber(label, url, pick) {
   }
 }
 console.log('\nPublic growth');
-await publicNumber('npm downloads last week (@vrun-design/openflowkit-mcp)',
-  'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp', (body) => body.downloads);
+await publicNumber('npm downloads last week (openflowkit)',
+  'https://api.npmjs.org/downloads/point/last-week/openflowkit', (body) => body.downloads);
 await publicNumber('GitHub stars (openflowkit/openflowkit)', 'https://api.github.com/repos/openflowkit/openflowkit', (body) => body.stargazers_count);

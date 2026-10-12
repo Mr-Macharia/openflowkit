@@ -5,6 +5,10 @@ compatibility_date = "2026-03-18"
 
 routes = [{ pattern = "share.openflowkit.com", custom_domain = true }]
 
+# Nightly: fold usage days past the 100-day window into usage_daily (pruneUsage in index.ts).
+[triggers]
+crons = ["17 3 * * *"]
+
 # The production app plus the `v2` branch preview on Cloudflare Pages, so sharing can be tried before a merge.
 [vars]
 ALLOWED_ORIGINS = "https://app.openflowkit.com,https://v2.openflowkit-app.pages.dev"

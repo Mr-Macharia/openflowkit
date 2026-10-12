@@ -1,15 +1,17 @@
 # Changelog
 
 What changed in OpenFlowKit, newest first. Each release has a version number (major.minor.patch,
-[Semantic Versioning](https://semver.org/)) and a matching [GitHub release](https://github.com/Vrun-design/openflowkit/releases).
+[Semantic Versioning](https://semver.org/)) and a matching [GitHub release](https://github.com/openflowkit/openflowkit/releases).
 Work that has landed but not shipped yet sits under **Unreleased**.
 
-The MCP server (`@vrun-design/openflowkit-mcp` on npm) has its own version line, because agents install it
+The MCP server and CLI (`openflowkit` on npm) have their own version line, because agents install it
 separately; its changes are listed under *For developers* in each release.
 
 ## [Unreleased]
 
-The first public release of the new editor, shipping as **2.1.0** when `v2` merges to `main`.
+## [2.1.0] — 2026-10-13
+
+The first public release of the new editor.
 
 ### Highlights
 
@@ -165,15 +167,17 @@ The first public release of the new editor, shipping as **2.1.0** when `v2` merg
 - The Slides workspace button: it opened a mock-up that saved nothing. It returns when slides are real.
 - The `gh-pages` deploy script and `public/CNAME`; the app deploys on Cloudflare Pages.
 
-### For developers: MCP server 0.2.2 and the CLI
+### For developers: MCP server 0.2.3 and the CLI
 
-- **`npx openflowkit`.** The CLI has its own short npm name, `openflowkit` (the same command as
-  `@vrun-design/openflowkit-mcp`). Run with no command at a terminal, it shows a welcome screen
+- **`npx openflowkit`.** The CLI has its own short npm name, `openflowkit`. The engine package moved
+  to the `@openflowkit` npm org as `@openflowkit/openflowkit-mcp` (0.2.3); `@vrun-design/openflowkit-mcp`
+  stops at 0.2.2 and is deprecated. Run with no command at a terminal, it shows a welcome screen
   and three commands to try; scripts and pipes still get the usage text and exit 2.
 - **`npx -y openflowkit mcp`** starts the MCP server. Docs, the Connect panel, the plugins and the
-  install buttons use it; configs with `@vrun-design/openflowkit-mcp` keep working.
+  install buttons use it; configs with `@vrun-design/openflowkit-mcp` keep working on 0.2.2.
 - The repository moved to [github.com/openflowkit/openflowkit](https://github.com/openflowkit/openflowkit);
-  old links redirect. The MCP registry name is now `io.github.openflowkit/openflowkit-mcp`.
+  old links redirect. The MCP registry name is now `io.github.openflowkit/openflowkit-mcp`, published
+  from the release workflow when an `mcp-v` tag is pushed.
 - CLI: `openflowkit map <dir> [--depth overview|detailed|everything]` prints a repository's parts, files, lines, resolved and unresolved imports, and the folders that import each other. `--html out.html` writes the interactive map as one offline page (no network; evidence links to GitHub only for a github.com checkout root, at the commit HEAD). In a git checkout only tracked files are mapped.
 - MCP (0.2.0): remote MCP Apps endpoint (`start:http`) with render_diagram + inline viewer; stores nothing.
 - **MCP: Mermaid, Structurizr and D2 in.** `create_diagram`, `update_diagram` and
@@ -276,4 +280,4 @@ idea: **the text is the hub, and the canvas is a view of it.**
 - The keyboard cheatsheet advertised Alt for snap bypass; the canvas reads ⌘/Ctrl,
   and Alt resizes from the centre.
 
-[2.0.0]: https://github.com/Vrun-design/openflowkit/releases/tag/v2.0.0
+[2.0.0]: https://github.com/openflowkit/openflowkit/releases/tag/v2.0.0

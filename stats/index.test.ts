@@ -7,6 +7,7 @@ import {
   accessToken, esc, handle, loadGrowth, renderPage, verifyAccessJwt,
   type CacheLike, type D1DatabaseLike, type D1StatementLike, type Env, type Growth,
 } from './index';
+import { INSERT_SESSION, KEEP_USAGE_DAYS, pruneUsage } from '../worker/index';
 import { cohortStarts, inlineParams, loadStats, retentionLabel, type Run } from './queries';
 
 const TEAM = 'team.cloudflareaccess.com';
@@ -17,7 +18,7 @@ const SECONDS = NOW.getTime() / 1000;
 
 // ---- real SQLite with every migration ---------------------------------------------------------------------------
 
-const MIGRATIONS = ['0001_init.sql', '0002_feedback_read.sql', '0003_pro_waitlist.sql']
+const MIGRATIONS = ['0001_init.sql', '0002_feedback_read.sql', '0003_pro_waitlist.sql', '0004_sessions_by_day.sql']
   .map((name) => readFileSync(new URL(`../worker/migrations/${name}`, import.meta.url), 'utf8'));
 function database(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
@@ -41,11 +42,10 @@ class SqliteD1 implements D1DatabaseLike {
 }
 
 type Counts = Partial<Record<(typeof USAGE_EVENTS)[number], number>>;
+/** One beacon through the Worker's own statement, so a second beacon the same day folds into that day's row. */
 function beacon(db: DatabaseSync, day: string, user: string, firstSeen: string, source: string, country: string, counts: Counts, entry = 'home') {
-  const columns = Object.keys(counts);
-  db.prepare(`INSERT INTO sessions (received_at, day, user, first_seen, source, entry, version, "returning", country${columns.map((c) => `, "${c}"`).join('')})
-    VALUES (?, ?, ?, ?, ?, ?, '2.1.0', 0, ?${columns.map(() => ', ?').join('')})`)
-    .run(`${day}T10:00:00.000Z`, day, user, firstSeen, source, entry, country, ...Object.values(counts) as number[]);
+  db.prepare(INSERT_SESSION).run(`${day}T10:00:00.000Z`, day, user, firstSeen, source, entry, '2.1.0', 0, country,
+    ...USAGE_EVENTS.map((event) => counts[event] ?? 0), 1);
 }
 interface Feedback {
   created_at: string; kind: string; feature?: string; rating?: string; pmf?: string; pay?: string; plan?: string; price?: number;
@@ -114,7 +114,7 @@ const fetcher: typeof fetch = async (input) => {
   return answer();
 };
 const STARS = 'https://api.github.com/repos/openflowkit/openflowkit';
-const NPM = 'https://api.npmjs.org/downloads/point/last-week/@vrun-design/openflowkit-mcp';
+const NPM = 'https://api.npmjs.org/downloads/point/last-week/openflowkit';
 beforeEach(() => {
   fetched = [];
   growthAnswers = { [STARS]: () => Response.json({ stargazers_count: 1234 }), [NPM]: () => Response.json({ downloads: 54 }) };
@@ -236,8 +236,24 @@ describe('loadStats on seeded SQLite', () => {
     expect(s.sources).toEqual([{ name: 'direct', people: 2 }, { name: 'github', people: 1 }, { name: 'hn', people: 1 }, { name: 'x', people: 1 }]);
     expect(s.countries).toEqual([{ name: 'DE', people: 2 }, { name: 'US', people: 2 }, { name: 'GB', people: 1 }]);
     expect(s.share).toEqual({ view: 1, edit: 0, sharedSessions: 1, copied: 1 });
-    expect(s.budget).toEqual({ rows: 3, share: 3 / 100_000 });
+    // Beacons since 09-15: A×2, C×2, D, F, and E's two (folded into one row) = 8.
+    expect(s.budget).toEqual({ requests: 8, share: 8 / 10_000_000 });
   });
+
+  it('day 1/7/30 retention and activation by source', async () => {
+    const fresh = database();
+    // G (hn) creates on day one and is back on day 1 and day 7; H (hn) and I (x) never return.
+    beacon(fresh, '2026-10-01', 'G', '2026-10-01', 'hn', 'DE', { session: 1, created_draw: 1 });
+    beacon(fresh, '2026-10-02', 'G', '2026-10-01', 'hn', 'DE', { session: 1 });
+    beacon(fresh, '2026-10-08', 'G', '2026-10-01', 'hn', 'DE', { session: 1 });
+    beacon(fresh, '2026-10-01', 'H', '2026-10-01', 'hn', 'US', { session: 1 });
+    beacon(fresh, '2026-10-10', 'I', '2026-10-10', 'x', 'US', { session: 1 });
+    const s = await loadStats(sqliteRun(fresh), NOW, 30);
+    // Day 1: G, H, I old enough, G back → 1/3. Day 7: G, H (I is 4 days old) → 1/2. Day 30: nobody old enough.
+    expect(s.dayRetention).toEqual([{ day: 1, size: 3, rate: 1 / 3 }, { day: 7, size: 2, rate: 0.5 }, { day: 30, size: 0, rate: null }]);
+    expect(s.activationBySource).toEqual([{ name: 'hn', people: 2, activated: 1, rate: 0.5 }, { name: 'x', people: 1, activated: 0, rate: 0 }]);
+  });
+
 
   it('PMF, pay votes, emails, thumbs, unread', async () => {
     const s = await loadStats(sqliteRun(db), NOW, 30);
@@ -292,6 +308,7 @@ describe('loadStats on seeded SQLite', () => {
     const old = new DatabaseSync(':memory:');
     old.exec(MIGRATIONS[0]);
     old.exec(MIGRATIONS[2]);
+    old.exec(MIGRATIONS[3]);
     const s = await loadStats(sqliteRun(old), NOW, 30);
     expect(s.unread).toBeNull();
     expect(s.reach.mau).toBe(0);
@@ -465,5 +482,35 @@ describe('evidence', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(new URL('dashboard-seeded.html', dir), html);
     writeFileSync(new URL('dashboard-empty.html', dir), renderPage(await loadStats(sqliteRun(database()), NOW, 30), { stars: null, npm: null }));
+  });
+});
+
+describe('usage storage: one row per person per day, a 100-day window', () => {
+  it('a second beacon the same day adds its counts and keeps the first source', () => {
+    const db = database();
+    beacon(db, '2026-10-14', 'A', '2026-10-14', 'hn', 'DE', { session: 1, created_draw: 1, active_seconds: 60 });
+    beacon(db, '2026-10-14', 'A', '2026-10-14', 'x', 'US', { session: 1, active_seconds: 30 });
+    beacon(db, '2026-10-15', 'A', '2026-10-14', 'x', 'US', { session: 1 });
+    expect(db.prepare('SELECT day, source, country, session, created_draw, active_seconds, beacons FROM sessions ORDER BY day').all()
+      .map((row) => ({ ...row }))).toEqual([
+      { day: '2026-10-14', source: 'hn', country: 'DE', session: 2, created_draw: 1, active_seconds: 90, beacons: 2 },
+      { day: '2026-10-15', source: 'x', country: 'US', session: 1, created_draw: 0, active_seconds: 0, beacons: 1 },
+    ]);
+  });
+
+  it('the nightly fold keeps one usage_daily row per old day and drops its detail rows; recent days stay', async () => {
+    const db = database();
+    const old = '2026-07-01'; // more than KEEP_USAGE_DAYS before NOW
+    beacon(db, old, 'A', old, 'hn', 'DE', { session: 2, created_draw: 1 });
+    beacon(db, old, 'B', '2026-06-01', 'x', 'US', { session: 1 });
+    beacon(db, '2026-10-14', 'A', old, 'hn', 'DE', { session: 1 });
+    await pruneUsage(new SqliteD1(db), NOW);
+    expect(KEEP_USAGE_DAYS).toBe(100);
+    expect(db.prepare('SELECT day FROM sessions').all().map((row) => row.day)).toEqual(['2026-10-14']);
+    const [daily] = db.prepare('SELECT day, people, new_people, totals FROM usage_daily').all();
+    expect({ ...daily, totals: undefined }).toEqual({ day: old, people: 2, new_people: 1, totals: undefined });
+    expect(JSON.parse(String(daily!.totals))).toMatchObject({ session: 3, created_draw: 1, beacons: 2 });
+    await pruneUsage(new SqliteD1(db), NOW); // nothing left to fold; the summary is not doubled
+    expect(db.prepare('SELECT COUNT(*) AS n FROM usage_daily').all()[0]!.n).toBe(1);
   });
 });

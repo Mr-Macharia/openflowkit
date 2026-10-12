@@ -4,7 +4,7 @@
 
 **Give Claude Code, Claude Desktop, Cursor, Windsurf, or any MCP client first-class diagramming tools.**
 
-[![npm](https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?style=flat-square&color=f97316)](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp)
+[![npm](https://img.shields.io/npm/v/@openflowkit/openflowkit-mcp?style=flat-square&color=f97316)](https://www.npmjs.com/package/@openflowkit/openflowkit-mcp)
 [![MIT License](https://img.shields.io/badge/License-MIT-f97316.svg?style=flat-square)](https://github.com/openflowkit/openflowkit/blob/main/LICENSE)
 [![Node 20.11+](https://img.shields.io/badge/Node-20.11%2B-339933.svg?style=flat-square)](https://nodejs.org/)
 
@@ -41,7 +41,7 @@ npx -y openflowkit mcp
 
 # Or install globally
 npm install -g openflowkit
-openflowkit-mcp
+openflowkit mcp
 ```
 
 Requires **Node 20.11+**.

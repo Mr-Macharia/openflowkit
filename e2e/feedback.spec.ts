@@ -211,9 +211,10 @@ test('the Pro waitlist: a plan, what you’d pay for, a fair price, an email; th
   await dialog.getByRole('button', { name: 'Drift alerts on PRs' }).click();
   await expect(dialog.getByRole('button', { name: 'Drift alerts on PRs' })).toHaveAttribute('aria-pressed', 'true');
   const slider = dialog.getByRole('slider', { name: 'What would feel fair, per person a month?' });
+  // It opens on the plan's founding price, already a number, never an empty "drag to answer".
+  await expect(dialog.locator('output')).toHaveText('$9 a month');
   await slider.focus();
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
+  for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowRight');
   await expect(dialog.locator('output')).toHaveText('$12 a month');
   await next.click();
   await expect(dialog.getByText('2 must-haves')).toBeVisible();

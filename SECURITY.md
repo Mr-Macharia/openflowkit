@@ -5,7 +5,7 @@
 Security fixes land on the latest `main` and the hosted app at app.openflowkit.com. Older commits, forks
 and self-hosted copies that have not pulled the fix are not patched separately.
 
-The MCP server (`@vrun-design/openflowkit-mcp`) is versioned on its own; fixes ship in its latest npm release.
+The MCP server and CLI (`openflowkit` on npm) are versioned on their own; fixes ship in its latest npm release.
 
 ## Reporting a Vulnerability
 

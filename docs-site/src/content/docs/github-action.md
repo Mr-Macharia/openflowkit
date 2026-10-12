@@ -29,7 +29,7 @@ works from another repository only once such a tag exists. A branch name also wo
 under you; a tag or a commit SHA does not. Inside the OpenFlowKit repository itself,
 `uses: ./action` works.
 
-The default CLI is pinned to `openflowkit@0.2.2`, so that version must be on
+The default CLI is pinned to `openflowkit@0.2.3`, so that version must be on
 npm. A CLI you point the `cli` input at must also be 0.2.0 or newer: older versions have no
 `render`, `convert` or `op`.
 
@@ -38,7 +38,7 @@ npm. A CLI you point the `cli` input at must also be 0.2.0 or newer: older versi
 | Input | Default | What it does |
 | --- | --- | --- |
 | `github-token` | `${{ github.token }}` | Comments, and pushes refreshed SVGs |
-| `cli` | `npx -y openflowkit@0.2.2` | The command that runs the CLI; it never sees the token |
+| `cli` | `npx -y openflowkit@0.2.3` | The command that runs the CLI; it never sees the token |
 | `refresh-svg` | `false` | Commit a fresh `<name>.svg` when the committed one is stale (same-repo PRs only) |
 | `comment-author` | `github-actions[bot]` | The login whose comment is updated; set it when you pass a PAT or App token |
 | `paths` | `.openflow.json,.ofk` | Extensions (starting with `.`) or globs, comma-separated |

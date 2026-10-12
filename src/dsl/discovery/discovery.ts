@@ -1572,8 +1572,11 @@ export function driftReport(modelOrJson: ArchModelData | string, result: Archite
     }
   }
 
+  // People and external systems are context: code never evidences a person, and an API reached over
+  // plain HTTP leaves no manifest line. A discovered external that the model lacks is still `missing`.
+  // ponytail: an external the code stopped using goes unflagged; check its client library if that bites.
   const undrawn: DriftFinding[] = model.elements
-    .filter((element) => !matched.has(element.id))
+    .filter((element) => !matched.has(element.id) && element.kind !== 'person' && element.kind !== 'external')
     .map((element) => ({
       id: element.id, name: element.name,
       evidence: [{ file: '', line: 0, text: element.name }],

@@ -20,12 +20,12 @@ interface Plan {
   readonly price: number | null; readonly founding: number | null; readonly per: string; readonly perks: readonly string[];
 }
 const PLANS: readonly Plan[] = [
-  { plan: 'pro', name: 'Pro', who: 'For you', price: 8, founding: 6, per: 'a month',
-    perks: ['Sync across all your devices', 'Unlimited version history', 'AI included, no API key', 'Private repo maps', 'Embeds without our logo'] },
-  { plan: 'team', name: 'Team', who: 'For your team', price: 12, founding: 9, per: 'a person, a month',
-    perks: ['Everything in Pro', 'Draw together, live, with comments', 'Shared shape and template libraries', 'Private links with password and expiry', 'Drift alerts on pull requests'] },
-  { plan: 'enterprise', name: 'Enterprise', who: 'For your company', price: null, founding: null, per: '',
-    perks: ['SSO, SAML and audit logs', 'Self-hosted, in your cloud', 'Roles and admin controls', 'Confluence, Notion and Slack', 'Priority support with an SLA'] },
+  { plan: 'pro', name: 'Pro', who: 'For engineers who diagram every week', price: 8, founding: 6, per: 'a month',
+    perks: ['Your diagrams on every device', 'Restore any past version', 'Built-in AI, nothing to set up', 'Live maps of your private repos', 'Embeds without our badge'] },
+  { plan: 'team', name: 'Team', who: 'For teams that design systems together', price: 12, founding: 9, per: 'a person, a month',
+    perks: ['Everything in Pro, for everyone', 'Live cursors, comments, mentions', 'Shared icons and templates', 'Links with password and expiry', 'Drift alerts on every pull request'] },
+  { plan: 'enterprise', name: 'Enterprise', who: 'For companies with security reviews', price: null, founding: null, per: '',
+    perks: ['SSO, SAML and audit logs', 'Self-host in your own cloud', 'Roles, permissions, admin controls', 'Confluence, Notion, Slack apps', 'Priority support with an SLA'] },
 ];
 const FEATURES: readonly (readonly [Exclude<PayOption, 'free'>, string, TablerIcon])[] = [
   ['collaboration', 'Real-time collaboration', IconUsersGroup], ['comments', 'Comments and mentions', IconMessageCircle],
@@ -98,6 +98,9 @@ export function V2ProWaitlist({ open, onClose, onJoined }: {
   }, [step]);
 
   const chosen = PLANS.find((entry) => entry.plan === (joined ?? plan)) ?? null;
+  // The slider starts at the plan's founding price, so there is always a number to agree with or move.
+  // ponytail: that anchors answers near our price; start it at PRICE_START if the survey needs an unprimed answer.
+  const fair = price ?? chosen?.founding ?? PRICE_START;
   const ready = [plan !== null, true, email.trim() !== ''][step]!;
   const next = () => {
     if (!ready || sending) return;
@@ -105,7 +108,7 @@ export function V2ProWaitlist({ open, onClose, onJoined }: {
     setSending(true);
     setError(null);
     sendFeedback({
-      kind: 'pro', plan: plan!, ...(price !== null ? { price } : {}), ...(features.length ? { pay: features } : {}), email, version: APP_VERSION,
+      kind: 'pro', plan: plan!, price: fair, ...(features.length ? { pay: features } : {}), email, version: APP_VERSION,
     }).then(() => {
       try { localStorage.setItem(JOINED_KEY, plan!); } catch { /* the thanks still shows; the sidebar just won't remember */ }
       setJoined(plan);
@@ -118,7 +121,7 @@ export function V2ProWaitlist({ open, onClose, onJoined }: {
     <aside className="ofk-pro-hero">
       <span className="ofk-pro-badge"><i />Founding members</span>
       <h3>OpenFlowKit <em>Pro</em></h3>
-      <p>Draw together, keep every version, map private repos. Not built yet, so you get to shape it.</p>
+      <p>Your architecture, always current and shared with your team. Not built yet, so you decide what comes first.</p>
       <ProScene />
       <ul className="ofk-pro-perks">
         <li><Icon icon={IconCheck} />Founding price, locked for life</li>
@@ -208,12 +211,12 @@ export function V2ProWaitlist({ open, onClose, onJoined }: {
                   ))}
                 </div>
               </fieldset>
-              <div className="ofk-pro-price" data-set={price !== null || undefined}>
+              <div className="ofk-pro-price">
                 <label htmlFor={`${id}-price`}>What would feel fair, per person a month?</label>
-                <output htmlFor={`${id}-price`}>{price === null ? 'Drag to answer' : <><b>{money(price)}</b> a month</>}</output>
-                <input id={`${id}-price`} type="range" min={0} max={MAX_PRO_PRICE} step={1} value={price ?? PRICE_START}
-                  aria-valuetext={price === null ? 'Not answered' : `${money(price)} a month`}
-                  style={{ '--ofk-pro-fill': `${(100 * (price ?? PRICE_START)) / MAX_PRO_PRICE}%` } as React.CSSProperties}
+                <output htmlFor={`${id}-price`}><b>{money(fair)}</b> a month</output>
+                <input id={`${id}-price`} type="range" min={0} max={MAX_PRO_PRICE} step={1} value={fair}
+                  aria-valuetext={`${money(fair)} a month`}
+                  style={{ '--ofk-pro-fill': `${(100 * fair) / MAX_PRO_PRICE}%` } as React.CSSProperties}
                   onChange={(event) => setPrice(Number(event.target.value))} />
                 <div className="ofk-pro-price-scale" aria-hidden="true"><span>$0</span><span>${MAX_PRO_PRICE / 2}</span><span>${MAX_PRO_PRICE}+</span></div>
               </div>
@@ -224,7 +227,7 @@ export function V2ProWaitlist({ open, onClose, onJoined }: {
                 <span>{chosen?.name}</span>
                 <span>{chosen?.founding ? `$${chosen.founding} founding` : 'Let’s talk'}</span>
                 <span>{features.length ? `${features.length} must-have${features.length === 1 ? '' : 's'}` : 'No picks'}</span>
-                {price !== null ? <span>{money(price)} feels fair</span> : null}
+                <span>{money(fair)} feels fair</span>
               </div>
               <Field label="Where should we send your invite?" type="email" autoComplete="email" maxLength={MAX_FEEDBACK_EMAIL}
                 placeholder="you@company.com" hint="No payment now. One email when Pro opens, never shared."

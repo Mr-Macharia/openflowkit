@@ -3,7 +3,7 @@
 //
 //   APP_URL=http://localhost:4310/ node scripts/capture-readme.mjs [hero code og gif mapgif]
 //
-// No parts = all of them, in that order (og crops hero-light.png). Needs the
+// No parts = all of them, in that order. Needs the
 // docs-site install for sharp and a built mcp-server/dist for the agent scenes;
 // the agent's MCP server runs on AGENT_PORT (default 43147), never on 43119.
 // The map reads MAP_REPO from GitHub: one API call of the 60/h anonymous budget, or none with
@@ -11,6 +11,7 @@
 //
 // ponytail: these go stale when the UI changes; re-run against a fresh build.
 import { chromium } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -53,32 +54,47 @@ const PARTS = {
   mapgif: async (browser) => { for (const scheme of ['light', 'dark']) await mapGif(browser, scheme); },
 };
 
-/** 1200×630 link preview: logo, the tagline, and a crop of the real hero still, rendered in the browser. */
+/**
+ * 1200×630 link preview: the logo, a short headline, and the checkout as text beside the diagram it
+ * compiles to, drawn by the CLI as SVG so it stays sharp at feed size. Needs a built mcp-server/dist.
+ */
 async function ogCards(browser) {
   const logo = readFileSync(root('docs-site/src/assets/Logo_openflowkit.svg'), 'utf8');
-  // hero-light.png is 1600×1000 (1280×800 at 1.25): the agent's diagram and the panel, inside the floating toolbars.
-  const crop = await sharp(root('assets/readme/hero-light.png')).extract({ left: 104, top: 108, width: 1496, height: 792 }).png().toBuffer();
+  // The checkout without its cache and title: five icons stay legible at feed size.
+  const source = CHECKOUT.replace('architecture down', 'architecture right').replace(/^title:.*\n\n/m, '').replace(/^.*Cache.*\n/gm, '');
+  const diagram = execFileSync(process.execPath, [root('mcp-server/dist/cli.js'), 'render', '-', '--theme', 'light'], { input: source, encoding: 'utf8' });
+  const code = ['Web [tech/react]', 'API [tech/go]', 'Stripe [tabler/brand-stripe]', '', 'Web -> API : place order', 'API -> Stripe : charge']
+    .map((line) => line.replace(/(\[[^\]]+\])/g, '<i>$1</i>').replace(/(->)/g, '<b>$1</b>').replace(/(: .*)$/, '<u>$1</u>')).join('\n');
   const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 2 });
   await page.setContent(`<!doctype html><html><head><style>
     * { box-sizing: border-box; margin: 0; }
     body { width: 1200px; height: 630px; overflow: hidden; background: #f7f6f3;
-      background-image: radial-gradient(#d6d3cd 1px, transparent 1px); background-size: 22px 22px;
+      background-image: radial-gradient(#dcd8d1 1.2px, transparent 1.2px); background-size: 24px 24px;
       font-family: -apple-system, 'SF Pro Display', Inter, 'Segoe UI', sans-serif; color: #1c1917; position: relative; }
-    .text { position: absolute; left: 64px; top: 64px; width: 430px; }
-    .brand { display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 650; letter-spacing: -0.01em; }
-    .brand svg { width: 48px; height: 48px; }
-    h1 { margin-top: 64px; font-size: 42px; line-height: 1.1; font-weight: 700; letter-spacing: -0.025em; }
-    p { margin-top: 24px; font-size: 21px; line-height: 1.4; color: #57534e; }
-    .shot { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); width: 610px; border-radius: 16px; overflow: hidden;
-      border: 1px solid #e3e0da; box-shadow: 0 24px 60px rgba(28, 25, 23, 0.16), 0 2px 8px rgba(28, 25, 23, 0.08); }
-    .shot img { display: block; width: 100%; }
+    .text { position: absolute; left: 64px; top: 60px; width: 490px; }
+    .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 680; letter-spacing: -0.015em; }
+    .brand svg { width: 52px; height: 52px; }
+    h1 { margin-top: 64px; font-size: 56px; line-height: 1.04; font-weight: 760; letter-spacing: -0.035em; }
+    h1 em { font-style: normal; color: #e95420; }
+    .tags { margin-top: 34px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .tags span { font-size: 19px; font-weight: 560; color: #44403c; background: #fff; border: 1px solid #e3e0da; border-radius: 999px; padding: 8px 16px; }
+    .url { position: absolute; left: 64px; bottom: 54px; font-size: 22px; font-weight: 600; color: #78716c; letter-spacing: -0.01em; }
+    .canvas { position: absolute; left: 580px; top: 44px; width: 576px; height: 336px; background: #fff; border: 1px solid #e3e0da; border-radius: 20px;
+      box-shadow: 0 30px 70px rgba(28, 25, 23, 0.14), 0 2px 8px rgba(28, 25, 23, 0.06); display: grid; place-items: center; padding: 10px; }
+    .canvas svg { width: 100%; height: 100%; }
+    .code { position: absolute; left: 616px; top: 350px; width: 420px; background: #1c1917; color: #e7e5e4; border-radius: 16px; padding: 22px 26px;
+      font: 500 19px/1.5 'SF Mono', ui-monospace, Menlo, monospace; white-space: pre; box-shadow: 0 24px 50px rgba(28, 25, 23, 0.28); }
+    .code i { font-style: normal; color: #a8a29e; } .code b { font-weight: 600; color: #f97316; } .code u { text-decoration: none; color: #fdba74; }
+    .code .file { font: 600 14px/1 -apple-system, Inter, sans-serif; color: #a8a29e; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 14px; }
   </style></head><body>
     <div class="text">
       <div class="brand">${logo}OpenFlowKit</div>
-      <h1>Architecture diagrams you draw, write as code, or hand to your agent.</h1>
-      <p>Free, open source and local-first.</p>
+      <h1>Architecture<br>diagrams <em>as code</em>,<br>with your agent.</h1>
+      <div class="tags"><span>Free &amp; open source</span><span>Local-first</span><span>MCP</span></div>
     </div>
-    <div class="shot"><img src="data:image/png;base64,${crop.toString('base64')}" alt=""></div>
+    <div class="url">openflowkit.com</div>
+    <div class="canvas">${diagram}</div>
+    <div class="code"><div class="file">checkout.ofk</div>${code}</div>
   </body></html>`);
   await page.evaluate(() => document.fonts.ready);
   const card = await sharp(await page.screenshot()).resize(1200, 630).png({ compressionLevel: 9 }).toBuffer();
