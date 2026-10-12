@@ -27,7 +27,7 @@
     "icons:tighten": "node scripts/tighten-svg-viewboxes.mjs",
     "build:ci": "npm run build && npm run bundle:check",
     "test:ci": "npm run test -- --run && npm run build:ci",
-    "verify": "npm run typecheck && npm run lint && npm run test -- --run && npm --prefix mcp-server run test:run && playwright test --grep @gate --headed",
+    "verify": "npm run typecheck && npm run lint && npm run test -- --run && npm --prefix mcp-server run test:run && tsc --noEmit -p mcp-server && playwright test --grep @gate --headed",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
     "e2e:ci": "CI=1 playwright test --project=chromium --grep-invert @local",

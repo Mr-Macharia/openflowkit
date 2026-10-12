@@ -6,12 +6,12 @@
     "url": "https://github.com/Vrun-design/openflowkit",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@vrun-design/openflowkit-mcp",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "transport": {
         "type": "stdio"
       }
