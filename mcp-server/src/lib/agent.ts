@@ -376,7 +376,7 @@ interface AgentBundle {
 export interface StarterTemplate {
   readonly name: string;
   readonly title: string;
-  readonly family: 'flowchart' | 'architecture' | 'sequence' | 'state';
+  readonly family: 'flowchart' | 'architecture' | 'sequence' | 'state' | 'erd';
   readonly summary: string;
   readonly dsl: string;
 }

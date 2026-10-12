@@ -27,10 +27,12 @@ test('quick-create from a shape in a template frame lands beside it, and a drag 
   await page.mouse.move(canvas.x + login.x + login.width / 2, handle.y);
   await page.mouse.move(handle.x, handle.y, { steps: 5 });
   const before = (await state(page)).nodes.length;
+  // The template's frame (its id hashes the template, so look it up rather than pin it).
+  const frame = await parentOf(page, 'login');
   await page.mouse.click(handle.x, handle.y);
   await expect.poll(async () => (await state(page)).nodes.length).toBe(before + 1);
   const beside = (await state(page)).nodes.at(-1)!;
-  expect(await parentOf(page, beside)).toBe('dsl-2blysz');
+  expect(await parentOf(page, beside)).toBe(frame);
   const placed = (await rect(page, beside))!;
   expect(Math.abs(placed.y - login.y)).toBeLessThan(1);
   expect(placed.x).toBeGreaterThan(login.x + login.width);
@@ -38,11 +40,13 @@ test('quick-create from a shape in a template frame lands beside it, and a drag 
   await page.keyboard.press('Enter');
   await page.keyboard.press('Escape');
 
-  // Drag Token's bottom handle well below the frame and release on empty canvas.
+  // Drag Start's bottom handle out past the frame's right edge and release on empty canvas
+  // (measured from the frame, so a reworked template layout cannot move the drop onto a shape).
   await page.mouse.click(1300, 860);
-  const token = (await rect(page, 'token'))!;
-  const from = { x: canvas.x + token.x + token.width / 2, y: canvas.y + token.y + token.height + 22 };
-  const drop = { x: canvas.x + token.x + token.width / 2 + 320, y: canvas.y + token.y + 60 };
+  const start = (await rect(page, 'start'))!;
+  const box = (await rect(page, frame!))!;
+  const from = { x: canvas.x + start.x + start.width / 2, y: canvas.y + start.y + start.height + 22 };
+  const drop = { x: canvas.x + box.x + box.width + 200, y: canvas.y + start.y + 60 };
   await page.mouse.move(from.x, from.y - 30);
   await page.mouse.move(from.x, from.y, { steps: 5 });
   await page.mouse.down();

@@ -1,6 +1,6 @@
 ---
 title: Home and templates
-description: Home lists your diagrams, imports files and offers seven starter templates — real diagrams you open and change, no API key needed.
+description: Home lists your diagrams, imports files and offers twelve starter templates — real diagrams you open and change, no API key needed.
 ---
 
 Home is where your diagrams are listed. Open it from the canvas menu (☰) → **Back to home**, or
@@ -31,30 +31,44 @@ change.
 | Template | Family | What it shows |
 | --- | --- | --- |
 | **Shop architecture** | architecture | One C4 model drawn as a system map, an overview and its services, with a checkout flow you can play back |
-| **User authentication** | flowchart | Login with an MFA branch and an access-denied terminal |
-| **Three-tier AWS architecture** | architecture | Edge, application and data tiers with AWS icons |
-| **Request lifecycle** | sequence | Browser, gateway and service, with an `alt` fragment |
-| **Order state machine** | state | Draft, review, fulfilment and terminal states |
-| **Event pipeline** | flowchart | Producer to stream to consumers, with a dead-letter path |
-| **Simple process flow** | flowchart | A purchase approval in plain steps: request, review, a yes/no decision |
+| **Three-tier web app on AWS** | architecture | Route 53 and CloudFront at the edge, Fargate services behind a load balancer, RDS, ElastiCache and S3 |
+| **RAG chatbot** | architecture | A chat UI and RAG API answering from a pgvector store with Claude, fed by a nightly ingest |
+| **Microservices on Kubernetes** | architecture | NGINX ingress, Go, Node and Python services, Kafka events, Postgres, Redis and Stripe |
+| **Event pipeline** | architecture | App events and Postgres CDC into Kafka, enriched by Flink into Snowflake, ClickHouse and S3, with a dead-letter queue |
+| **CI/CD pipeline** | flowchart | Pull request to production: checks, staging, end-to-end tests, a health gate and automatic rollback |
+| **Sign in with Google** | sequence | The OAuth 2.0 authorization-code flow with PKCE |
+| **Request lifecycle** | sequence | An API request through the gateway, token check and order service, with an `alt` fragment |
+| **SaaS data model** | erd | Organizations, users and memberships, projects, and Stripe subscriptions with invoices |
+| **Order state machine** | state | Cart to delivery, with declined payments, cancellations and refunds |
+| **User authentication** | flowchart | SSO or password, a lockout after failed tries, and an optional two-factor step |
+| **Purchase approval** | flowchart | A request routed to a manager or finance by amount, with a revise loop |
 
-This is the source of **Simple process flow**:
+This is the source of **Purchase approval**:
 
 ```openflow
 %% ofk 1
 flowchart right
-title: Simple process flow
+title: Purchase approval
 
-Review [label: "Manager reviews"]
+Request [rounded, emerald, label: "Request submitted"]
+Budget [diamond, amber, label: "Over $5,000?"]
+Manager [label: "Manager reviews"]
+Finance [label: "Finance reviews"]
 Decision [diamond, amber, label: "Approved?"]
-Request [rounded, emerald, label: "Request received"] -> Review
-Review -> Decision
-Decision -> Done [rounded, emerald, label: "Order placed"] : Yes
-Decision -> Revise [label: "Ask for changes"] : No
-Revise -> Review
+Order [rounded, emerald, label: "Purchase order sent"]
+Revise [label: "Requester revises"]
+
+Request -> Budget
+Budget -> Manager : no
+Budget -> Finance : yes
+Manager -> Decision
+Finance -> Decision
+Decision -> Order : yes
+Decision -> Revise : no
+Revise -> Budget
 ```
 
-Agents get the same seven: the MCP tools `list_starter_templates` and `get_starter_template`
+Agents get the same twelve: the MCP tools `list_starter_templates` and `get_starter_template`
 return them by name, so an agent can start from one without writing DSL from scratch.
 
 ## Your diagrams

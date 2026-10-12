@@ -44,6 +44,14 @@ import './v2Home.css';
 // home never loads the compiler or ELK to show them.
 const TEMPLATE_PICTURES = import.meta.glob<string>('./homeTemplates/*.svg', { query: '?url', import: 'default', eager: true });
 const templatePicture = (name: string, theme: 'light' | 'dark') => TEMPLATE_PICTURES[`./homeTemplates/${name}-${theme}.svg`];
+/**
+ * A template near the card's shape shows whole; a long strip or a tall flow starts top left at a readable zoom (U4-20:
+ * fitted, an 8:1 pipeline was a 10px sliver). Up to 2.2:1 it still fills most of the 16:10 card, readable.
+ */
+const templateFit = ({ naturalWidth, naturalHeight }: HTMLImageElement): 'whole' | 'start' => {
+  const aspect = naturalWidth / Math.max(1, naturalHeight);
+  return aspect >= 0.8 && aspect <= 2.2 ? 'whole' : 'start';
+};
 
 const STARTS: readonly { kind: StartKind; title: string; chip: string; hint: string; text: string; intent?: V2StartIntent }[] = [
   { kind: 'blank', title: 'Blank canvas', chip: 'Blank canvas', hint: 'Draw by hand', text: 'Shapes, arrows and text, by hand.' },
@@ -424,7 +432,8 @@ export function V2HomePage(): React.JSX.Element {
       {templates.map((template) => (
         <HomeCard key={template.name} title={template.title} meta={template.summary}
           onOpen={() => create({ template: template.name })}
-          preview={<img className="ofk-home-preview-image" alt="" decoding="async" src={templatePicture(template.name, appearance)} />} />
+          preview={<img className="ofk-home-preview-image" alt="" decoding="async" src={templatePicture(template.name, appearance)}
+            onLoad={(event) => { event.currentTarget.dataset.fit = templateFit(event.currentTarget); }} />} />
       ))}
     </ul>
   );

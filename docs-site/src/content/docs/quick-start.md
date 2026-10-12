@@ -59,7 +59,7 @@ Click **Export** at the top right. Pick a format (PNG, SVG, PDF or JSON) and a s
 
 ## Where to go next
 
-- [Home and templates](/templates/): seven starter diagrams, and every way to begin.
+- [Home and templates](/templates/): twelve starter diagrams, and every way to begin.
 - [OpenFlow DSL](/openflow-dsl/): the language behind **Generate**.
 - [Keyboard shortcuts](/keyboard-shortcuts/): the full map.
 - [Exporting](/exporting/): every format and option.

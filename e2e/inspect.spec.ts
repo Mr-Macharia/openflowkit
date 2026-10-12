@@ -16,7 +16,7 @@ test('Inspect shows a node, follows its connections and opens its code @gate', a
   await page.getByRole('menuitem', { name: /^Inspect/ }).click();
   await expect(inspect.getByRole('heading', { name: 'Login' })).toBeVisible();
   await expect(inspect.getByRole('region', { name: 'Style' })).toContainText('#eff6ff');
-  await expect(inspect.getByRole('region', { name: 'Code' })).toContainText('-> Login [rounded, blue]');
+  await expect(inspect.getByRole('region', { name: 'Code' })).toContainText('Login [rounded, blue]');
   const connections = inspect.getByRole('region', { name: 'Connections' });
   await expect(connections).toContainText('Start');
 

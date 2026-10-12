@@ -26,8 +26,12 @@ const cards = (page: Page) => page.getByRole('list', { name: 'Diagrams' }).getBy
 test('a template card opens a new diagram already drawn, with its text beside it @gate', async ({ page }) => {
   await page.goto('/#/home');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Let’s draw your first diagram.');
-  await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(7);
+  await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(12);
   await expect(page.getByRole('button', { name: 'Shop architecture', exact: true })).toBeVisible();
+  // A picture near the card's shape shows whole; a long pipeline starts top left at a zoom you can read.
+  const picture = (title: string) => page.getByRole('list', { name: 'Templates' }).getByRole('listitem').filter({ hasText: title }).locator('img');
+  await expect(picture('SaaS data model')).toHaveAttribute('data-fit', 'whole');
+  await expect(picture('CI/CD pipeline')).toHaveAttribute('data-fit', 'start');
   await page.getByRole('button', { name: 'Event pipeline' }).click();
   await expect(page).toHaveURL(/#\/d\/doc-/);
   await expect(page.getByRole('textbox', { name: 'Diagram source' })).toContainText('Event pipeline');
@@ -45,7 +49,7 @@ test('the empty canvas links to the templates on Home @gate', async ({ page }) =
   await page.goto('/');
   await page.getByRole('link', { name: 'or start from a template →' }).click();
   await expect(page).toHaveURL(/#\/home\?view=templates$/);
-  await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(7);
+  await expect(page.getByRole('list', { name: 'Templates' }).getByRole('button')).toHaveCount(12);
 });
 
 test('each way in opens the panel it names @gate', async ({ page }) => {

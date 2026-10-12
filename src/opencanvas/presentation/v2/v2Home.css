@@ -151,9 +151,10 @@
 .ofk-home-preview .ofk-skeleton { position: absolute; inset: 0; }
 /* Absolutely placed: an image's own height can never stretch the 16:10 box. */
 .ofk-home-preview-image { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; transition: transform 300ms var(--ofk-home-ease); }
-/* A template is cropped, not shrunk: it fills the card from its start (top left) at a zoom you can read (U4-20).
-   Every checked-in picture lands at 40–110%; a fitted strip was a 10px sliver. */
+/* A long strip or tall flow is cropped from its start (top left) at a zoom you can read (U4-20: a fitted strip was a
+   10px sliver); one near the card's shape shows whole (templateFit in V2HomePage.tsx). */
 .ofk-home-templates .ofk-home-preview-image { inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left top; transform-origin: left top; }
+.ofk-home-templates .ofk-home-preview-image[data-fit="whole"] { inset: 12px; width: calc(100% - 24px); height: calc(100% - 24px); object-fit: contain; object-position: center; transform-origin: center; }
 .ofk-home-placeholder { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--ofk-surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ofk-border) 85%, transparent); color: var(--ofk-muted); }
 .ofk-home-placeholder svg { width: 18px; height: 18px; }
 .ofk-home-card-body { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 10px 2px 0; }
