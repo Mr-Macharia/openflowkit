@@ -388,7 +388,7 @@ version: [CHANGELOG.md](CHANGELOG.md).
 Report security issues privately, as [SECURITY.md](SECURITY.md) describes. MIT licensed, see
 [LICENSE](LICENSE).
 
-<a href="https://github.com/openflowkit/openflowkit/graphs/contributors"><img src="https://contrib.rocks/image?repo=openflowkit/openflowkit" alt="Contributors"></a>
+<a href="https://github.com/openflowkit/openflowkit/graphs/contributors"><img src="https://contrib.rocks/image?repo=openflowkit/openflowkit&max=100" alt="Contributors"></a>
 
 ---
 
