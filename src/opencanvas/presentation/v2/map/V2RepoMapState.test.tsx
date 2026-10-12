@@ -35,8 +35,8 @@ describe('V2RepoMapState', () => {
     expect(screen.queryByText('Try again')).toBeNull();
   });
   it('never breaks the CLI command across lines', () => {
-    view({ status: 'problem', problem: { status: 'problem', title: 'This repo was not found, or it is private.', detail: 'a/b wasn\'t found. Use the CLI: npx -p @vrun-design/openflowkit-mcp openflowkit map .', retry: false, hero: 'lost-link' } });
-    const command = screen.getByText('npx -p @vrun-design/openflowkit-mcp openflowkit map .');
+    view({ status: 'problem', problem: { status: 'problem', title: 'This repo was not found, or it is private.', detail: 'a/b wasn\'t found. Use the CLI: npx openflowkit map .', retry: false, hero: 'lost-link' } });
+    const command = screen.getByText('npx openflowkit map .');
     expect(command.tagName).toBe('CODE');
     expect(command.style.whiteSpace).toBe('nowrap');
   });

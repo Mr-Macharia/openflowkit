@@ -2,7 +2,7 @@
   "mcpServers": {
     "openflowkit": {
       "command": "npx",
-      "args": ["-y", "@vrun-design/openflowkit-mcp"]
+      "args": ["-y", "openflowkit", "mcp"]
     }
   }
 }

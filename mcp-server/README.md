@@ -37,10 +37,10 @@ Claude: get_syntax → writes OpenFlow DSL itself → validate_openflow_dsl
 
 ```bash
 # No install required; npx fetches the latest published version
-npx -y @vrun-design/openflowkit-mcp
+npx -y openflowkit mcp
 
 # Or install globally
-npm install -g @vrun-design/openflowkit-mcp
+npm install -g openflowkit
 openflowkit-mcp
 ```
 
@@ -69,7 +69,7 @@ Codex reads MCP servers from `~/.codex/config.toml`:
 ```toml
 [mcp_servers.openflowkit]
 command = "npx"
-args = ["-y", "@vrun-design/openflowkit-mcp"]
+args = ["-y", "openflowkit", "mcp"]
 ```
 
 Or install the plugin, which adds the server and the skill together:
@@ -94,7 +94,7 @@ Edit your Claude Desktop config:
   "mcpServers": {
     "openflowkit": {
       "command": "npx",
-      "args": ["-y", "@vrun-design/openflowkit-mcp"]
+      "args": ["-y", "openflowkit", "mcp"]
     }
   }
 }
@@ -107,7 +107,7 @@ Restart Claude Desktop. You should see **openflowkit** in the tool picker.
 Point the client at the same command:
 
 - command: `npx`
-- args: `["-y", "@vrun-design/openflowkit-mcp"]`
+- args: `["-y", "openflowkit", "mcp"]`
 
 The server speaks the standard MCP stdio protocol. Client UIs differ, but the command shape is the same.
 

@@ -9,10 +9,11 @@ npx openflowkit validate flow.ofk                  # line-by-line errors; exit 1
 npx openflowkit discover .                         # propose an architecture model from the repo
 npx openflowkit map . --html map.html              # what the repo is made of, as a page
 npx openflowkit --help                             # every command
+npx -y openflowkit mcp                             # the MCP server for Claude Code, Cursor and other agents
 ```
 
 Install it once with `npm i -g openflowkit`, then run `openflowkit …`.
 
-This package is a short name for [`@vrun-design/openflowkit-mcp`](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp), which also ships the MCP server for Claude Code, Cursor and other agents. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
+For Claude Code: `claude mcp add openflowkit -- npx -y openflowkit mcp`. The engine is [`@vrun-design/openflowkit-mcp`](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp); both names run the same thing. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
 
 MIT licensed.

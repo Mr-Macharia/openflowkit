@@ -23,7 +23,7 @@ function notes(tag) {
   if (mcp) {
     const { version } = JSON.parse(read('mcp-server/package.json'));
     if (version !== mcp[1]) fail(`tag ${tag} but mcp-server/package.json is ${version}`);
-    return `MCP server ${version}: \`npx -y @vrun-design/openflowkit-mcp@${version}\` ` +
+    return `MCP server ${version}: \`npx -y openflowkit@${version} mcp\` ` +
       `([npm](https://www.npmjs.com/package/@vrun-design/openflowkit-mcp/v/${version})). ` +
       'Changes are under "For developers" in [CHANGELOG.md](https://github.com/openflowkit/openflowkit/blob/main/CHANGELOG.md).';
   }

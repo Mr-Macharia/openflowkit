@@ -21,17 +21,17 @@ deterministic results: your MCP client's model does the thinking. A chat-app end
 
 ## Connect your client
 
-Pick your client. Every route runs the same command, `npx -y @vrun-design/openflowkit-mcp`.
+Pick your client. Every route runs the same command, `npx -y openflowkit mcp`.
 
-- **Cursor:** [Add to Cursor](https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkB2cnVuLWRlc2lnbi9vcGVuZmxvd2tpdC1tY3AiXX0%3D)
-- **VS Code:** [Install in VS Code](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522%2540vrun-design%252Fopenflowkit-mcp%2522%255D%257D)
+- **Cursor:** [Add to Cursor](https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19)
+- **VS Code:** [Install in VS Code](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522openflowkit%2522%252C%2522mcp%2522%255D%257D)
 
 ### Claude Code
 
 One line:
 
 ```bash
-claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp
+claude mcp add -s user openflowkit -- npx -y openflowkit mcp
 ```
 
 Or install the plugin, which adds the server and the skill together:
@@ -48,7 +48,7 @@ Codex reads MCP servers from `~/.codex/config.toml`:
 ```toml
 [mcp_servers.openflowkit]
 command = "npx"
-args = ["-y", "@vrun-design/openflowkit-mcp"]
+args = ["-y", "openflowkit", "mcp"]
 ```
 
 Or install the plugin, then pick **OpenFlowKit** in the Plugins Directory:
@@ -66,13 +66,13 @@ Point your client at the command. In Claude Desktop's `claude_desktop_config.jso
   "mcpServers": {
     "openflowkit": {
       "command": "npx",
-      "args": ["-y", "@vrun-design/openflowkit-mcp"]
+      "args": ["-y", "openflowkit", "mcp"]
     }
   }
 }
 ```
 
-Restart the client, then click **Connect agent** in the app. The live connection and the full tool set need version 0.2.0 or later of the package.
+Restart the client, then click **Connect agent** in the app.
 
 Node 20.11 or newer is required.
 

@@ -21,6 +21,7 @@
   <a href="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml"><img src="https://github.com/openflowkit/openflowkit/actions/workflows/quality.yml/badge.svg" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <a href="https://www.npmjs.com/package/@vrun-design/openflowkit-mcp"><img src="https://img.shields.io/npm/v/@vrun-design/openflowkit-mcp?label=mcp%20server" alt="MCP server version on npm"></a>
+  <a href="https://www.npmjs.com/package/openflowkit"><img src="https://img.shields.io/npm/v/openflowkit?label=cli" alt="CLI version on npm"></a>
 </p>
 
 <p align="center">
@@ -157,13 +158,13 @@ OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 | **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | The MCP server, below | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files in your repo, maps a codebase, takes screenshots |
 | **In your browser** (experimental) | Nothing to install: open a diagram in a browser whose agent supports [WebMCP](https://docs.openflowkit.com/webmcp/) | Reads and edits the diagram you have open |
 
-<a href="https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkB2cnVuLWRlc2lnbi9vcGVuZmxvd2tpdC1tY3AiXX0%3D"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" height="32" alt="Add OpenFlowKit to Cursor"></a>
-<a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522%2540vrun-design%252Fopenflowkit-mcp%2522%255D%257D"><img src="https://img.shields.io/badge/VS_Code-Install_OpenFlowKit-0098FF?logo=visualstudiocode&logoColor=white" height="32" alt="Install OpenFlowKit in VS Code"></a>
+<a href="https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" height="32" alt="Add OpenFlowKit to Cursor"></a>
+<a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522openflowkit%2522%252C%2522mcp%2522%255D%257D"><img src="https://img.shields.io/badge/VS_Code-Install_OpenFlowKit-0098FF?logo=visualstudiocode&logoColor=white" height="32" alt="Install OpenFlowKit in VS Code"></a>
 
 For Claude Code, one line:
 
 ```bash
-claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp
+claude mcp add -s user openflowkit -- npx -y openflowkit mcp
 ```
 
 For Claude Desktop, Windsurf and any other MCP client:
@@ -171,14 +172,13 @@ For Claude Desktop, Windsurf and any other MCP client:
 ```json
 {
   "mcpServers": {
-    "openflowkit": { "command": "npx", "args": ["-y", "@vrun-design/openflowkit-mcp"] }
+    "openflowkit": { "command": "npx", "args": ["-y", "openflowkit", "mcp"] }
   }
 }
 ```
 
 Restart the agent, then click **Connect agent** in the app. That panel copies the same config with
-a pairing token. With no app open, the same tools edit `.openflow.json` files in your repo. The
-live connection, the CLI and the full tool set need version 0.2.0 or later of the package.
+a pairing token. With no app open, the same tools edit `.openflow.json` files in your repo.
 
 <details>
 <summary><b>Plugins: Claude Code and Codex</b> (server and skill in one install)</summary>
@@ -276,7 +276,7 @@ npx openflowkit drift .                             # exit 1 when the code moved
 
 Commit `architecture.ofk` next to the code and `drift` keeps it honest in CI. The **PR diagrams
 Action** comments on a pull request with how its diagrams changed: node and connector counts, the
-text diff, and drift for `.ofk` models. It's usable once a release tag contains `action/`.
+text diff, and drift for `.ofk` models.
 [CLI](https://docs.openflowkit.com/cli/) · [GitHub Action](https://docs.openflowkit.com/github-action/)
 
 ## Exports and sharing
@@ -340,8 +340,11 @@ tour: **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 | `src/opencanvas/` | the editor: document model and commands, Pixi renderer, exporters, React UI |
 | `src/agent/` | the operations agents call, the bridge protocol, the op manifest |
 | `mcp-server/` | the published MCP server and `openflowkit` CLI |
+| `cli/` | `openflowkit` on npm: the short name for the CLI |
+| `plugin/`, `skills/` | the Claude Code and Codex plugins, and the agent skill |
 | `action/` | the PR diagrams GitHub Action |
 | `worker/` | the share-link Worker (stores ciphertext only) |
+| `stats/` | the private usage dashboard Worker |
 | `docs-site/` | the docs site |
 </details>
 
@@ -360,12 +363,13 @@ security policy, AI providers on your own network, and share links:
 Your diagrams stay in your browser. Something leaves it only when you choose: AI with your own key
 goes to that provider, a share link uploads an encrypted copy, a repo map reads from GitHub.
 No account needed. We collect basic usage stats to improve OpenFlowKit; turn them off in Settings.
-Back up any time with **Export → JSON**.
+Back up everything at once with **Download all diagrams** on Home; **Import** restores it in any browser.
 
 <details>
 <summary><b>FAQ</b></summary>
 
-**Is it free?** Yes. MIT licensed, with no paid tier.
+**Is it free?** Yes: MIT licensed, free to use and to self-host. A Pro plan for teams is planned;
+the waitlist is in the app.
 
 **Does it work offline?** Once the page is open, drawing, the code panel and exports run in the
 page. AI, share links and repo maps need the network. For no internet at all, self-host it.

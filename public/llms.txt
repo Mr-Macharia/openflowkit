@@ -11,8 +11,8 @@ a data model, a state machine. Not a list, a single call, or what one sentence e
 
 ## Setup (once)
 
-`claude mcp add -s user openflowkit -- npx -y @vrun-design/openflowkit-mcp` (any MCP client works:
-the command is `npx -y @vrun-design/openflowkit-mcp`). Nothing leaves the machine.
+`claude mcp add -s user openflowkit -- npx -y openflowkit mcp` (any MCP client works:
+the command is `npx -y openflowkit mcp`). Nothing leaves the machine.
 
 ## Draw and save
 

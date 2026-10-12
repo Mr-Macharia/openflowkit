@@ -279,7 +279,7 @@ test('a rate-limited read asks for a token, sends it to the API only, and then d
   });
   await page.goto('/#/map/github/acme/shop');
   await expect(alert(page)).toContainText('limiting reads');
-  await expect(alert(page)).toContainText('The CLI reads a checkout with no limit: npx -p @vrun-design/openflowkit-mcp openflowkit map .');
+  await expect(alert(page)).toContainText('The CLI reads a checkout with no limit: npx openflowkit map .');
   await expect(alert(page)).not.toContainText('discover');
   expect(((await alert(page).innerText()).match(/openflowkit map/g) ?? []).length, 'the command, once').toBe(1);
   await expect(page.getByRole('button', { name: 'Try with token' })).toHaveAttribute('data-variant', 'primary');

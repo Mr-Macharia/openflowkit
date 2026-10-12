@@ -5,8 +5,10 @@
 // with the file, the line and the parser's own diagnostic — that is the gate
 // that keeps the documentation from describing a language that no longer
 // exists. It never reimplements the grammar; it imports it.
+import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { compileWorkspace, type CompileResult } from '../../src/dsl/compile';
 import type { SceneDocumentV1 } from '../../src/opencanvas/domain/document/types';
@@ -84,10 +86,18 @@ function documentFrom(compiled: CompileResult, id: string, name: string): SceneD
  * art through Vite globs and the MCP server's through build artifacts a clean
  * checkout lacks, so neither runs here; ids and matching are theirs.
  */
+/** Wherever npm put @tabler/icons (hoisted or not); its exports map hides this file from require.resolve. */
+function tablerNodesPath(): string {
+  const file = join('@tabler', 'icons', 'tabler-nodes-outline.json');
+  const found = (createRequire(import.meta.url).resolve.paths('@tabler/icons') ?? []).map((dir) => join(dir, file)).find(existsSync);
+  if (!found) throw new Error(`${file} not found: is @tabler/icons installed?`);
+  return found;
+}
+
 async function iconCatalog(): Promise<Map<string, Map<string, () => Promise<string>>>> {
   const catalog = new Map<string, Map<string, () => Promise<string>>>();
   const tabler: Record<string, readonly TablerNode[]> = JSON.parse(
-    await readFile(resolve(REPO_ROOT, 'node_modules', '@tabler', 'icons', 'tabler-nodes-outline.json'), 'utf8'));
+    await readFile(tablerNodesPath(), 'utf8'));
   catalog.set('tabler', new Map(Object.entries(tabler).filter(([name]) => !name.endsWith('-filled'))
     .map(([name, nodes]) => [name, async () => tablerSvg(nodes)])));
   for (const [provider, categories] of Object.entries(PROVIDER_ICON_MANIFEST)) {

@@ -10,11 +10,17 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@vrun-design/openflowkit-mcp",
+      "identifier": "openflowkit",
       "version": "0.2.2",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     }
   ]
 }

@@ -41,13 +41,13 @@ const bridgeEnv = (port: number, token: string): Record<string, string> =>
 /** The same server as one `claude mcp add` line, for Claude Code: user scope, so every project has it, not just this one. */
 export function claudeCodeCommand(port: number, token: string): string {
   const env = Object.entries(bridgeEnv(port, token)).map(([key, value]) => `-e ${key}=${value} `).join('');
-  return `claude mcp add -s user openflowkit ${env}-- npx -y @vrun-design/openflowkit-mcp`;
+  return `claude mcp add -s user openflowkit ${env}-- npx -y openflowkit mcp`;
 }
 
 /** One-click installs (Cursor's and VS Code's own link schemes) carrying the same server and env as the copied config. */
 export function installLinks(port: number, token: string): { cursor: string; vscode: string } {
   const env = bridgeEnv(port, token);
-  const server = { command: 'npx', args: ['-y', '@vrun-design/openflowkit-mcp'], ...(Object.keys(env).length ? { env } : {}) };
+  const server = { command: 'npx', args: ['-y', 'openflowkit', 'mcp'], ...(Object.keys(env).length ? { env } : {}) };
   return {
     cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=openflowkit&config=${encodeURIComponent(btoa(JSON.stringify(server)))}`,
     vscode: `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: 'openflowkit', ...server }))}`,
@@ -58,7 +58,7 @@ export function installLinks(port: number, token: string): { cursor: string; vsc
 export function mcpConfig(port: number, token: string): string {
   const env = bridgeEnv(port, token);
   return JSON.stringify({ mcpServers: { openflowkit: {
-    command: 'npx', args: ['-y', '@vrun-design/openflowkit-mcp'],
+    command: 'npx', args: ['-y', 'openflowkit', 'mcp'],
     ...(Object.keys(env).length ? { env } : {}),
   } } }, null, 2);
 }

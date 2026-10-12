@@ -23,11 +23,11 @@ export interface RepoProblemView {
 }
 
 /** The CLI command a page names in its error screens: exactly once, with its own subcommand. */
-export const cliCommand = (sub: 'discover' | 'map'): string => `npx -p @vrun-design/openflowkit-mcp openflowkit ${sub} .`;
+export const cliCommand = (sub: 'discover' | 'map'): string => `npx openflowkit ${sub} .`;
 
-/** A screen's text with its CLI command kept on one line (as code), so `npx -p` never breaks from what follows. */
+/** A screen's text with its CLI command kept on one line (as code), so `npx openflowkit` never breaks from what follows. */
 export function CliText({ text }: { readonly text: string }): React.JSX.Element {
-  const parts = text.split(/(npx -p \S+ openflowkit (?:discover|map) \.)/);
+  const parts = text.split(/(npx openflowkit (?:discover|map) \.)/);
   return <>{parts.map((part, i) => (i % 2 ? <code key={i} style={{ whiteSpace: 'nowrap' }}>{part}</code> : part))}</>;
 }
 

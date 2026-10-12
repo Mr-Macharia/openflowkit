@@ -3,7 +3,7 @@
 export const APP_URL = 'https://app.openflowkit.com';
 export const REPO_URL = 'https://github.com/openflowkit/openflowkit';
 export const NPM_URL = 'https://www.npmjs.com/package/@vrun-design/openflowkit-mcp';
-export const MCP_COMMAND = 'npx -y @vrun-design/openflowkit-mcp';
+export const MCP_COMMAND = 'npx -y openflowkit mcp';
 /** A small public repo whose map shows services and their evidence well. */
 export const SAMPLE_MAP_URL = `${APP_URL}/#/map/github/dockersamples/example-voting-app`;
 

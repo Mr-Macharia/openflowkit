@@ -54,7 +54,7 @@ export function welcome(options: { readonly columns: number; readonly color: boo
     paint(BOLD, 'Try'),
     ...tryLines,
     '',
-    `${paint(BOLD, 'Agents')}  ${paint(DIM, 'claude mcp add openflowkit -- npx -y @vrun-design/openflowkit-mcp')}`,
+    `${paint(BOLD, 'Agents')}  ${paint(DIM, 'claude mcp add openflowkit -- npx -y openflowkit mcp')}`,
     `${paint(BOLD, 'Docs')}    ${paint(DIM, 'https://docs.openflowkit.com/cli/')}`,
     '',
     paint(DIM, 'openflowkit --help lists every command.'),

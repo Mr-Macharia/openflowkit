@@ -13,8 +13,8 @@ describe('V2AgentConnect', () => {
 
   it('offers a Claude Code one-liner carrying the token (and the port when it is not the default)', async () => {
     // User scope: the default (local) scope adds it to one project only, and the next repo has no OpenFlowKit (U3 2026-10-11).
-    expect(claudeCodeCommand(43119, 'tok')).toBe('claude mcp add -s user openflowkit -e OPENFLOWKIT_BRIDGE_TOKEN=tok -- npx -y @vrun-design/openflowkit-mcp');
-    expect(claudeCodeCommand(5000, '')).toBe('claude mcp add -s user openflowkit -e OPENFLOWKIT_BRIDGE_PORT=5000 -- npx -y @vrun-design/openflowkit-mcp');
+    expect(claudeCodeCommand(43119, 'tok')).toBe('claude mcp add -s user openflowkit -e OPENFLOWKIT_BRIDGE_TOKEN=tok -- npx -y openflowkit mcp');
+    expect(claudeCodeCommand(5000, '')).toBe('claude mcp add -s user openflowkit -e OPENFLOWKIT_BRIDGE_PORT=5000 -- npx -y openflowkit mcp');
     const writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     render(<V2AgentConnect {...base} />);
@@ -44,7 +44,7 @@ describe('V2AgentConnect', () => {
   });
   it('one-click links carry the same server and pairing env as the copied config', () => {
     const { cursor, vscode } = installLinks(5000, 'tok');
-    const server = { command: 'npx', args: ['-y', '@vrun-design/openflowkit-mcp'], env: { OPENFLOWKIT_BRIDGE_PORT: '5000', OPENFLOWKIT_BRIDGE_TOKEN: 'tok' } };
+    const server = { command: 'npx', args: ['-y', 'openflowkit', 'mcp'], env: { OPENFLOWKIT_BRIDGE_PORT: '5000', OPENFLOWKIT_BRIDGE_TOKEN: 'tok' } };
     const cursorUrl = new URL(cursor);
     expect(cursorUrl.protocol).toBe('cursor:');
     expect(cursorUrl.searchParams.get('name')).toBe('openflowkit');

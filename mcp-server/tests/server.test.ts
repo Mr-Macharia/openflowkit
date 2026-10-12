@@ -64,4 +64,23 @@ describe('stdio entry', () => {
       child.kill();
     }
   }, 20_000);
+
+  // `npx -y openflowkit mcp` is the one line the docs and the welcome screen give agents.
+  it('starts from the CLI as `openflowkit mcp`', async () => {
+    const port = await freePort();
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/cli.ts', 'mcp'], {
+      cwd: new URL('..', import.meta.url).pathname, env: { ...process.env, OPENFLOWKIT_BRIDGE_PORT: String(port) },
+    });
+    let stdout = '';
+    child.stdout.on('data', (chunk) => { stdout += String(chunk); });
+    const exited = new Promise<number | null>((done) => child.on('exit', (code) => done(code)));
+    child.stdin.end(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'pipe', version: '0' } } })}\n`);
+    try {
+      expect(await Promise.race([exited, new Promise<string>((done) => setTimeout(() => done('still running'), 15_000))])).toBe(0);
+      const [reply] = stdout.trim().split('\n').map((line) => JSON.parse(line) as { result?: { serverInfo?: { name: string } } });
+      expect(reply!.result!.serverInfo!.name).toBe(MCP_SERVER_NAME);
+    } finally {
+      child.kill();
+    }
+  }, 20_000);
 });

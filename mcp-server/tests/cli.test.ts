@@ -88,7 +88,7 @@ describe('openflowkit CLI', () => {
   });
 
   it('prints its own usage for a subcommand --help, and --version', async () => {
-    for (const command of ['render', 'convert', 'validate', 'map', 'drift', 'discover', 'build', 'ops']) {
+    for (const command of ['render', 'convert', 'validate', 'map', 'drift', 'discover', 'build', 'ops', 'mcp']) {
       const run = capture();
       expect(await main([command, '--help'], run.io), command).toBe(0);
       const text = run.out.join('\n');

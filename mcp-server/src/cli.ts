@@ -37,6 +37,7 @@ ${OP_USAGE}
   openflowkit drift <dir> [--model architecture.ofk] [--json]
   openflowkit build <dir> [--out dist]
   openflowkit map <dir> [--depth overview|detailed|everything] [--html out.html]
+  openflowkit mcp
 
 Commands:
 ${OP_COMMANDS}
@@ -44,6 +45,7 @@ ${OP_COMMANDS}
   drift     compare a repository against its model (exit 1 when drift is found)
   build     compile architecture.ofk into a self-contained static site
   map       print what a repository is made of: parts, files, lines, imports, the folders that import each other
+  mcp       run the MCP server (stdio) for Claude Code, Cursor and other agents
 
 Options:
   --out <path>    discover: write the DSL here (default: stdout); build: output dir (default: dist)
@@ -619,7 +621,7 @@ async function runBuild(args: readonly string[], io: CliIo): Promise<number> {
 /** One command's usage, options and summary, cut from USAGE so the two cannot disagree; null for no such command. */
 function commandHelp(command: string): string | null {
   const lines = USAGE.split('\n');
-  const usage = lines.filter((line) => line.trimStart().startsWith(`openflowkit ${command} `));
+  const usage = lines.filter((line) => line.trimStart() === `openflowkit ${command}` || line.trimStart().startsWith(`openflowkit ${command} `));
   if (usage.length === 0) return null;
   const summary = lines.find((line) => line.startsWith(`  ${command} `))?.slice(command.length + 2).trim();
   const options = lines.filter((line) => line.startsWith('  -') && new RegExp(`\\b${command}\\b`).test(line));
@@ -642,6 +644,8 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
   if (command === 'discover') return runDiscover(rest, io);
   if (command === 'build') return runBuild(rest, io);
   if (command === 'map') return runMap(rest, io);
+  // The server starts when its module loads and keeps the process alive on stdio.
+  if (command === 'mcp') { await import('./index.js'); return 0; }
   const handled = await runRegistryCommand(command, rest, io, USAGE);
   if (handled !== null) return handled;
   io.err(`openflowkit: unknown command "${command}"\n\n${USAGE}`);
