@@ -9,9 +9,9 @@ import { createRemoteServer } from './remote/server.js';
 import { DEFAULT_APP_ORIGIN } from './lib/openLink.js';
 import type { RemoteServerOptions } from './remote/server.js';
 import { isMain } from './lib/isMain.js';
+import { hostname, isRender, LOCAL_HOSTS, MAX_BODY_BYTES, rpcErrorBody } from './remote/guards.js';
 
-export const MAX_BODY_BYTES = 512 * 1024;
-const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+export { MAX_BODY_BYTES } from './remote/guards.js';
 
 export interface HttpOptions extends Pick<RemoteServerOptions, 'deadlineMs' | 'layout'> {
   readonly viewerHtml: string;
@@ -27,12 +27,7 @@ function json(res: ServerResponse, status: number, body: unknown, headers: Recor
 }
 
 const rpcError = (res: ServerResponse, status: number, message: string, headers?: Record<string, string>) =>
-  json(res, status, { jsonrpc: '2.0', error: { code: -32000, message }, id: null }, headers);
-
-function hostname(header: string | undefined): string | null {
-  if (!header) return null;
-  try { return new URL(`http://${header}`).hostname; } catch { return null; }
-}
+  json(res, status, JSON.parse(rpcErrorBody(message)), headers);
 
 /** The body as a string, or null once it passes the cap: reading stops there and the caller answers 413, then destroys the request. */
 function readBody(req: IncomingMessage): Promise<string | null> {
@@ -50,15 +45,10 @@ function readBody(req: IncomingMessage): Promise<string | null> {
 
 function tooBig(req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(413, { 'content-type': 'application/json', connection: 'close' })
-    .end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Request body over 512 KB' }, id: null }), () => req.destroy());
+    .end(rpcErrorBody('Request body over 512 KB'), () => req.destroy());
 }
 
-const isRender = (message: unknown): boolean => {
-  const call = message as { method?: string; params?: { name?: string } } | null;
-  return call?.method === 'tools/call' && call.params?.name === 'render_diagram';
-};
-
-export function createHttpServer({ viewerHtml, appOrigin = DEFAULT_APP_ORIGIN, allowedHosts = LOCAL_HOSTS, maxRenders = 4, ...tool }: HttpOptions): Server {
+export function createHttpServer({ viewerHtml, appOrigin = DEFAULT_APP_ORIGIN, allowedHosts = [...LOCAL_HOSTS], maxRenders = 4, ...tool }: HttpOptions): Server {
   let renders = 0;
   return createServer(async (req, res) => {
     try {
@@ -75,7 +65,7 @@ export function createHttpServer({ viewerHtml, appOrigin = DEFAULT_APP_ORIGIN, a
       if (body === null) return tooBig(req, res);
       let parsed: unknown;
       try { parsed = JSON.parse(body); } catch { return rpcError(res, 400, 'Body is not JSON'); }
-      if (Array.isArray(parsed) ? parsed.some(isRender) : isRender(parsed)) {
+      if (isRender(parsed)) {
         if (renders >= maxRenders) return rpcError(res, 503, 'Too many diagrams rendering; retry shortly', { 'retry-after': '2' });
         renders += 1;
         res.once('close', () => { renders -= 1; });

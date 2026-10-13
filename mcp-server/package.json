@@ -1,6 +1,6 @@
 {
   "name": "@openflowkit/openflowkit-mcp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "mcpName": "io.github.openflowkit/openflowkit-mcp",
   "description": "Local-first Model Context Protocol server for OpenFlowKit — pair the live editor or edit .openflow.json files: create/update/read diagrams from DSL, scene ops, icon search, export. No account, no cloud.",
   "keywords": [
@@ -30,6 +30,8 @@
   },
   "files": [
     "dist",
+    "!dist/worker.js",
+    "!dist/worker.js.map",
     "data",
     "README.md",
     "LICENSE"
@@ -43,6 +45,9 @@
     "build": "node scripts/build-dist.mjs",
     "dev": "tsx src/index.ts",
     "start:http": "node dist/http.js",
+    "dev:remote": "npm run build:icons && npm run build:grammar && npm run build:agent && npx -y wrangler@4.149.0 dev",
+    "deploy:remote": "npm run build:icons && npm run build:grammar && npm run build:agent && npx -y wrangler@4.149.0 deploy",
+    "smoke:remote": "node scripts/smoke-remote.mjs",
     "test": "vitest --config vitest.config.ts",
     "test:run": "vitest --config vitest.config.ts --run",
     "lint": "tsc -p tsconfig.json --noEmit",

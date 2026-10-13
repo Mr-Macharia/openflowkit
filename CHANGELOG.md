@@ -9,6 +9,14 @@ separately; its changes are listed under *For developers* in each release.
 
 ## [Unreleased]
 
+### For developers
+
+- **MCP server and CLI 0.2.4.** Drawn diagrams now show as a card in chat apps that support MCP Apps (Claude, Claude
+  Desktop, VS Code): the picture, zoom, and Open in OpenFlowKit. Clients without MCP Apps get the same text as
+  before, plus an `openUrl` in file mode, so a terminal agent can hand you a link to the diagram.
+- **Hosted endpoint for chat apps:** `https://mcp.openflowkit.com/mcp` serves `render_diagram` and `get_syntax` to
+  claude.ai, ChatGPT and other remote MCP clients. It runs on Cloudflare Workers, needs no login and stores nothing.
+
 ## [2.1.0] — 2026-10-13
 
 The first public release of the new editor.
