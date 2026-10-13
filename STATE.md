@@ -9,7 +9,7 @@ What is done and what is next. Maintainers' plan and logs live in the untracked 
 - MCP registry `io.github.openflowkit/openflowkit-mcp` publishes from `release.yml` on an `mcp-v*` tag
   (GitHub OIDC, no secret). Push the tag only after both npm packages are live.
 - Hosting (Cloudflare Pages, production = `main`): `ofk-app` app.openflowkit.com, `ofk-docs` docs.openflowkit.com,
-  `ofk-site` openflowkit.com (website repo; `/` 302s to the app, marketing home at `/product/`).
+  `ofk-site` openflowkit.com + www (website repo; marketing home at `/`, its buttons open the app).
   Share Worker: share.openflowkit.com (R2 + Quota Durable Object, Turnstile); `worker/README.md`.
   MCP Worker: mcp.openflowkit.com/mcp (`mcp-server/`: `deploy:remote`, then `smoke:remote -- <url>`).
 - Gate: `npm run verify` (typecheck, lint, unit, MCP tests + typecheck, headed `@gate`). CI: `quality`
