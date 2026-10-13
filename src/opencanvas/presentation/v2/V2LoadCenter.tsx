@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import type { DocumentValidationIssue } from '../../domain/document/validation';
-import { Button, ErrorState, Spinner } from '../design-system';
+import { Button, ErrorState } from '../design-system';
+import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
 import { downloadRawRecords } from './v2Export';
 import { mintV2Id } from './v2Document';
@@ -15,7 +16,7 @@ interface V2LoadCenterProps {
   readonly onDownloadDiagnostic: () => void;
 }
 
-// Full-viewport load states: spinner, failed with retry, corrupt with a
+// Full-viewport load states: the brand loader, failed with retry, corrupt with a
 // diagnostic download. Both failures keep a way back to the list.
 export function V2LoadCenter(props: V2LoadCenterProps): React.JSX.Element {
   const navigate = useNavigate();
@@ -51,7 +52,7 @@ export function V2LoadCenter(props: V2LoadCenterProps): React.JSX.Element {
           secondary={home}
         />
       ) : (
-        <Spinner label="Loading diagram" />
+        <BrandLoader label="Loading diagram" />
       )}
     </div>
   );

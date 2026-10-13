@@ -3,6 +3,7 @@ import { IconCopy } from '@tabler/icons-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { legacyDocumentId } from '../../domain/document/legacyWorkspace';
 import { Button, ErrorState, Icon, SystemRoot } from '../design-system';
+import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
 import { decodeLegacyViewerParam } from '../../../services/storage/v2/legacyViewerLink';
 import { runV1Import } from '../../../services/storage/v2/v1Import';
@@ -22,7 +23,7 @@ export interface HomeNotice {
  * v1 `#/flow/:id` → `#/d/v1-:id`. The import may still be running on the first visit,
  * so a missing document waits for it once before sending the visitor home.
  */
-export function LegacyFlowRedirect(): React.JSX.Element | null {
+export function LegacyFlowRedirect(): React.JSX.Element {
   const { flowId = '' } = useParams();
   const navigate = useNavigate();
   useEffect(() => {
@@ -46,7 +47,7 @@ export function LegacyFlowRedirect(): React.JSX.Element | null {
     })();
     return () => { live = false; };
   }, [flowId, navigate]);
-  return null;
+  return <BrandLoader screen label="Opening diagram" />;
 }
 
 /**

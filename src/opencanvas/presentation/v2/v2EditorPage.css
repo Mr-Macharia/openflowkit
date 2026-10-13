@@ -83,9 +83,6 @@
 @keyframes ofk-state-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes ofk-state-part-left { to { transform: translateX(-4px); } }
 @keyframes ofk-state-part-right { to { transform: translateX(4px); } }
-.ofk-state-hero[data-busy] .ofk-state-hero-link { animation: none; }
-.ofk-state-hero[data-busy] .ofk-state-hero-accent { animation: ofk-state-travel 1.4s cubic-bezier(.45, 0, .55, 1) infinite; }
-@keyframes ofk-state-travel { 0% { opacity: 0; transform: translateX(-15px); } 20%, 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(15px); } }
 @media (prefers-reduced-motion: reduce) { .ofk-state-hero * { animation: none !important; } }
 
 .ofk-v2-document-bar { gap: 2px; padding: 5px; }
