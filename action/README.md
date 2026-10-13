@@ -25,14 +25,14 @@ jobs:
 | Input | Default | |
 |---|---|---|
 | `github-token` | `${{ github.token }}` | comments and pushes |
-| `cli` | `npx -y openflowkit@0.2.3` | command that runs the CLI (the CLI never sees the token) |
+| `cli` | `npx -y openflowkit@0.2.4` | command that runs the CLI (the CLI never sees the token) |
 | `refresh-svg` | `false` | refresh a stale committed `<name>.svg` on same-repo PRs |
 | `comment-author` | `github-actions[bot]` | login whose comment is updated (set it when using a PAT or App token) |
 | `paths` | `.openflow.json,.ofk` | extensions (start with `.`) or globs, comma-separated |
 
 ## Requirements
 
-The default `cli` is pinned to `openflowkit@0.2.3`. Any CLI you point `cli` at must be at least 0.2.0: older ones lack `render`, `convert` and `op`.
+The default `cli` is pinned to `openflowkit@0.2.4`. Any CLI you point `cli` at must be at least 0.2.0: older ones lack `render`, `convert` and `op`.
 
 ## What it posts
 

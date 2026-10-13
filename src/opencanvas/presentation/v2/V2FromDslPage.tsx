@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Button, ErrorState } from '../design-system';
 import { decodeDslPayload } from '../../../services/discovery/dslLink';
 import { mintV2Id, type V2StartIntent } from './v2Document';
+import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
 import { V2StateShell } from './V2StateShell';
 import './v2EditorPage.css';
@@ -29,7 +30,7 @@ export function V2FromDslPage(): React.JSX.Element {
         <ErrorState hero={<V2StateHero kind="lost-link" />} title="This diagram link could not be opened." description={failure.message}
           action={<Button variant="primary" onClick={() => navigate('/home')}>Back to home</Button>} />
       ) : (
-        <div className="ofk-empty"><V2StateHero kind="no-canvas" busy /><p className="ofk-caption" role="status">Opening diagram…</p></div>
+        <div className="ofk-empty"><BrandLoader /><p className="ofk-caption" role="status">Opening diagram…</p></div>
       )}
     </V2StateShell>
   );

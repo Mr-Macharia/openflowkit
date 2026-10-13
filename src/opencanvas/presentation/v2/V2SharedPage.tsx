@@ -6,6 +6,7 @@ import { createV2Repository } from '../../../services/storage/v2/v2Repository';
 import { track } from '../../../services/usage/usage';
 import type { SceneDocumentV1 } from '../../domain/document/types';
 import { mintV2Id } from './v2Document';
+import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
 import { V2StateShell } from './V2StateShell';
 import './v2EditorPage.css';
@@ -38,12 +39,12 @@ export function V2SharedPage(): React.JSX.Element {
   }, [document, navigate]);
   const shared = useMemo(() => document ? { document, onEdit: edit } : undefined, [document, edit]);
 
-  if (shared) return <Suspense fallback={null}><Editor shared={shared} /></Suspense>;
+  if (shared) return <Suspense fallback={<BrandLoader screen label="Opening diagram" />}><Editor shared={shared} /></Suspense>;
   const home = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} onClick={() => navigate('/home')}>Back to home</Button>;
   return (
     <V2StateShell testId="v2-shared-state">
       {state === null ? (
-        <div className="ofk-empty"><V2StateHero kind="no-canvas" busy /><p className="ofk-caption" role="status">Opening diagram…</p></div>
+        <div className="ofk-empty"><BrandLoader /><p className="ofk-caption" role="status">Opening diagram…</p></div>
       ) : 'problem' in state ? (
         <ErrorState
           // A retry can help when the service or network failed; a bad link stays bad.

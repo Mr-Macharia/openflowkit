@@ -213,26 +213,65 @@ Using openflowkit: call analyze_codebase on /path/to/project, read openflowkit:/
 
 ---
 
-## Remote (MCP Apps)
+## In a chat app: claude.ai, ChatGPT
 
-`start:http` serves two tools over Streamable HTTP for hosts that render MCP Apps (Claude, ChatGPT, VS Code): `render_diagram` (OpenFlow DSL or Mermaid in, inline SVG out, with the canonical DSL and an open-in-app link) and `get_syntax`. It is stateless (a fresh server per request), needs no login and **stores nothing**. It has no file system, bridge, discovery or document tools; the stdio server is unchanged.
+Chat apps that run in the cloud cannot start a local process, so they use the hosted endpoint:
 
-```bash
-npm run build && PORT=8787 npm run start:http   # http://127.0.0.1:8787/mcp, health at /healthz
+```
+https://mcp.openflowkit.com/mcp
 ```
 
-| Env | Default | Meaning |
+- **claude.ai:** Settings → Connectors → Add custom connector, and paste the URL. Every plan can add one; the Free
+  plan allows one custom connector.
+- **ChatGPT:** turn on Developer Mode, then create a connector with the URL. ChatGPT decides which plans have it.
+
+Ask for a diagram and it appears in the chat as a card: the picture, zoom, and **Open in OpenFlowKit**, which opens
+an editable copy in the app. The diagram rides in the link's `#fragment`, so no server sees it.
+
+The endpoint serves two tools: `render_diagram` (OpenFlow DSL or Mermaid in, picture out, with the canonical DSL
+and the editor link) and `get_syntax`. It is stateless (a fresh server per request), needs no login and **stores
+nothing**. It has no file system, live editor, discovery or document tools: for those, run the local server.
+
+## Where the diagram shows up
+
+| Where your agent runs | What you see |
+|---|---|
+| Claude Desktop, VS Code (MCP Apps hosts), local server | A card under the tool call: picture, zoom, Open in OpenFlowKit |
+| Claude Code, Codex, any terminal, file mode | The `.openflow.json` you save, and an `openUrl` in the result that opens the diagram in the app |
+| Any client, live mode (**Connect agent** in the app) | The diagram is drawn on the canvas you have open, one undo step per change |
+| claude.ai, ChatGPT, hosted endpoint | A card in the chat |
+
+Only a client that announces MCP Apps support at startup gets the card's data; everyone else gets the same text
+result as before, so no client pays for a picture it cannot show.
+
+### Running the remote endpoint
+
+It runs on Cloudflare Workers (`wrangler.toml`, `src/worker.ts`). The grammar and icon data are the Worker's
+static assets, read by the Worker only.
+
+```bash
+npm run dev:remote                                  # workerd on http://127.0.0.1:8787/mcp
+npm run smoke:remote -- http://127.0.0.1:8787       # every check against a running endpoint
+npm run deploy:remote                               # deploys mcp.openflowkit.com (Cloudflare login needed)
+npm run smoke:remote -- https://mcp.openflowkit.com
+```
+
+The same server also runs on Node: `npm run build && PORT=8787 npm run start:http`.
+
+| Env (Node) | Default | Meaning |
 |---|---|---|
 | `PORT` | `8787` | Listen port. |
 | `HOST` | `127.0.0.1` | Bind address. Anything but localhost requires `OPENFLOWKIT_ALLOWED_HOSTS`. |
 | `OPENFLOWKIT_ALLOWED_HOSTS` | none | Comma-separated hostnames (no port) the `Host` header may carry (DNS-rebinding protection). Localhost is always allowed when bound to localhost. |
 | `APP_ORIGIN` | `https://app.openflowkit.com` | Origin of the open-in-app link: `<origin>/#/from/dsl?d=<base64url(deflate-raw(dsl))>`. Over 32 KB the link is dropped and `losses` says so. |
 
-Only `POST /mcp` is served (GET and DELETE get 405: there are no sessions). Requests over 512 KB get 413; `source` is capped at 100 KB. A diagram over 1000 shapes or 400 connections in total (all views) is refused, only the first view is laid out and drawn, a render has a 15 s deadline, and a 5th concurrent render gets 503 with `Retry-After`. Deploying it is the owner's job; nothing here deploys.
+The Worker reads `APP_ORIGIN` and `ALLOWED_HOSTS` from `[vars]` in `wrangler.toml`.
 
-Claude, ChatGPT and VS Code are not verified yet: that needs a deployed HTTPS endpoint. Verified locally with an MCP SDK client over HTTP on localhost: tools/list, render_diagram, resources/read, 413 and the Host check (`tests/http.test.ts`); the open-in-app link decodes back to the DSL.
-
----
+Limits, both hosts: only `POST /mcp` is served (GET and DELETE get 405: there are no sessions). Requests over
+512 KB get 413; `source` is capped at 100 KB. A diagram over 1000 shapes or 400 connections in total (all views) is
+refused, only the first view is laid out and drawn, and a render has a 15 s deadline. A picture over 1 MB is not
+sent; the card says so and keeps the editor link. Renders in flight are capped (Node: 4, then 503 with
+`Retry-After`; Worker: 8 per isolate, then a queue of up to 10 s before the 503).
 
 ## Privacy model
 

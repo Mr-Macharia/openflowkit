@@ -103,3 +103,15 @@ test('Download SVG uses ui/download-file when the host offers it @gate', async (
     { contents: [{ type: 'resource', resource: { uri: 'file:///Checkout.svg', mimeType: 'image/svg+xml', text: SVG } }] },
   ]);
 });
+
+test('a diagram too large to preview keeps Open in OpenFlowKit and says why @gate', async ({ page }) => {
+  const { svg: _svg, ...noSvg } = base;
+  const viewer = await openHost(page, { ...noSvg, openUrl: OPEN_URL, noPreview: 'The picture is 1400 KB, too large to show here.' }, undefined, { caps: { downloadFile: {} } });
+  await expect(viewer.getByRole('heading', { name: 'Checkout' })).toBeVisible();
+  await expect(viewer.getByText('2 nodes · 1 connector')).toBeVisible();
+  await expect(viewer.getByRole('status')).toHaveText('The picture is 1400 KB, too large to show here. Open it in OpenFlowKit to see it.');
+  await expect(viewer.locator('#stage')).toBeHidden();
+  await expect(viewer.getByRole('button', { name: 'Download SVG' })).toBeHidden();
+  await viewer.getByRole('button', { name: 'Open in OpenFlowKit' }).click();
+  await expect.poll(async () => (await sent(page, 'ui/open-link')).map((m) => m.params)).toEqual([{ url: OPEN_URL }]);
+});

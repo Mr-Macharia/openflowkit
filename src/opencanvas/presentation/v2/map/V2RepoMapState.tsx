@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button, ErrorState, Progress } from '../../design-system';
 import type { RepoMapSource } from '../../../application/map/repoMapSource';
+import { BrandLoader } from '../BrandLoader';
 import { V2StateHero } from '../V2StateHero';
 import { V2StateShell } from '../V2StateShell';
 import { CliText, RepoTokenForm } from '../v2RepoProblem';
@@ -54,7 +55,7 @@ export function V2RepoMapState({ source, map }: { readonly source: RepoMapSource
     return (
       <V2StateShell testId="v2-map">
         <div className="ofk-empty" role="status">
-          <V2StateHero kind="no-canvas" busy />
+          <BrandLoader />
           <p className="ofk-empty-title">{`Reading ${name}…`}</p>
           {total > 0 ? <Progress label={`Reading ${fmt(read)} of ${fmt(total)} files…`} value={read} max={total} /> : null}
           <div className="ofk-empty-actions">{home(false)}</div>

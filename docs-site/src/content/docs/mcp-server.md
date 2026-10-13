@@ -12,12 +12,20 @@ OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 | Your agent runs… | How to connect | What it can do |
 | --- | --- | --- |
 | **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | This MCP server | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files, maps a codebase, takes screenshots |
+| **In a chat app**: claude.ai, ChatGPT | Add a custom connector with `https://mcp.openflowkit.com/mcp` | Draws a diagram in the chat as a card, with zoom and Open in OpenFlowKit |
 | **In your browser** (experimental) | Nothing to install: [WebMCP](/webmcp/) | Reads and edits the diagram you have open |
 
 The server is a stdio process on your machine. It needs no API key of its own and returns
-deterministic results: your MCP client's model does the thinking. A chat-app endpoint
-(`render_diagram`, drawn inline in the chat) is in the package too; to run it yourself, see
-[the server README](https://github.com/openflowkit/openflowkit/tree/main/mcp-server#readme).
+deterministic results: your MCP client's model does the thinking.
+
+**Where the diagram shows up.** In live mode (**Connect agent** in the app) it is drawn on the canvas you have open.
+In file mode it is the `.openflow.json` you save, and the result carries an `openUrl` that opens it in the app. Hosts
+that support MCP Apps (Claude Desktop, VS Code) also show a card under the tool call: the picture, zoom, and Open in
+OpenFlowKit.
+
+**In claude.ai:** Settings → Connectors → Add custom connector, paste `https://mcp.openflowkit.com/mcp`. **In ChatGPT:**
+turn on Developer Mode and create a connector with the same URL. The hosted endpoint stores nothing; it has
+no file, live-editor or codebase tools, so use this server for those.
 
 ## Connect your client
 

@@ -7,6 +7,7 @@ import { repoMapDocumentId } from '../../application/map/repoMapSource';
 import { createV2Repository } from '../../../services/storage/v2/v2Repository';
 import { track } from '../../../services/usage/usage';
 import type { V2StartIntent } from './v2Document';
+import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
 import { CliText, cliCommand, describeRepoError, keepToken, RepoTokenForm, storedToken, type RepoProblemView } from './v2RepoProblem';
 import { V2StateShell } from './V2StateShell';
@@ -124,7 +125,7 @@ export function V2FromGithubPage(): React.JSX.Element {
         </div>
       ) : (
         <div className="ofk-empty">
-          <V2StateHero kind="no-canvas" busy />
+          <BrandLoader />
           <p className="ofk-empty-title" role="status">{name ? `Reading ${name.owner}/${name.repo}…` : 'Reading the repo…'}</p>
           {progress.total > 0
             ? <Progress label={`Reading files ${progress.done} of ${progress.total}`} value={progress.done} max={progress.total} />

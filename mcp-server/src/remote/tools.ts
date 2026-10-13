@@ -8,13 +8,8 @@ import { loadGrammar } from '../lib/fileCapabilities.js';
 import { stableForPicture } from '../cliCommands.js';
 import { DEFAULT_DEADLINE_MS, renderCheck, withDeadline, type LayoutPortLike } from './render.js';
 import { exportSvg } from '../lib/svgBeside.js';
-import { openUrl } from '../lib/openLink.js';
+import { diagramCard, VIEWER_TOOL_META } from '../lib/card.js';
 import { toolError } from '../lib/errors.js';
-
-export const VIEWER_URI = 'ui://openflowkit/viewer.html';
-// MCP Apps: `_meta.ui.resourceUri` (the flat "ui/resourceUri" key is deprecated).
-// ponytail: no `openai/outputTemplate` — neither the MCP Apps spec nor the Apps SDK docs ask for it; add it if ChatGPT fails to render.
-const VIEWER_META = { ui: { resourceUri: VIEWER_URI } };
 
 export const MAX_SOURCE_BYTES = 100 * 1024;
 
@@ -38,7 +33,7 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
       title: z.string().max(200).optional().describe('Diagram title.'),
       theme: z.enum(['light', 'dark']).optional().describe('Picture theme; default light.'),
     },
-    _meta: VIEWER_META,
+    _meta: VIEWER_TOOL_META,
   }, async ({ source, title, theme }): Promise<CallToolResult> => {
     try {
       if (Buffer.byteLength(source, 'utf8') > MAX_SOURCE_BYTES) return toolError('source is over 100 KB');
@@ -57,22 +52,18 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
         };
       }
       const dsl = converted?.dsl ?? source;
-      const losses = (converted?.losses ?? []).map((loss) => `line ${loss.line}: not converted: ${loss.message}`);
       const still = stableForPicture(checked.document, source);
-      const svg = await exportSvg(still, still.pages[0]!.id, theme ?? 'light');
-      const link = openUrl(dsl, appOrigin);
-      if (!link) losses.push('too large to open by link; download the file instead');
-      const page = still.pages[0]!;
-      const nodes = drawn; // the frame is the canvas, not a shape
-      const connectors = page.connectors.length;
-      const warnings = diagnostics.length + losses.length;
+      const card = diagramCard({
+        title: name, svg: await exportSvg(still, still.pages[0]!.id, theme ?? 'light'), dsl, appOrigin,
+        nodes: drawn, // the frame is the canvas, not a shape
+        connectors: still.pages[0]!.connectors.length, diagnostics,
+        losses: (converted?.losses ?? []).map((loss) => `line ${loss.line}: not converted: ${loss.message}`),
+      });
+      const warnings = diagnostics.length + card.losses.length;
       // structuredContent never reaches the model, so what it needs to revise the diagram goes in the text: the DSL, never the SVG.
-      const notes = [...diagnostics.map((d) => `line ${d.line}: ${d.severity}: ${d.message}`), ...losses];
-      const text = [`${name}: ${nodes} nodes, ${connectors} connectors, ${warnings} warnings`, ...notes, '```', dsl.trimEnd(), '```'].join('\n');
-      return {
-        content: [{ type: 'text', text }],
-        structuredContent: { title: name, svg, dsl, openUrl: link, nodes, connectors, diagnostics, losses },
-      };
+      const notes = [...diagnostics.map((d) => `line ${d.line}: ${d.severity}: ${d.message}`), ...card.losses];
+      const text = [`${name}: ${card.nodes} nodes, ${card.connectors} connectors, ${warnings} warnings`, ...notes, '```', dsl.trimEnd(), '```'].join('\n');
+      return { content: [{ type: 'text', text }], structuredContent: { ...card } };
     } catch (error) {
       return toolError(error instanceof Error ? error.message : String(error));
     }

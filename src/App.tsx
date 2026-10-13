@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { lastDocumentId, mintV2Id } from '@/opencanvas/presentation/v2/v2Document';
 import { V2ErrorBoundary } from '@/opencanvas/presentation/v2/V2ErrorBoundary';
+import { BrandLoader } from '@/opencanvas/presentation/v2/BrandLoader';
 
 const HomePage = lazy(async () => {
   const module = await import('@/opencanvas/presentation/v2/V2HomePage');
@@ -17,9 +18,9 @@ export const LEGACY_HOME_PATHS = ['/templates', '/settings', '/canvas', '/mcp'] 
 const LEGACY_DOCS_PATHS = ['/docs', '/docs/:slug', '/docs/:lang/:slug'] as const;
 const DOCS_SITE = 'https://docs.openflowkit.com/';
 
-function DocsSiteRedirect(): null {
+function DocsSiteRedirect(): React.JSX.Element {
   useEffect(() => { window.location.replace(DOCS_SITE); }, []);
-  return null;
+  return <BrandLoader screen label="Opening the docs" />;
 }
 
 const SharedPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2SharedPage')).V2SharedPage }));
@@ -35,7 +36,7 @@ const EditorPage = lazy(async () => ({ default: (await loadEditor()).V2EditorPag
 // within 2 s; otherwise a new document, and the import carries on in the background.
 const FIRST_VISIT_WAIT_MS = 2000;
 
-function HomeDocument(): React.JSX.Element | null {
+function HomeDocument(): React.JSX.Element {
   const [target, setTarget] = useState(lastDocumentId);
   useEffect(() => {
     if (target) return undefined;
@@ -51,7 +52,7 @@ function HomeDocument(): React.JSX.Element | null {
     ]).then((id) => { if (live) setTarget(id); });
     return () => { live = false; };
   }, [target]);
-  return target ? <Navigate to={`/d/${target}`} replace /> : null;
+  return target ? <Navigate to={`/d/${target}`} replace /> : <BrandLoader screen label="Loading OpenFlowKit" />;
 }
 
 /** One editor per document: switching /d/A → /d/B (back, forward) unmounts A's editor, which saves A's pending edit as A. */
@@ -68,7 +69,7 @@ export default function App(): React.JSX.Element {
   return (
     <HashRouter>
       <V2ErrorBoundary>
-        <Suspense fallback={<div className="ofk-boot" />}>
+        <Suspense fallback={<BrandLoader screen label="Loading OpenFlowKit" />}>
           <Routes>
             <Route path="/home" element={<HomePage />} />
             <Route path="/flow/:flowId" element={<LegacyFlowRedirect />} />

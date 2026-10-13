@@ -6,24 +6,32 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ICON_PACK_IDS, createFileCapabilities, headlessElkLayout, tablerSvg, type IconMatch, type OpCapabilities } from './agent.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = resolve(HERE, '..', '..', 'data');
+/** Reads one data file by its path under `data/`; '' when it is missing. */
+export type DataReader = (relativePath: string) => Promise<string>;
+
+// Resolved on first read, not at import: a Cloudflare Worker has no import.meta.url (it passes its own reader).
+const readFromDisk: DataReader = async (relativePath) => {
+  try {
+    return await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', relativePath), 'utf8');
+  } catch {
+    return '';
+  }
+};
+
+let readText: DataReader = readFromDisk;
+
+/** For hosts without a file system (the Worker reads its static assets). Call before the first lookup. */
+export function setDataReader(reader: DataReader): void {
+  readText = reader;
+}
 
 let grammarPromise: Promise<string> | null = null;
 let iconsPromise: Promise<IconMatch[]> | null = null;
 let capabilities: OpCapabilities | null = null;
 
-async function readText(path: string): Promise<string> {
-  try {
-    return await readFile(path, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
 export function loadGrammar(): Promise<string> {
   // The build copies src/dsl/grammar.md here (scripts/build-grammar-doc.mjs).
-  grammarPromise ??= readText(resolve(DATA_DIR, 'grammar.md')).then((text) =>
+  grammarPromise ??= readText('grammar.md').then((text) =>
     text.trim().length > 0
       ? text
       : 'Grammar unavailable in this install. See src/dsl/grammar.md in the repository.');
@@ -31,7 +39,7 @@ export function loadGrammar(): Promise<string> {
 }
 
 export function loadIcons(): Promise<IconMatch[]> {
-  iconsPromise ??= readText(resolve(DATA_DIR, 'icons.json')).then((text) => {
+  iconsPromise ??= readText('icons.json').then((text) => {
     if (!text) return [];
     try {
       const parsed: unknown = JSON.parse(text);
@@ -50,7 +58,7 @@ const artPromises = new Map<string, Promise<Record<string, unknown>>>();
 /** One provider's art file (data/icon-art, written by build:icons), read on first use. */
 function providerArt(provider: string): Promise<Record<string, unknown>> {
   if (!artPromises.has(provider)) {
-    artPromises.set(provider, readText(resolve(DATA_DIR, 'icon-art', `${provider}.json`)).then((text) => {
+    artPromises.set(provider, readText(`icon-art/${provider}.json`).then((text) => {
       try {
         return text ? JSON.parse(text) as Record<string, unknown> : {};
       } catch {

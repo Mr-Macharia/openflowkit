@@ -19,6 +19,8 @@ import type { LiveBridge } from '../lib/bridge.js';
 import { loadFileCapabilities } from '../lib/fileCapabilities.js';
 import { svgBeside, tryWriteSvgBeside } from '../lib/svgBeside.js';
 import { toolError } from '../lib/errors.js';
+import { clientShowsApps, diagramCard, VIEWER_TOOL_META, type Card } from '../lib/card.js';
+import { DEFAULT_APP_ORIGIN, openUrl } from '../lib/openLink.js';
 
 export interface OpToolDeps {
   readonly store: DocumentStore;
@@ -102,6 +104,38 @@ async function saveExport(output: unknown, target: string): Promise<{ saved: str
   return { saved, bytes: bytes.length, mime: file.mime };
 }
 
+/** The ops that draw a diagram: their result carries the card and, in file mode, a link to open it in the app. */
+const DRAWING_OPS = new Set(['create_diagram', 'update_diagram']);
+/** Longer links stay out of the text: the model reads every character of it. */
+const MAX_TEXT_LINK = 4096;
+
+type DrawnOutput = {
+  pageId?: string; frameId?: string; title?: string | null; nodes?: number; connectors?: number;
+  diagnostics?: readonly { severity: string; line: number; message: string }[];
+  converted?: { dsl?: string; losses?: readonly { line: number; message: string }[] };
+};
+
+/** The DSL a drawing op ended up with: the converted text for Mermaid, D2 or Structurizr, else what was passed. */
+const drawnDsl = (input: Record<string, unknown>, output: DrawnOutput): string => output.converted?.dsl ?? String(input.dsl ?? '');
+
+/** The card for a drawn frame. The picture is best effort: the diagram is already drawn, so a failed export is a note, not an error. */
+async function cardFor(input: Record<string, unknown>, output: DrawnOutput, picture: (frameId: string, pageId: string) => Promise<string>): Promise<Card> {
+  let svg: string | null = null;
+  if (output.frameId && output.pageId) svg = await picture(output.frameId, output.pageId).catch(() => null);
+  return diagramCard({
+    title: output.title || 'Diagram', svg, dsl: drawnDsl(input, output), appOrigin: DEFAULT_APP_ORIGIN,
+    nodes: output.nodes ?? 0, connectors: output.connectors ?? 0,
+    diagnostics: (output.diagnostics ?? []).filter(({ severity }) => severity !== 'info').map(({ severity, line, message }) => ({ severity, line, message })),
+    losses: (output.converted?.losses ?? []).map((loss) => `line ${loss.line}: not converted: ${loss.message}`),
+  });
+}
+
+const svgText = (exported: unknown): string => {
+  const text = (exported as { files?: readonly { text?: string }[] }).files?.[0]?.text;
+  if (!text) throw new Error('no SVG');
+  return text;
+};
+
 /** Live editor wins whenever one is paired; file mode takes documentId, else the document opened or created last. */
 export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
   for (const op of AGENT_OPS) {
@@ -113,16 +147,25 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
         ...(PAGELESS.has(op.name) ? {} : { pageId: pageIdField }), ...opInputShape(op), ...(LOOKUPS.has(op.name) ? {} : { documentId: documentIdField }),
         ...(op.name === 'export' ? { path: exportPathField } : {}),
       },
+      ...(DRAWING_OPS.has(op.name) ? { _meta: VIEWER_TOOL_META } : {}),
     }, async (raw: Record<string, unknown>): Promise<CallToolResult> => {
       const { documentId, path: savePath, ...input } = raw;
       const requestedPage = typeof input.pageId === 'string' ? input.pageId : undefined;
       const respond = async (output: unknown, wrap: (output: unknown) => unknown = (value) => value) => typeof savePath === 'string'
         ? text(wrap(await saveExport(output, savePath)))
         : opResult(output, wrap);
+      // Only a host that can show the card gets it (see clientShowsApps); the text result is unchanged for everyone else.
+      const withCard = async (result: CallToolResult, output: unknown, picture: (frameId: string, pageId: string) => Promise<string>): Promise<CallToolResult> =>
+        DRAWING_OPS.has(op.name) && clientShowsApps(server.server.getClientCapabilities())
+          ? { ...result, structuredContent: { ...await cardFor(input, output as DrawnOutput, picture) } }
+          : result;
       try {
         if (!documentId && !deps.bridge.connected) await deps.bridge.retryPort();
         if (!documentId && deps.bridge.connected) {
-          return await respond(await deps.bridge.call(op.name, input, requestedPage));
+          const output = await deps.bridge.call(op.name, input, requestedPage);
+          // Live: the diagram is on the user's canvas already, so no link; the card shows the frame as the editor drew it.
+          return await withCard(await respond(output), output, async (frameId, pageId) =>
+            svgText(await deps.bridge.call('export', { format: 'svg', scope: 'selection', ids: [frameId] }, pageId)));
         }
         const id = (typeof documentId === 'string' ? documentId : undefined) ?? deps.store.latest()?.id;
         if (!id && !LOOKUPS.has(op.name)) {
@@ -134,7 +177,15 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
         const capabilities = await loadFileCapabilities();
         const result = await runAgentOp(op, input, { document, pageId, capabilities });
         if (result.changed) deps.store.set(result.document as never);
-        return await respond(result.output, (output) => ({ documentId: id, changed: result.changed, output }));
+        // File mode: the diagram lives only in this process until openflow_save, so the link is how a person sees it now.
+        const link = DRAWING_OPS.has(op.name) ? openUrl(drawnDsl(input, result.output as DrawnOutput)) : null;
+        const openInApp = link && link.length <= MAX_TEXT_LINK ? { openUrl: link } : {};
+        return await withCard(
+          await respond(result.output, (output) => ({ documentId: id, changed: result.changed, output, ...openInApp })),
+          result.output,
+          async (frameId, pageId) => svgText((await runAgentOp(AGENT_OPS.find(({ name }) => name === 'export')!,
+            { format: 'svg', scope: 'selection', ids: [frameId] }, { document: result.document as SceneDocumentV1, pageId, capabilities })).output),
+        );
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }

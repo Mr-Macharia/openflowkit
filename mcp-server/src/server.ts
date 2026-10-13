@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerViewer } from './lib/card.js';
 import { MCP_SERVER_NAME, MCP_SERVER_VERSION } from './lib/version.js';
 import { LiveBridge } from './lib/bridge.js';
 import { DocumentStore } from './lib/documentStore.js';
@@ -48,6 +50,8 @@ export function createServerWithDeps(options: ServerOptions = {}): CreatedServer
   registerDocumentTools(server, deps);
   registerOpTools(server, deps);
   registerResources(server);
+  // Beside this module in src/ and in dist/ (scripts/build-dist.mjs copies it).
+  registerViewer(server, () => readFile(new URL('./viewer/viewer.html', import.meta.url), 'utf8'));
   registerPrompts(server);
 
   return { server, bridge, store };

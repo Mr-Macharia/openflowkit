@@ -1,10 +1,9 @@
-/** Decorative illustrations for empty and failure states: draw once, then rest. `busy` loops the
- * no-canvas link (a dot travelling between the boxes) for loading screens. */
+/** Decorative illustrations for empty and failure states: draw once, then rest. Loading screens use BrandLoader. */
 export type V2StateHeroKind = 'no-canvas' | 'torn-page' | 'lost-link';
 
-export function V2StateHero({ kind, busy = false }: { readonly kind: V2StateHeroKind; readonly busy?: boolean }): React.JSX.Element {
+export function V2StateHero({ kind }: { readonly kind: V2StateHeroKind }): React.JSX.Element {
   return (
-    <svg className="ofk-state-hero" data-kind={kind} data-busy={busy || undefined} aria-hidden="true" viewBox="0 0 120 72" fill="none" stroke="currentColor"
+    <svg className="ofk-state-hero" data-kind={kind} aria-hidden="true" viewBox="0 0 120 72" fill="none" stroke="currentColor"
       strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {kind === 'no-canvas' ? <>
         <rect x="8" y="22" width="32" height="26" rx="5" strokeDasharray="4 3" />
