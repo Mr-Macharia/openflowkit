@@ -1,10 +1,9 @@
 # State
 What is done and what is next. Maintainers' plan and logs live in the untracked `docs/` folder.
 
-## Now (2026-10-13): launch of 2.1.0
-- `v2` is release-ready: app 2.1.0 (CHANGELOG `## [2.1.0]`), MCP server + CLI 0.2.3. Merge `v2` → `main`
-  (`git merge -s ours origin/main` first), then tag `v2.1.0` on the merge commit; the release workflow
-  publishes the GitHub release from the changelog.
+## Now (2026-10-13): 2.1.0 is live
+- `main` = v2 since PR #86 (merge commit, tagged `v2.1.0`; release + Docker published). App 2.1.0, MCP server +
+  CLI 0.2.3. Changes reach `main` by PR only (one review; repo admins bypass through a PR).
 - Repo: github.com/openflowkit/openflowkit. npm `openflowkit` (`npx -y openflowkit mcp`) pins the engine
   `@openflowkit/openflowkit-mcp` at the same version; `@vrun-design/openflowkit-mcp` is deprecated at 0.2.2.
 - MCP registry `io.github.openflowkit/openflowkit-mcp` publishes from `release.yml` on an `mcp-v*` tag
