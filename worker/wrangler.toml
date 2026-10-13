@@ -11,7 +11,7 @@ crons = ["17 3 * * *"]
 
 # The production app plus the `v2` branch preview on Cloudflare Pages, so sharing can be tried before a merge.
 [vars]
-ALLOWED_ORIGINS = "https://app.openflowkit.com,https://v2.openflowkit-app.pages.dev"
+ALLOWED_ORIGINS = "https://app.openflowkit.com,https://v2.ofk-app.pages.dev"
 
 [[r2_buckets]]
 binding = "SHARES"
