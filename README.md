@@ -25,6 +25,13 @@
 </p>
 
 <p align="center">
+  <a href="https://www.producthunt.com/products/openflowkit"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/top-post-topic-badge.svg?post_id=1081019&theme=dark&period=weekly&topic_id=44">
+    <img src="https://api.producthunt.com/widgets/embed-image/v1/top-post-topic-badge.svg?post_id=1081019&theme=light&period=weekly&topic_id=44" width="200" height="43" alt="OpenFlowKit: #4 Product of the Week in Design Tools on Product Hunt">
+  </picture></a>
+</p>
+
+<p align="center">
   <a href="https://app.openflowkit.com"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.gif">
     <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.gif">
