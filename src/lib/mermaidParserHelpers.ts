@@ -1,24 +1,31 @@
 import type { NodeData } from './types';
 
-export const SHAPE_OPENERS: Array<{
+const SHAPE_OPENERS: Array<{
   open: string;
   close: string;
   type: string;
   shape: NodeData['shape'];
 }> = [
   { open: '([', close: '])', type: 'start', shape: 'capsule' },
+  { open: '(((', close: ')))', type: 'end', shape: 'circle' },
   { open: '((', close: '))', type: 'end', shape: 'circle' },
   { open: '{{', close: '}}', type: 'custom', shape: 'hexagon' },
   { open: '[(', close: ')]', type: 'process', shape: 'cylinder' },
+  { open: '[[', close: ']]', type: 'process', shape: 'rectangle' },
+  // ponytail: mermaid's four slanted brackets all land on `parallelogram` —
+  // the shape union has no trapezoid; add one when the renderer grows one.
+  { open: '[/', close: '/]', type: 'process', shape: 'parallelogram' },
+  { open: '[\\', close: '\\]', type: 'process', shape: 'parallelogram' },
+  { open: '[/', close: '\\]', type: 'process', shape: 'parallelogram' },
+  { open: '[\\', close: '/]', type: 'process', shape: 'parallelogram' },
   { open: '{', close: '}', type: 'decision', shape: 'diamond' },
-  { open: '[', close: ']', type: 'process', shape: 'rounded' },
+  { open: '[', close: ']', type: 'process', shape: 'rectangle' },
   { open: '(', close: ')', type: 'process', shape: 'rounded' },
   { open: '>', close: ']', type: 'process', shape: 'parallelogram' },
 ];
 
 export const SKIP_PATTERNS = [
   /^%%/,
-  /^click\s/i,
   /^direction\s/i,
   /^accTitle\s/i,
   /^accDescr\s/i,
@@ -79,9 +86,11 @@ export function parseLinkStyleLine(
   return { indices, style };
 }
 
+/** Quoted newlines become `\n`; the swallowed lines come back as blanks after the line, so line numbers hold. */
 export function normalizeMultilineStrings(input: string): string {
   let result = '';
   let inQuote = false;
+  let swallowed = 0;
 
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
@@ -89,7 +98,11 @@ export function normalizeMultilineStrings(input: string): string {
       inQuote = !inQuote;
     }
 
-    if (inQuote && char === '\n') {
+    if (!inQuote && char === '\n' && swallowed > 0) {
+      result += '\n'.repeat(swallowed + 1);
+      swallowed = 0;
+    } else if (inQuote && char === '\n') {
+      swallowed++;
       result += '\\n';
       let nextIndex = i + 1;
       while (nextIndex < input.length && (input[nextIndex] === ' ' || input[nextIndex] === '\t')) {
@@ -104,18 +117,24 @@ export function normalizeMultilineStrings(input: string): string {
   return result;
 }
 
+/** Line by line: a pattern that crossed lines let a `%% ----` comment swallow the next statement. */
 export function normalizeEdgeLabels(input: string): string {
-  let result = input;
+  return input.split('\n').map((line) => (line.trim().startsWith('%%') ? line : normalizeLineEdgeLabels(line))).join('\n');
+}
+
+function normalizeLineEdgeLabels(line: string): string {
+  let result = line;
   // Collapse extended arrows: ---> → -->, ====> → ==>, -..-> → -.->
   // Mermaid spec allows any number of repeated chars in the arrow body.
-  result = result.replace(/={3,}>/g, '==>');
-  result = result.replace(/-{3,}>/g, '-->');
+  // `(?<!=)` starts a run only at its first char, so a long `=====` or `-----` is scanned once, not once per char.
+  result = result.replace(/(?<!=)={3,}>/g, '==>');
+  result = result.replace(/(?<!-)-{3,}>/g, '-->');
   result = result.replace(/-\.{2,}->/g, '-.->');
   result = result.replace(/<-{3,}>/g, '<-->');
   result = result.replace(/<={3,}>/g, '<==>');
   result = result.replace(/<-\.{2,}->/g, '<-.->');
   // Inline-label arrow forms: == text ==> and -- text -->
-  result = result.replace(/==(?![>])\s*(.+?)\s*==>/g, ' ==>|$1|');
+  result = result.replace(/(?<!=)==(?![>])\s*(.+?)\s*==>/g, ' ==>|$1|');
   result = result.replace(/--(?![>-])\s*(.+?)\s*-->/g, ' -->|$1|');
   result = result.replace(/-\.\s*(.+?)\s*\.->/g, ' -.->|$1|');
   result = result.replace(/--(?![>-])\s*(.+?)\s*---/g, ' ---|$1|');
@@ -130,9 +149,16 @@ export interface RawNode {
   parentId?: string;
   styles?: Record<string, string>;
   classes?: string[];
+  /** `id[[Label]]`: the DSL's `component`. */
+  subroutine?: boolean;
+  /** `click id "url"`. */
+  link?: string;
+  /** A state's `id : text` under a name it already has. */
+  description?: string;
   metadata?: {
     sectionMermaidId?: string;
     sectionMermaidTitle?: string;
+    sectionMermaidDirection?: string;
   };
 }
 
@@ -148,8 +174,8 @@ const MODERN_SHAPE_MAP: Record<string, { type: string; shape: NodeData['shape'] 
   'lean-l': { type: 'process', shape: 'parallelogram' },
   stadium: { type: 'start', shape: 'capsule' },
   rounded: { type: 'process', shape: 'rounded' },
-  rect: { type: 'process', shape: 'rounded' },
-  square: { type: 'process', shape: 'rounded' },
+  rect: { type: 'process', shape: 'rectangle' },
+  square: { type: 'process', shape: 'rectangle' },
   doublecircle: { type: 'end', shape: 'circle' },
 };
 
@@ -175,6 +201,16 @@ function extractModernAnnotation(input: string): ModernShapeAnnotation {
     labelOverride: labelMatch?.[1],
     cleanInput: `${id}${rest}`,
   };
+}
+
+const NAMED_ENTITIES: Readonly<Record<string, string>> = { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'", nbsp: ' ', hash: '#', semi: ';' };
+
+/** Label text as Mermaid shows it: `\n` and `<br>`/`<br/>` break the line; `#quot;` and `#9829;` are entity codes. */
+export function labelText(label: string): string {
+  return label
+    .replace(/\\n|<br\s*\/?>/gi, '\n')
+    .replace(/#(\d+);/g, (code, digits: string) => (Number(digits) <= 0x10ffff ? String.fromCodePoint(Number(digits)) : code))
+    .replace(/#([a-z]+);/gi, (code, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? code);
 }
 
 function stripMarkdown(label: string): string {
@@ -224,7 +260,7 @@ function tryParseWithShape(
   ) {
     label = label.slice(1, -1);
   }
-  label = label.replace(/\\n/g, '\n');
+  label = labelText(label);
   label = stripFaIcons(label);
   label = stripMarkdown(label);
   if (!label) label = id;
@@ -234,6 +270,7 @@ function tryParseWithShape(
     label,
     type: shape.type,
     shape: shape.shape,
+    ...(shape.open === '[[' ? { subroutine: true } : {}),
     classes: classes.length ? classes : undefined,
   };
 }
@@ -284,7 +321,11 @@ export function parseNodeDeclaration(raw: string): RawNode | null {
   return null;
 }
 
+// Order matters at each position: longer and marker forms before the plain ones they start with.
 export const ARROW_PATTERNS = [
+  '~~~',
+  'o--o',
+  'x--x',
   '<==>',
   '<-.->',
   '<-->',
@@ -296,9 +337,13 @@ export const ARROW_PATTERNS = [
   '--->',
   '-->',
   '===',
+  '---o',
+  '---x',
   '---',
   '==>',
   '-.-',
+  '--o',
+  '--x',
   '--',
 ];
 
@@ -308,7 +353,7 @@ function sanitizeEdgeEndpoint(raw: string): string {
 
 function findArrowInLine(
   line: string
-): { arrow: string; index: number; before: string; after: string } | null {
+): { arrow: string; index: number } | null {
   let quoteChar: '"' | "'" | null = null;
   let pipeOpen = false;
   let squareDepth = 0;
@@ -370,12 +415,7 @@ function findArrowInLine(
 
     for (const arrow of ARROW_PATTERNS) {
       if (line.startsWith(arrow, index)) {
-        return {
-          arrow,
-          index,
-          before: line.substring(0, index).trim(),
-          after: line.substring(index + arrow.length).trim(),
-        };
+        return { arrow, index };
       }
     }
   }
@@ -461,77 +501,31 @@ function splitOnUnquotedAmpersand(input: string): string[] {
   return parts;
 }
 
-function expandAmpersandEdges(line: string): string[] {
-  if (!line.includes('&')) return [line];
-  const arrowMatch = findArrowInLine(line);
-  if (!arrowMatch) return [line];
-
-  const { arrow, index } = arrowMatch;
-  const sourcePart = line.substring(0, index).trim();
-  const afterArrow = line.substring(index + arrow.length).trim();
-
-  // Parse optional pipe label after arrow
-  const labelMatch = afterArrow.match(/^\|([^|]*)\|(.*)/);
-  const label = labelMatch ? `|${labelMatch[1]}|` : '';
-  const targetPart = labelMatch ? labelMatch[2].trim() : afterArrow;
-
-  // Only split on `&` when it sits outside any quoted label or shape bracket —
-  // otherwise an `&` inside a label (e.g. "User & Auth") gets mistaken for the
-  // fan-out separator and the label is destroyed.
-  const sources = splitOnUnquotedAmpersand(sourcePart).map((s) => s.trim()).filter(Boolean);
-  const targets = splitOnUnquotedAmpersand(targetPart).map((s) => s.trim()).filter(Boolean);
-
-  if (sources.length <= 1 && targets.length <= 1) return [line];
-
-  const lines: string[] = [];
-  for (const src of sources) {
-    for (const tgt of targets) {
-      lines.push(`${src} ${arrow}${label} ${tgt}`);
-    }
-  }
-  return lines;
-}
-
+/**
+ * A link statement as node groups and the links between them: `a --> b & c --> d` is
+ * a→b, a→c, b→d, c→d. `&` splits a group only outside quotes and brackets, so a label
+ * like "User & Auth" stays whole.
+ */
 export function parseEdgeLine(line: string): Array<{
   sourceRaw: string;
   targetRaw: string;
   label: string;
   arrowType: string;
 }> {
-  const expanded = expandAmpersandEdges(line);
-  if (expanded.length > 1) {
-    return expanded.flatMap(parseEdgeLine);
-  }
-
-  const edges: Array<{ sourceRaw: string; targetRaw: string; label: string; arrowType: string }> =
-    [];
+  const groups: string[][] = [];
+  const links: { arrow: string; label: string }[] = [];
   let remaining = line.trim();
-  let lastNodeRaw: string | null = null;
-
-  while (remaining.trim()) {
-    const arrowMatch = findArrowInLine(remaining);
-    if (!arrowMatch) break;
-
-    const { arrow } = arrowMatch;
-    const sourceRaw = sanitizeEdgeEndpoint(lastNodeRaw || arrowMatch.before);
-    const sourceOffset = arrowMatch.index + arrow.length;
-    const { label, nextIndex } = parseEdgeLabelSegment(remaining, sourceOffset);
-    const targetSegment = remaining.slice(nextIndex).trim();
-    const nextArrowMatch = findArrowInLine(targetSegment);
-    const targetRaw = sanitizeEdgeEndpoint(
-      nextArrowMatch ? targetSegment.slice(0, nextArrowMatch.index) : targetSegment
-    );
-
-    if (sourceRaw && targetRaw) {
-      edges.push({ sourceRaw, targetRaw, label, arrowType: arrow });
-    }
-
-    lastNodeRaw = targetRaw;
-    remaining = nextArrowMatch ? targetSegment.slice(nextArrowMatch.index) : '';
-    if (!nextArrowMatch) break;
+  for (let match = findArrowInLine(remaining); match; match = findArrowInLine(remaining)) {
+    groups.push(splitOnUnquotedAmpersand(remaining.slice(0, match.index)).map(sanitizeEdgeEndpoint).filter(Boolean));
+    const { label, nextIndex } = parseEdgeLabelSegment(remaining, match.index + match.arrow.length);
+    links.push({ arrow: match.arrow, label: labelText(label) });
+    remaining = remaining.slice(nextIndex);
   }
-
-  return edges;
+  groups.push(splitOnUnquotedAmpersand(remaining).map(sanitizeEdgeEndpoint).filter(Boolean));
+  // `A -->> B` leaves `> B`: no Mermaid id starts with arrow punctuation, so the line is not an edge.
+  if (groups.some((group) => group.some((endpoint) => /^[<>=.~-]/.test(endpoint)))) return [];
+  return links.flatMap(({ arrow, label }, index) => groups[index]!.flatMap((sourceRaw) =>
+    groups[index + 1]!.map((targetRaw) => ({ sourceRaw, targetRaw, label, arrowType: arrow }))));
 }
 
 export function parseStyleString(styleStr: string): Record<string, string> {

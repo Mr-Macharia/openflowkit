@@ -1,0 +1,527 @@
+import type { SceneNode } from '../document/types';
+import type { Bounds2d, Point2d, Size2d } from '../geometry/types';
+import { createBounds2d } from '../geometry/bounds';
+import { paletteSwatch, type PaletteKey } from './nodePalette';
+
+// Charts are data, not geometry: this module turns `content` into a
+// renderer-neutral scene of marks, axes and labels that the Pixi renderer, the
+// SVG export and the data panel all read. Pure TypeScript, no rendering.
+
+export type ChartKind =
+  | 'bar' | 'line' | 'area' | 'scatter' | 'pie' | 'donut' | 'radar' | 'heatmap' | 'table'
+  | 'quadrant';
+
+export const CHART_KINDS: readonly ChartKind[] = [
+  'bar', 'line', 'area', 'scatter', 'pie', 'donut', 'radar', 'heatmap', 'table', 'quadrant',
+];
+
+/** Quadrant charts are points on a 0–1 plane, not series over categories. */
+export interface QuadrantData {
+  readonly xLabels: readonly [string, string];
+  readonly yLabels: readonly [string, string];
+  /** Top-left, top-right, bottom-left, bottom-right. */
+  readonly quadrants: readonly [string, string, string, string];
+  readonly points: readonly { readonly label: string; readonly x: number; readonly y: number }[];
+}
+
+export const DEFAULT_QUADRANT: QuadrantData = {
+  xLabels: ['Low Effort', 'High Effort'],
+  yLabels: ['Low Impact', 'High Impact'],
+  quadrants: ['Quick wins', 'Big bets', 'Deprioritise', 'Time sinks'],
+  points: [
+    { label: 'Feature A', x: 0.32, y: 0.78 },
+    { label: 'Feature B', x: 0.74, y: 0.7 },
+    { label: 'Feature C', x: 0.68, y: 0.3 },
+    { label: 'Feature D', x: 0.26, y: 0.32 },
+  ],
+};
+
+export function quadrantContent(node: SceneNode): QuadrantData | null {
+  if (node.kind !== 'chart' || node.content.chart !== 'quadrant') return null;
+  const pair = (value: unknown, fallback: readonly [string, string]): readonly [string, string] => {
+    if (!Array.isArray(value) || value.length < 2) return fallback;
+    return [String(value[0] ?? fallback[0]), String(value[1] ?? fallback[1])];
+  };
+  const quad = (value: unknown): readonly [string, string, string, string] => {
+    if (!Array.isArray(value) || value.length < 4) return DEFAULT_QUADRANT.quadrants;
+    return [String(value[0]), String(value[1]), String(value[2]), String(value[3])];
+  };
+  const points = Array.isArray(node.content.points)
+    ? node.content.points.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+        const record = entry as Record<string, unknown>;
+        const x = typeof record.x === 'number' && Number.isFinite(record.x) ? record.x : 0;
+        const y = typeof record.y === 'number' && Number.isFinite(record.y) ? record.y : 0;
+        return [{ label: String(record.label ?? 'Point'), x: clamp01(x), y: clamp01(y) }];
+      })
+    : DEFAULT_QUADRANT.points;
+  return {
+    xLabels: pair(node.content.xLabels, DEFAULT_QUADRANT.xLabels),
+    yLabels: pair(node.content.yLabels, DEFAULT_QUADRANT.yLabels),
+    quadrants: quad(node.content.quadrants),
+    points,
+  };
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Where a quadrant point sits in node-local coordinates (x right, y up). */
+export function quadrantPointPosition(data: QuadrantData, point: QuadrantData['points'][number], plot: Bounds2d): Point2d {
+  return { x: plot.x + point.x * plot.width, y: plot.y + (1 - point.y) * plot.height };
+}
+
+const QUADRANT_FILLS = ['blue', 'emerald', 'red', 'amber'] as const;
+
+function quadrantPresentation(data: QuadrantData, size: Size2d): ChartPresentation {
+  const caption = 22;
+  const plot = createBounds2d(caption + 26, 8, Math.max(20, size.width - caption - 26 - 12), Math.max(20, size.height - 8 - caption));
+  const marks: ChartMark[] = [];
+  [0, 1, 2, 3].forEach((index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const swatch = paletteSwatch(QUADRANT_FILLS[index]!, 'pastel');
+    marks.push({
+      kind: 'cell', seriesIndex: index, color: swatch.fill, opacity: 1,
+      points: [
+        { x: plot.x + (column * plot.width) / 2, y: plot.y + (row * plot.height) / 2 },
+        { x: plot.x + ((column + 1) * plot.width) / 2, y: plot.y + ((row + 1) * plot.height) / 2 },
+      ],
+    });
+  });
+  const labels: ChartLabel[] = [];
+  data.quadrants.forEach((title, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    labels.push({
+      at: { x: plot.x + ((column + 0.5) * plot.width) / 2, y: plot.y + (row * plot.height) / 2 + 14 },
+      text: title, anchor: 'middle', role: 'axis',
+    });
+  });
+  labels.push({ at: { x: plot.x + plot.width / 2, y: plot.y + plot.height + 14 }, text: data.xLabels[0], anchor: 'middle', role: 'axis' });
+  labels.push({ at: { x: plot.x + plot.width, y: plot.y + plot.height + 14 }, text: data.xLabels[1], anchor: 'end', role: 'axis' });
+  labels.push({ at: { x: plot.x - 28, y: plot.y + plot.height / 2 }, text: data.yLabels[0], anchor: 'middle', role: 'axis' });
+  labels.push({ at: { x: plot.x - 28, y: plot.y + 6 }, text: data.yLabels[1], anchor: 'middle', role: 'axis' });
+  data.points.forEach((point, index) => {
+    const at = quadrantPointPosition(data, point, plot);
+    marks.push({ kind: 'point', points: [at], seriesIndex: index, color: paletteSwatch('blue', 'solid').fill, opacity: 1 });
+    labels.push({ at: { x: at.x + 8, y: at.y }, text: point.label, anchor: 'start', role: 'cell' });
+  });
+  const rules: Point2d[][] = [
+    [{ x: plot.x + plot.width / 2, y: plot.y }, { x: plot.x + plot.width / 2, y: plot.y + plot.height }],
+    [{ x: plot.x, y: plot.y + plot.height / 2 }, { x: plot.x + plot.width, y: plot.y + plot.height / 2 }],
+  ];
+  return {
+    chart: 'quadrant', data: { categories: [], series: [] }, marks, rules, labels, legend: [],
+    quadrants: { xLabels: data.xLabels, yLabels: data.yLabels, titles: data.quadrants },
+  };
+}
+
+/** Series colours in order, so a palette swap re-tints every chart at once. */
+const CHART_SERIES_KEYS: readonly PaletteKey[] = [
+  'blue', 'red', 'emerald', 'amber', 'violet', 'cyan', 'pink', 'yellow',
+];
+
+export interface ChartData {
+  readonly categories: readonly string[];
+  readonly series: readonly { readonly name: string; readonly values: readonly number[] }[];
+}
+
+interface ChartMark {
+  readonly kind: 'bar' | 'line' | 'area' | 'point' | 'slice' | 'cell' | 'swatch';
+  /** Local node coordinates; a line has its full polyline. */
+  readonly points: readonly Point2d[];
+  readonly seriesIndex: number;
+  readonly color: string;
+  readonly opacity: number;
+  readonly value?: number;
+  readonly label?: string;
+}
+
+interface ChartLabel {
+  readonly at: Point2d;
+  readonly text: string;
+  readonly anchor: 'start' | 'middle' | 'end';
+  readonly role: 'title' | 'axis' | 'tick' | 'value' | 'cell' | 'legend';
+  /** Overrides the theme text colour, e.g. white on a saturated wedge. */
+  readonly color?: string;
+}
+
+interface ChartPresentation {
+  readonly chart: ChartKind;
+  readonly data: ChartData;
+  readonly marks: readonly ChartMark[];
+  /** Axis/baseline/spoke lines. */
+  readonly rules: readonly (readonly Point2d[])[];
+  readonly labels: readonly ChartLabel[];
+  readonly legend: readonly { readonly color: string; readonly label: string }[];
+  /** Table layout for the `table` chart kind. */
+  readonly table?: {
+    readonly columns: readonly number[];
+    readonly rows: readonly number[];
+    readonly headerHeight: number;
+  };
+  /** Quadrant axis captions, when a quadrant chart carries them. */
+  readonly quadrants?: {
+    readonly xLabels: readonly [string, string];
+    readonly yLabels: readonly [string, string];
+    readonly titles: readonly [string, string, string, string];
+  };
+}
+
+export const DEFAULT_CHART_DATA: ChartData = {
+  categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+  series: [{ name: 'Revenue', values: [12, 19, 9, 22, 17] }],
+};
+
+export function chartSeriesColor(index: number): string {
+  return paletteSwatch(CHART_SERIES_KEYS[index % CHART_SERIES_KEYS.length]!, 'solid').fill;
+}
+
+/** Nice ticks covering 0..max: the smallest 1/2/5 × 10ⁿ step that reaches max. */
+export function niceTicks(max: number, count = 4): number[] {
+  if (!Number.isFinite(max) || max <= 0) return [0];
+  const rawStep = max / count;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const step = ([1, 2, 5, 10].find((candidate) => candidate >= normalized) ?? 10) * magnitude;
+  const top = Math.ceil(max / step) * step;
+  const ticks: number[] = [];
+  for (let value = 0; value < top - 1e-9; value += step) ticks.push(Number(value.toFixed(6)));
+  ticks.push(Number(top.toFixed(6)));
+  return ticks;
+}
+
+const AXIS_LEFT = 44;
+const AXIS_BOTTOM = 30;
+const PADDING = { top: 12, right: 16, left: 16 };
+const LEGEND_ROW = 18;
+
+function chartContent(node: SceneNode): { chart: ChartKind; data: ChartData; options: Record<string, unknown> } {
+  const raw = node.content.chart;
+  const chart = typeof raw === 'string' && (CHART_KINDS as readonly string[]).includes(raw)
+    ? raw as ChartKind : 'bar';
+  const categories = Array.isArray(node.content.categories)
+    ? node.content.categories.filter((value): value is string => typeof value === 'string')
+    : DEFAULT_CHART_DATA.categories;
+  const series = Array.isArray(node.content.series)
+    ? node.content.series.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+        const record = entry as Record<string, unknown>;
+        const values = Array.isArray(record.values)
+          ? record.values.map((value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0))
+          : [];
+        // A series with no values is malformed data, not an empty chart.
+        if (values.length === 0) return [];
+        return [{ name: typeof record.name === 'string' ? record.name : 'Series', values }];
+      })
+    : DEFAULT_CHART_DATA.series;
+  const options = node.content.options && typeof node.content.options === 'object'
+    && !Array.isArray(node.content.options) ? node.content.options as Record<string, unknown> : {};
+  return { chart, data: { categories, series }, options };
+}
+
+function chartTitle(node: SceneNode): string {
+  const title = node.content.title;
+  if (typeof title === 'string' && title.length > 0) return title;
+  // A DSL or agent label doubles as the chart title.
+  const label = node.content.label;
+  return typeof label === 'string' && label !== 'chart-1' ? label : '';
+}
+
+/** `headerRows` = title row (0/1) + legend rows; the plot starts under them. */
+function plotBounds(size: Size2d, headerRows: number): Bounds2d {
+  const left = AXIS_LEFT;
+  const top = PADDING.top + headerRows * LEGEND_ROW;
+  const width = Math.max(10, size.width - left - PADDING.right);
+  const height = Math.max(10, size.height - top - AXIS_BOTTOM);
+  return createBounds2d(left, top, width, height);
+}
+
+function cartesianPresentation(
+  chart: 'bar' | 'line' | 'area' | 'scatter',
+  data: ChartData,
+  size: Size2d,
+  headerRows: number
+): ChartPresentation {
+  const plot = plotBounds(size, headerRows);
+  const values = data.series.flatMap((series) => series.values);
+  const max = Math.max(0, ...values);
+  const min = Math.min(0, ...values);
+  const ticks = niceTicks(max - min || 1);
+  const scaleMax = min + ticks[ticks.length - 1]!;
+  const yOf = (value: number) =>
+    plot.y + plot.height - ((value - min) / (scaleMax - min || 1)) * plot.height;
+  const slot = plot.width / Math.max(1, data.categories.length);
+  const xOf = (index: number) => plot.x + slot * (index + 0.5);
+  const rules: Point2d[][] = [
+    [{ x: plot.x, y: plot.y }, { x: plot.x, y: plot.y + plot.height }],
+    [{ x: plot.x, y: plot.y + plot.height }, { x: plot.x + plot.width, y: plot.y + plot.height }],
+  ];
+  const labels: ChartLabel[] = [];
+  for (const tick of ticks) {
+    const y = yOf(tick);
+    rules.push([{ x: plot.x, y }, { x: plot.x + plot.width, y }]);
+    labels.push({ at: { x: plot.x - 6, y }, text: String(tick), anchor: 'end', role: 'tick' });
+  }
+  data.categories.forEach((category, index) => {
+    labels.push({ at: { x: xOf(index), y: plot.y + plot.height + 16 }, text: category, anchor: 'middle', role: 'axis' });
+  });
+  const marks: ChartMark[] = [];
+  const seriesWidth = slot / Math.max(1, data.series.length);
+  data.series.forEach((series, seriesIndex) => {
+    const color = chartSeriesColor(seriesIndex);
+    if (chart === 'bar') {
+      series.values.forEach((value, index) => {
+        // A bar is two corners: top edge and baseline, min 1 px so 0 still shows.
+        const zero = yOf(Math.max(min, 0));
+        const top = Math.abs(yOf(value) - zero) < 1 ? zero - 1 : Math.min(yOf(value), zero);
+        const width = Math.max(2, Math.min(48, seriesWidth - 6));
+        const x = xOf(index) - (seriesWidth * data.series.length) / 2 + seriesWidth * seriesIndex + 3;
+        marks.push({ kind: 'bar', points: [
+          { x, y: top }, { x: x + Math.min(width, seriesWidth - 6 < 2 ? 2 : width), y: zero },
+        ], seriesIndex, color, opacity: 1, value });
+      });
+    } else {
+      const line = series.values.map((value, index) => ({ x: xOf(index), y: yOf(value) }));
+      if (chart === 'line') marks.push({ kind: 'line', points: line, seriesIndex, color, opacity: 1 });
+      if (chart === 'scatter') {
+        series.values.forEach((value, index) => marks.push({
+          kind: 'point', points: [{ x: xOf(index), y: yOf(value) }], seriesIndex, color, opacity: 1, value,
+        }));
+      }
+      if (chart === 'area' && line.length > 0) {
+        marks.push({ kind: 'area', points: [
+          ...line, { x: line[line.length - 1]!.x, y: yOf(Math.max(min, 0)) },
+          { x: line[0]!.x, y: yOf(Math.max(min, 0)) },
+        ], seriesIndex, color, opacity: 0.9 });
+      }
+    }
+  });
+  return { chart, data, marks, rules, labels, legend: data.series.map((series, index) => ({ color: chartSeriesColor(index), label: series.name })) };
+}
+
+function piePresentation(chart: 'pie' | 'donut', data: ChartData, size: Size2d, headerRows: number): ChartPresentation {
+  const plot = plotBounds(size, headerRows);
+  const radius = Math.max(10, Math.min(plot.width, plot.height) / 2 - 4);
+  const cx = plot.x + plot.width / 2;
+  const cy = plot.y + plot.height / 2;
+  const first = data.series[0]?.values ?? [];
+  const total = first.reduce((sum, value) => sum + Math.max(0, value), 0) || 1;
+  const inner = chart === 'donut' ? radius * 0.55 : 0;
+  const marks: ChartMark[] = [];
+  const labels: ChartLabel[] = [];
+  let angle = -Math.PI / 2;
+  first.forEach((value, index) => {
+    // Zero and negative values have no slice and no label.
+    if (!(value > 0)) return;
+    const sweep = (value / total) * Math.PI * 2;
+    const pointCount = Math.max(3, Math.ceil((sweep / (Math.PI * 2)) * 48));
+    const points: Point2d[] = [];
+    for (let step = 0; step <= pointCount; step += 1) {
+      const at = angle + (sweep * step) / pointCount;
+      points.push({ x: cx + Math.cos(at) * radius, y: cy + Math.sin(at) * radius });
+    }
+    if (inner > 0) {
+      for (let step = pointCount; step >= 0; step -= 1) {
+        const at = angle + (sweep * step) / pointCount;
+        points.push({ x: cx + Math.cos(at) * inner, y: cy + Math.sin(at) * inner });
+      }
+    } else {
+      // A wedge closes through the centre; without it the polygon is arc-minus-chord.
+      points.push({ x: cx, y: cy });
+    }
+    marks.push({ kind: 'slice', points, seriesIndex: index, color: chartSeriesColor(index), opacity: 1, value });
+    const mid = angle + sweep / 2;
+    const labelRadius = math_mid(inner, radius);
+    // Slivers under ~5% cannot hold a label; the legend still names them.
+    if (sweep >= Math.PI * 0.1) {
+      labels.push({
+        at: { x: cx + Math.cos(mid) * labelRadius, y: cy + Math.sin(mid) * labelRadius },
+        text: `${Math.round((value / total) * 100)}%`,
+        anchor: 'middle', role: 'value', color: '#ffffff',
+      });
+    }
+    angle += sweep;
+  });
+  return {
+    chart, data, marks, rules: [], labels,
+    legend: (data.categories.length ? data.categories : first.map((_, index) => `#${index + 1}`))
+      .map((label, index) => ({ color: chartSeriesColor(index), label })),
+  };
+}
+
+function math_mid(inner: number, outer: number): number {
+  return inner > 0 ? (inner + outer) / 2 : (outer * 2) / 3;
+}
+
+function heatmapPresentation(data: ChartData, size: Size2d, headerRows: number): ChartPresentation {
+  const plot = plotBounds(size, headerRows);
+  const rows = data.series.length;
+  const columns = Math.max(1, data.categories.length);
+  const cellWidth = plot.width / columns;
+  const cellHeight = plot.height / Math.max(1, rows);
+  const values = data.series.flatMap((series) => series.values);
+  const max = Math.max(1, ...values);
+  const marks: ChartMark[] = [];
+  const labels: ChartLabel[] = [];
+  data.series.forEach((series, row) => {
+    series.values.forEach((value, column) => {
+      marks.push({
+        kind: 'cell', seriesIndex: row,
+        points: [
+          { x: plot.x + column * cellWidth, y: plot.y + row * cellHeight },
+          { x: plot.x + (column + 1) * cellWidth, y: plot.y + (row + 1) * cellHeight },
+        ],
+        color: chartSeriesColor(row),
+        opacity: Math.min(1, Math.max(0.12, Math.abs(value) / max)),
+        value,
+      });
+      labels.push({
+        at: { x: plot.x + (column + 0.5) * cellWidth, y: plot.y + (row + 0.5) * cellHeight },
+        text: String(value), anchor: 'middle', role: 'cell',
+      });
+    });
+    labels.push({
+      at: { x: plot.x - 6, y: plot.y + (row + 0.5) * cellHeight },
+      text: series.name, anchor: 'end', role: 'tick',
+    });
+  });
+  data.categories.forEach((category, column) => {
+    labels.push({
+      at: { x: plot.x + (column + 0.5) * cellWidth, y: plot.y + plot.height + 16 },
+      text: category, anchor: 'middle', role: 'axis',
+    });
+  });
+  return {
+    chart: 'heatmap', data, marks, rules: [],
+    labels,
+    legend: data.series.map((series, index) => ({ color: chartSeriesColor(index), label: series.name })),
+  };
+}
+
+function radarPresentation(data: ChartData, size: Size2d, headerRows: number): ChartPresentation {
+  const plot = plotBounds(size, headerRows);
+  // Axis captions sit at 1.12 r and need a line of room beyond that.
+  const radius = Math.max(10, (Math.min(plot.width, plot.height) / 2 - 14) / 1.12);
+  const cx = plot.x + plot.width / 2;
+  const cy = plot.y + plot.height / 2;
+  const axes = Math.max(3, data.categories.length);
+  const max = Math.max(1, ...data.series.flatMap((series) => series.values));
+  const spoke = (index: number, ratio: number): Point2d => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / axes;
+    return { x: cx + Math.cos(angle) * radius * ratio, y: cy + Math.sin(angle) * radius * ratio };
+  };
+  // Grid: four closed rings at 25/50/75/100 % plus a spoke per axis.
+  const ring = (ratio: number): Point2d[] => Array.from({ length: axes + 1 }, (_, index) => spoke(index % axes, ratio));
+  const rules: Point2d[][] = [
+    ...[0.25, 0.5, 0.75, 1].map(ring),
+    ...Array.from({ length: axes }, (_, index) => [spoke(index, 0), spoke(index, 1)]),
+  ];
+  const labels: ChartLabel[] = data.categories.map((category, index) => {
+    const at = spoke(index, 1.12);
+    return { at, text: category, anchor: 'middle', role: 'axis' };
+  });
+  const marks: ChartMark[] = data.series.map((series, seriesIndex) => ({
+    kind: 'area' as const, seriesIndex, color: chartSeriesColor(seriesIndex), opacity: 0.55,
+    points: series.values.map((value, index) => spoke(index, Math.max(0, Math.min(1, value / max)))),
+  }));
+  return {
+    chart: 'radar', data, marks, rules, labels,
+    legend: data.series.map((series, index) => ({ color: chartSeriesColor(index), label: series.name })),
+  };
+}
+
+function tablePresentation(data: ChartData, size: Size2d): ChartPresentation {
+  const rows = data.series.length + 1;
+  const columns = data.categories.length + 1;
+  const headerHeight = 26;
+  const columnWidth = (size.width - 8) / Math.max(1, columns);
+  // Rows share the height up to a readable cap; a tall card leaves space below
+  // rather than stretching one row over it.
+  const rowHeight = Math.min(40, Math.max(18, (size.height - 8 - headerHeight) / Math.max(1, rows - 1)));
+  const columnsX = Array.from({ length: columns + 1 }, (_, index) => 4 + index * columnWidth);
+  const rowsY = [4, 4 + headerHeight,
+    ...Array.from({ length: rows - 1 }, (_, index) => 4 + headerHeight + (index + 1) * rowHeight)];
+  const labels: ChartLabel[] = [{ at: { x: columnsX[0]! + 6, y: 4 + headerHeight / 2 }, text: '', anchor: 'start', role: 'axis' }];
+  data.categories.forEach((category, index) => {
+    labels.push({
+      at: { x: columnsX[index + 1]! + columnWidth / 2, y: 4 + headerHeight / 2 },
+      text: category, anchor: 'middle', role: 'axis',
+    });
+  });
+  const marks: ChartMark[] = [];
+  data.series.forEach((series, row) => {
+    const y = rowsY[row + 1]! + rowHeight / 2;
+    labels.push({ at: { x: columnsX[0]! + 6, y }, text: series.name, anchor: 'start', role: 'axis' });
+    series.values.forEach((value, column) => {
+      labels.push({
+        at: { x: columnsX[column + 1]! + columnWidth / 2, y },
+        text: typeof value === 'number' ? String(value) : '', anchor: 'middle', role: 'cell',
+      });
+    });
+  });
+  return {
+    chart: 'table', data, marks, rules: [],
+    labels,
+    legend: data.series.map((series, index) => ({ color: chartSeriesColor(index), label: series.name })),
+    table: { columns: columnsX, rows: rowsY, headerHeight },
+  };
+}
+
+export function resolveChartPresentation(node: SceneNode): ChartPresentation | null {
+  if (node.kind !== 'chart') return null;
+  const { chart, data } = chartContent(node);
+  const size = node.size;
+  if (chart === 'quadrant') {
+    const presentation = quadrantPresentation(quadrantContent(node) ?? DEFAULT_QUADRANT, size);
+    const title = chartTitle(node);
+    return title
+      ? { ...presentation, labels: [...presentation.labels, { at: { x: size.width / 2, y: 6 }, text: title, anchor: 'middle', role: 'title' }] }
+      : presentation;
+  }
+  const title = chartTitle(node);
+  const titleRows = title ? 1 : 0;
+  // A key earns its row only when there is something to tell apart: several
+  // series, or the slices of a pie. Two rows at most; the rest is in the data panel.
+  const legendItems = chart === 'pie' || chart === 'donut' ? data.categories.length : data.series.length;
+  const wantsLegend = chart !== 'table' && (chart === 'pie' || chart === 'donut' || data.series.length > 1);
+  const legendRows = wantsLegend ? Math.min(2, legendLayout(legendItems, size.width).rows) : 0;
+  const headerRows = titleRows + legendRows;
+  const presentation = chart === 'pie' || chart === 'donut' ? piePresentation(chart, data, size, headerRows)
+    : chart === 'heatmap' ? heatmapPresentation(data, size, headerRows)
+      : chart === 'radar' ? radarPresentation(data, size, headerRows)
+        : chart === 'table' ? tablePresentation(data, size)
+          : cartesianPresentation(chart, data, size, headerRows);
+  const marks = [...presentation.marks];
+  const labels = [...presentation.labels];
+  if (title) labels.unshift({ at: { x: size.width / 2, y: PADDING.top + LEGEND_ROW / 2 }, text: title, anchor: 'middle', role: 'title' });
+  if (legendRows > 0) {
+    const top = PADDING.top + titleRows * LEGEND_ROW;
+    let x = PADDING.left;
+    let row = 0;
+    for (const item of presentation.legend) {
+      const width = legendItemWidth(item.label);
+      if (x + width > size.width - PADDING.right && x > PADDING.left) { x = PADDING.left; row += 1; }
+      if (row >= legendRows) break;
+      const y = top + row * LEGEND_ROW + LEGEND_ROW / 2;
+      marks.push({ kind: 'swatch', points: [{ x, y: y - 5 }, { x: x + 10, y: y + 5 }], seriesIndex: -1, color: item.color, opacity: 1 });
+      labels.push({ at: { x: x + 15, y }, text: item.label, anchor: 'start', role: 'legend' });
+      x += width;
+    }
+  }
+  return { ...presentation, marks, labels };
+}
+
+// ponytail: legend text width is estimated at 6.2 px per character (11 px
+// system font); measure in the renderer if long series names misalign.
+function legendItemWidth(label: string): number {
+  return 10 + 5 + label.length * 6.2 + 14;
+}
+
+function legendLayout(items: number, width: number): { rows: number } {
+  // Rows the key needs at a typical label length; exact wrapping happens in resolve.
+  const perRow = Math.max(1, Math.floor((width - PADDING.left - PADDING.right) / legendItemWidth('Series 10')));
+  return { rows: items === 0 ? 0 : Math.ceil(items / perRow) };
+}

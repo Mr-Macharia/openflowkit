@@ -1,0 +1,160 @@
+import { IconPlayerPlay, IconTransform } from '@tabler/icons-react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { DslDiagnostic } from '../../../dsl/ast';
+import { DSL_FAMILIES } from '../../../dsl/ast';
+import { tokenize } from '../../../dsl/tokenize';
+import { COLOR_WORDS, EDGE_FLAG_WORDS, FILL_WORDS, SHAPE_WORDS } from '../../../dsl/vocabulary';
+import { DIAGRAM_PALETTES, type DiagramPaletteName } from '../../domain/nodes/nodePalette';
+import { Button, Icon, Panel, Segmented } from '../design-system';
+import { platformKeys } from './v2Shortcuts';
+
+export function V2CodePanel({
+  code, diagnostics, generating, canvasEdited, palette, onPaletteChange, onCodeChange, onGenerate, onClose, convertFrom, autoFocus = true, selectAll = false,
+}: {
+  code: string;
+  diagnostics: readonly DslDiagnostic[];
+  generating: boolean;
+  canvasEdited: boolean;
+  /** Palette applied when the code compiles; the DSL's own `appearance:` wins. */
+  palette: DiagramPaletteName;
+  onPaletteChange: (palette: DiagramPaletteName) => void;
+  onCodeChange: (code: string) => void;
+  onGenerate: () => void;
+  onClose: () => void;
+  /** Present when the draft is foreign syntax (Mermaid, Structurizr); converts it to DSL in place. */
+  convertFrom?: { readonly label: string; readonly convert: () => void } | undefined;
+  /** False when a template opened it beside its diagram: focus stays on the canvas. */
+  autoFocus?: boolean;
+  /** The new-diagram sample opens selected, so ⌘V replaces it; a diagram's own source opens with the caret at the end. */
+  selectAll?: boolean;
+}) {
+  // ponytail: an empty editor shows the placeholder, not "document is empty".
+  // Foreign syntax (Mermaid, Structurizr, D2) arrives without OpenFlowKit's parse diagnostics (the workspace drops
+  // them); what is left is the conversion's own report, which must show — a failed Convert would look dead otherwise.
+  const errors = code.trim() ? diagnostics.filter((item) => item.severity !== 'info') : [];
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  // Opened on request (⌥C, the button): the source is focused (U1-02); the sample is selected so ⌘V replaces it, while an
+  // existing diagram's source gets the caret at its end, so a stray keystroke never wipes it.
+  // A layout effect runs before Panel's own focus pass, which then leaves a child's focus alone.
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!autoFocus || !editor) return;
+    editor.focus();
+    if (selectAll) editor.select(); else editor.setSelectionRange(editor.value.length, editor.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at open
+  }, []);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const [suggestions, setSuggestions] = useState<readonly string[]>([]);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const names = useMemo(() => Array.from(new Set(code.split('\n').map((line) => line.split(/\s*(?:-->|->|<->|=|\[)/)[0]?.trim()).filter((name): name is string => !!name && !name.startsWith('//')))), [code]);
+  // ponytail: re-highlights every line per keystroke — ~0.2 s/key at 3k lines, ~0.8 s at 10k (2026-10-04); highlight only the visible lines, or a lazy CodeMirror chunk, if real sources get that long.
+  const highlighted = useMemo(() => {
+    const byLine = new Map<number, ReturnType<typeof tokenize>['tokens']>();
+    for (const token of tokenize(code).tokens) byLine.set(token.line, [...(byLine.get(token.line) ?? []), token]);
+    // The textarea holds CRLF as LF; the tokens are counted on LF lines too.
+    return code.replace(/\r\n?/g, '\n').split('\n').map((line, lineIndex) => {
+      const parts: React.ReactNode[] = [];
+      let cursor = 0;
+      for (const token of byLine.get(lineIndex + 1) ?? []) {
+        const start = token.col - 1;
+        if (start > cursor) parts.push(line.slice(cursor, start));
+        const raw = line.slice(start, token.endCol - 1);
+        parts.push(<span key={`${start}:${token.endCol}`} data-token={token.kind}>{raw}</span>);
+        cursor = token.endCol - 1;
+      }
+      parts.push(line.slice(cursor), '\n');
+      return <span key={lineIndex}>{parts}</span>;
+    });
+  }, [code]);
+  const openSuggestions = (kind: 'attrs' | 'all') => {
+    const attrs = [
+      ...Object.keys(SHAPE_WORDS), ...Object.keys(COLOR_WORDS),
+      ...FILL_WORDS, ...EDGE_FLAG_WORDS, 'shadow',
+      'label:', 'tech:', 'icon:', 'from:', 'to:', 'head:', 'pin:', 'rank:', 'width:', 'height:',
+    ];
+    setSuggestions(kind === 'attrs' ? attrs : [...DSL_FAMILIES, ...names]);
+    setSuggestionIndex(0);
+  };
+  // Typed through the browser's own edit path, so ⌘Z undoes it like a keystroke (setting `value` drops the undo entry).
+  const insert = (text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    if (document.execCommand?.('insertText', false, text)) return;
+    editor.setRangeText(text, editor.selectionStart, editor.selectionEnd, 'end');
+    onCodeChange(editor.value);
+  };
+  const chooseSuggestion = (value: string) => {
+    insert(value);
+    setSuggestions([]);
+  };
+  return (
+    <Panel title="Diagram as code" onClose={onClose} autoFocus={autoFocus} className="ofk-v2-workspace-panel ofk-v2-code-panel"
+      onKeyDown={(event) => {
+        // ⌘↵ and ⌘⇧M work from anywhere in the panel, not only inside the source.
+        // A key the source already handled (⌘↵ accepting a suggestion) is not a second command.
+        if (event.defaultPrevented || event.nativeEvent.isComposing || !(event.metaKey || event.ctrlKey)) return;
+        if (event.shiftKey && event.key.toLowerCase() === 'm' && convertFrom) { event.preventDefault(); convertFrom.convert(); }
+        else if (event.key === 'Enter') { event.preventDefault(); if (!generating && code.trim()) onGenerate(); }
+      }}>
+      <div className="ofk-v2-panel-stack">
+        <div className="ofk-code-caption"><span>Source</span><span>Paste OpenFlowKit, Mermaid, Structurizr or D2</span></div>
+        {canvasEdited ? <p className="ofk-v2-code-warning" role="status">Canvas edited — regenerate will overwrite those changes.</p> : null}
+        {convertFrom ? (
+          <div className="ofk-v2-code-mermaid" role="status">
+            <Icon icon={IconTransform} />
+            <span>{convertFrom.label} detected. Generate converts it.</span>
+            <Button onClick={convertFrom.convert}>Convert <kbd>{platformKeys('⌘⇧M')}</kbd></Button>
+          </div>
+        ) : null}
+        <div className="ofk-v2-code-editor-wrap">
+          <pre ref={highlightRef} className="ofk-v2-code-highlight" aria-hidden="true">{highlighted}</pre>
+          <textarea
+            ref={editorRef} id="v2-code" className="ofk-v2-code-editor" spellCheck={false} value={code} aria-label="Diagram source"
+            placeholder={'flowchart\nStart -> Build -> Ship\nBuild [diamond]'}
+            aria-describedby={errors.length ? 'v2-code-keys v2-code-diagnostics' : 'v2-code-keys'}
+            aria-invalid={errors.some((item) => item.severity === 'error') || undefined}
+            aria-autocomplete="list" aria-controls={suggestions.length ? 'v2-code-suggestions' : undefined}
+            onScroll={(event) => { if (highlightRef.current) { highlightRef.current.scrollTop = event.currentTarget.scrollTop; highlightRef.current.scrollLeft = event.currentTarget.scrollLeft; } }}
+            onChange={(event) => { onCodeChange(event.target.value); if (event.target.value[event.target.selectionStart - 1] === '[') openSuggestions('attrs'); }}
+            onKeyDown={(event) => {
+            // Enter and Tab belong to the input method while it composes (CJK, accents).
+            if (event.nativeEvent.isComposing) return;
+            if (suggestions.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setSuggestionIndex((current) => (current + (event.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length); return; }
+            if (suggestions.length && (event.key === 'Enter' || event.key === 'Tab')) { event.preventDefault(); chooseSuggestion(suggestions[suggestionIndex]!); return; }
+            if (suggestions.length && event.key === 'Escape') { event.preventDefault(); setSuggestions([]); return; }
+            if (event.ctrlKey && event.key === ' ') { event.preventDefault(); openSuggestions('all'); return; }
+            // Tab indents; Shift+Tab and Esc leave (WCAG 2.1.2). Esc lands on Close, so a second Esc closes the panel.
+            if (event.key === 'Tab' && !event.shiftKey) { event.preventDefault(); insert('  '); }
+            if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.closest('.ofk-panel')?.querySelector<HTMLElement>('.ofk-panel-header button')?.focus(); }
+            }}
+          />
+          <span id="v2-code-keys" className="ofk-visually-hidden">Tab indents. Esc leaves the editor.</span>
+          {suggestions.length ? <div id="v2-code-suggestions" role="listbox" className="ofk-v2-code-suggestions">
+            {suggestions.slice(0, 12).map((suggestion, index) => <button type="button" role="option" aria-selected={index === suggestionIndex} key={suggestion} onPointerDown={(event) => event.preventDefault()} onClick={() => chooseSuggestion(suggestion)}>{suggestion}</button>)}
+          </div> : null}
+        </div>
+        <div id="v2-code-diagnostics" className="ofk-v2-code-diagnostics" aria-live="polite" hidden={errors.length === 0}>
+          {errors.slice(0, 8).map((item, index) => (
+            <button type="button" key={`${item.line}:${item.col}:${item.code}:${index}`} data-tone={item.severity} onClick={() => {
+              const editor = editorRef.current;
+              if (!editor) return;
+              const offset = editor.value.split('\n').slice(0, item.line - 1).reduce((sum, line) => sum + line.length + 1, 0) + item.col - 1;
+              editor.focus(); editor.setSelectionRange(offset, offset + Math.max(1, item.endCol - item.col));
+            }}><span>{item.code}</span><strong>Line {item.line}</strong>{item.message}</button>
+          ))}
+        </div>
+        <footer className="ofk-v2-panel-footer ofk-v2-code-footer">
+          <span className="ofk-code-palette-label">Diagram palette, applied on Generate</span>
+          <Segmented<DiagramPaletteName> label="Diagram palette" value={palette}
+            onChange={onPaletteChange}
+            options={DIAGRAM_PALETTES.map(({ id, label, hint }) => ({ value: id, label, title: hint }))} />
+          <Button variant="primary" onClick={onGenerate} busy={generating} disabled={generating || !code.trim()}>
+            <Icon icon={IconPlayerPlay} /> {generating ? 'Generating…' : 'Generate diagram'} <kbd>{platformKeys('⌘↵')}</kbd>
+          </Button>
+          {errors.length ? <p>{convertFrom ? 'Fix the marked lines to convert.' : 'Bad lines are skipped; the rest still renders.'}</p> : null}
+        </footer>
+      </div>
+    </Panel>
+  );
+}

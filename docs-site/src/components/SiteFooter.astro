@@ -1,0 +1,109 @@
+---
+// The site footer: product, docs and community links, on the landing page and
+// under every docs page. A docs link whose page does not exist is left out.
+import { getCollection } from 'astro:content';
+import { FOOTER_COLUMNS, REPO_URL } from './links';
+
+const pages = new Set((await getCollection('docs')).map(({ id }) => id));
+const exists = (href: string) => !href.startsWith('/') || pages.has(href.replace(/^\/|\/$/g, ''));
+const columns = FOOTER_COLUMNS.map((column) => ({ ...column, links: column.links.filter(({ href }) => exists(href)) }));
+---
+
+<footer class="site-footer not-content" aria-label="Site">
+  <div class="brand">
+    <a class="wordmark" href="/">
+      <img src="/favicon.svg" alt="" width="20" height="20" />
+      OpenFlowKit
+    </a>
+    <p>Architecture diagrams you draw, write as code, or hand to your agent.</p>
+  </div>
+  {columns.map((column) => (
+    <nav aria-label={column.title}>
+      <h2>{column.title}</h2>
+      <ul>
+        {column.links.map((link) => (
+          <li><a href={link.href}>{link.label}</a></li>
+        ))}
+      </ul>
+    </nav>
+  ))}
+  <p class="legal">
+    Free and open source under the <a href={`${REPO_URL}/blob/main/LICENSE`}>MIT licence</a>. No account needed.
+  </p>
+</footer>
+
+<style>
+  .site-footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem 1.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--ofk-border);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .brand {
+    grid-column: 1 / -1;
+  }
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--ofk-text);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .brand p {
+    max-width: 20rem;
+    margin: 0.5rem 0 0;
+    color: var(--ofk-muted);
+  }
+  h2 {
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ofk-muted);
+  }
+  ul {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    margin: 0;
+  }
+  nav a {
+    color: var(--sl-color-text);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+  @media (hover: hover) {
+    nav a:hover {
+      color: var(--ofk-text);
+    }
+  }
+  .legal {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--ofk-border);
+    font-size: 0.8125rem;
+    color: var(--ofk-muted);
+  }
+  .legal a {
+    color: inherit;
+    text-underline-offset: 0.2em;
+  }
+  @media (min-width: 40rem) {
+    .site-footer {
+      grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+    }
+    .brand {
+      grid-column: auto;
+    }
+  }
+</style>

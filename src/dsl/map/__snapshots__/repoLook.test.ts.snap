@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`repoLook > draws the repo scene at overview 1`] = `
+[
+  [
+    "server",
+    "architecture",
+    null,
+    {
+      "height": 92,
+      "width": 240,
+    },
+    "API server",
+    "Module · TypeScript
+17 files",
+  ],
+  [
+    "web",
+    "architecture",
+    null,
+    {
+      "height": 92,
+      "width": 240,
+    },
+    "Web app",
+    "Module · TypeScript
+4 files",
+  ],
+  [
+    "root#files",
+    "architecture",
+    null,
+    {
+      "height": 92,
+      "width": 240,
+    },
+    "Repo files",
+    "Group
+1 file",
+  ],
+  [
+    "root#outside",
+    "architecture",
+    null,
+    {
+      "height": 92,
+      "width": 240,
+    },
+    "Outside services",
+    "Group
+1 service",
+  ],
+]
+`;

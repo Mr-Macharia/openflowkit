@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createTestConnector,
+  createTestDocument,
+  createTestNode,
+} from '../../testing/builders/documentBuilder';
+import { buildSemanticSceneItems, semanticScenePageForItem } from './semanticScene';
+
+describe('semantic scene projection', () => {
+  it('projects visible nodes and bound connectors with useful descriptions', () => {
+    const page = createTestDocument({
+      nodes: [
+        createTestNode('visible', { content: { label: 'Visible' } }),
+        createTestNode('hidden', { content: { label: 'Hidden' } }),
+      ],
+      connectors: [createTestConnector('edge', 'visible', 'hidden')],
+    }).pages[0];
+    const hiddenLayer = { id: 'hidden-layer', name: 'Hidden', visible: false, locked: false };
+    const projected = buildSemanticSceneItems({
+      ...page,
+      layers: [...page.layers, hiddenLayer],
+      nodes: page.nodes.map((node) => node.id === 'hidden' ? { ...node, layerId: hiddenLayer.id } : node),
+    });
+    expect(projected).toEqual([{
+      kind: 'node', id: 'visible', label: 'Visible', description: 'rounded shape',
+    }]);
+  });
+
+  it('names a library shape by its outline, not its renderer kind', () => {
+    const page = createTestDocument({
+      nodes: [createTestNode('star', { content: { shape: 'star', label: 'Launch' } })],
+    }).pages[0];
+    expect(buildSemanticSceneItems(page)).toEqual([{
+      kind: 'node', id: 'star', label: 'Launch', description: 'star shape',
+    }]);
+  });
+
+  it('names a wireframe widget with its state, and a preset frame by its device', () => {
+    const page = createTestDocument({
+      nodes: [
+        createTestNode('toggle', { kind: 'widget', content: { widget: 'toggle', label: 'Dark mode', checked: true } }),
+        createTestNode('phone', { kind: 'frame', content: { preset: 'phone', label: 'Login' } }),
+      ],
+    }).pages[0];
+    expect(buildSemanticSceneItems(page).map(({ description }) => description))
+      .toEqual(["Wireframe toggle 'Dark mode', on", 'Phone frame']);
+  });
+
+  it('locates items in bounded semantic pages', () => {
+    const items = Array.from({ length: 205 }, (_, index) => ({
+      kind: 'node' as const,
+      id: `node-${index}`,
+      label: `Node ${index}`,
+      description: 'process node',
+    }));
+    expect(semanticScenePageForItem(items, 'node', 'node-0')).toBe(0);
+    expect(semanticScenePageForItem(items, 'node', 'node-100')).toBe(1);
+    expect(semanticScenePageForItem(items, 'node', 'node-204')).toBe(2);
+    expect(semanticScenePageForItem(items, 'connector', 'node-0')).toBeNull();
+  });
+});

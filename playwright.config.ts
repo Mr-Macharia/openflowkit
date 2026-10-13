@@ -6,22 +6,38 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 2,
-  reporter: 'html',
+  // One browser at a time: two headed WebGL canvases starve each other and
+  // canvas specs fail with "no empty point". Serial is slower, never flaky.
+  workers: 1,
+  // CI shards each write a blob; the e2e-report job merges them into one HTML report.
+  reporter: process.env.CI ? [['blob'], ['list']] : 'html',
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    trace: 'on-first-retry',
+    // CI keeps the failing attempt itself: a flake that passes on retry still leaves its trace.
+    trace: process.env.CI ? 'retain-on-first-failure' : 'on-first-retry',
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      // CI has no GPU: SwiftShader gives headless Chromium a (slow) WebGL.
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(process.env.CI ? { launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } } : {}),
+      },
     },
   ],
-  webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+      url: 'http://127.0.0.1:4173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'node e2e/stubProviderServer.mjs 4399',
+      url: 'http://127.0.0.1:4399/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 20_000,
+    },
+  ],
 });

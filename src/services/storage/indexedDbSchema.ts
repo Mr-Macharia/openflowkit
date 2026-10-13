@@ -1,7 +1,7 @@
+import { V2StorageBlockedError } from './v2/v2Errors';
+
 export const FLOW_PERSISTENCE_DB_NAME = 'openflowkit-persistence';
-export const FLOW_PERSISTENCE_DB_VERSION = 3;
-/** Fired on `globalThis` when a newer OpenFlowKit upgrades the database under this tab. */
-export const NEWER_APP_OPENED_EVENT = 'openflowkit:newer-app-opened';
+const FLOW_PERSISTENCE_DB_VERSION = 5;
 export const FLOW_DOCUMENT_STORE_NAME = 'flowDocuments';
 export const FLOW_METADATA_STORE_NAME = 'flowMetadata';
 export const SCHEMA_META_STORE_NAME = 'schemaMeta';
@@ -13,6 +13,10 @@ export const WORKSPACE_META_STORE_NAME = 'workspaceMeta';
 export const AI_SETTINGS_PERSISTENT_STORE_NAME = 'aiSettingsPersistent';
 export const PREFERENCES_STORE_NAME = 'preferences';
 export const ASSETS_STORE_NAME = 'assets';
+export const V2_DOCUMENTS_STORE_NAME = 'v2Documents';
+export const V2_RECOVERY_STORE_NAME = 'v2Recovery';
+/** v5: home-page previews, one per document, kept apart so listing and saving stay cheap. */
+export const V2_THUMBNAILS_STORE_NAME = 'v2Thumbnails';
 export const CHAT_MESSAGES_BY_DOCUMENT_ID_INDEX = 'byDocumentId';
 export const CHAT_MESSAGES_BY_DOCUMENT_ID_AND_CREATED_AT_INDEX =
   'byDocumentIdAndCreatedAt';
@@ -54,6 +58,9 @@ const OBJECT_STORE_DEFINITIONS: ObjectStoreDefinition[] = [
   { name: AI_SETTINGS_PERSISTENT_STORE_NAME, keyPath: 'id' },
   { name: PREFERENCES_STORE_NAME, keyPath: 'id' },
   { name: ASSETS_STORE_NAME, keyPath: 'id' },
+  { name: V2_DOCUMENTS_STORE_NAME, keyPath: 'id' },
+  { name: V2_RECOVERY_STORE_NAME, keyPath: 'id' },
+  { name: V2_THUMBNAILS_STORE_NAME, keyPath: 'id' },
 ];
 
 function ensureObjectStore(
@@ -85,42 +92,16 @@ function ensureObjectStoreIndex(
   }
 }
 
-// True once this page opened the database at our own version.
-let openedAtOurVersion = false;
+/** Opens still waiting on another tab; a second open would queue behind one and hang. */
+const blockedOpens = new WeakMap<IDBFactory, IDBOpenDBRequest>();
 
 export function openFlowPersistenceDatabase(indexedDbFactory: IDBFactory): Promise<IDBDatabase> {
-  return openDatabase(indexedDbFactory, FLOW_PERSISTENCE_DB_VERSION).then(
-    (database) => {
-      openedAtOurVersion = true;
-      return database;
-    },
-    (error: unknown) => {
-      // The next OpenFlowKit upgrades this database past our version and keeps every store we
-      // use. Open whatever version is there, so this app still sees its diagrams in a browser
-      // that has run the new one (a rollback loads straight into this path, silently).
-      if (error instanceof DOMException && error.name === 'VersionError') {
-        if (openedAtOurVersion) announceNewerApp();
-        return openDatabase(indexedDbFactory);
-      }
-      throw error;
-    }
-  );
-}
-
-// The database moved on under this tab: edits made here after a newer app imported its copy
-// would not carry over.
-function announceNewerApp(): void {
-  globalThis.dispatchEvent?.(new Event(NEWER_APP_OPENED_EVENT));
-}
-
-function openDatabase(indexedDbFactory: IDBFactory, version?: number): Promise<IDBDatabase> {
+  if (blockedOpens.has(indexedDbFactory)) return Promise.reject(new V2StorageBlockedError());
   return new Promise((resolve, reject) => {
-    const request =
-      version === undefined
-        ? indexedDbFactory.open(FLOW_PERSISTENCE_DB_NAME)
-        : indexedDbFactory.open(FLOW_PERSISTENCE_DB_NAME, version);
+    const request = indexedDbFactory.open(FLOW_PERSISTENCE_DB_NAME, FLOW_PERSISTENCE_DB_VERSION);
 
     request.onerror = () => {
+      blockedOpens.delete(indexedDbFactory);
       reject(request.error ?? new Error('Failed to open IndexedDB persistence database.'));
     };
 
@@ -135,16 +116,24 @@ function openDatabase(indexedDbFactory: IDBFactory, version?: number): Promise<I
       }
     };
 
+    // An older tab that will not let go would otherwise leave this open waiting forever: say so instead.
+    let blocked = false;
+    request.onblocked = () => {
+      blocked = true;
+      blockedOpens.set(indexedDbFactory, request);
+      reject(new V2StorageBlockedError());
+    };
+
     request.onsuccess = () => {
-      const database = request.result;
-      database.onversionchange = (event) => {
-        // Never block a newer app's upgrade from an open tab.
-        database.close();
-        if (event.newVersion !== null && event.newVersion > FLOW_PERSISTENCE_DB_VERSION) {
-          announceNewerApp();
-        }
-      };
-      resolve(database);
+      // Opened after all, once the other tab closed: nobody is waiting for this connection now, and the next open goes through.
+      if (blocked) {
+        blockedOpens.delete(indexedDbFactory);
+        request.result.close();
+        return;
+      }
+      // A newer tab upgrading the schema must not wait on this connection.
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
     };
   });
 }

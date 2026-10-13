@@ -1,110 +1,303 @@
 ---
-draft: false
 title: MCP Server
-description: Use the OpenFlowKit MCP server with Claude Desktop, Cursor, Windsurf, and other MCP clients.
+description: Drive the live editor or edit .openflow.json files from any MCP client — the full tool surface, generated from the manifest.
 ---
 
-The OpenFlowKit MCP server gives AI clients diagramming skills that run local-first — on your machine, no API key, no cloud round-trip, deterministic output. Claude Desktop, Cursor, Windsurf, and other MCP clients already have an LLM; OpenFlowKit supplies the local tools that make that model good at diagrams.
+:::note[Always current]
+Built from the app's own source (`src/agent/manifest.ts`, `src/agent/ops/` and the tool registrations under `mcp-server/src`) on every docs build, so it can't drift. To change it, edit the source.
+:::
 
-The package is `@vrun-design/openflowkit-mcp`. It runs locally over the standard MCP stdio transport.
+OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 
-## Install and run
+| Your agent runs… | How to connect | What it can do |
+| --- | --- | --- |
+| **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | This MCP server | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files, maps a codebase, takes screenshots |
+| **In your browser** (experimental) | Nothing to install: [WebMCP](/webmcp/) | Reads and edits the diagram you have open |
 
-Use it directly with `npx`:
+The server is a stdio process on your machine. It needs no API key of its own and returns
+deterministic results: your MCP client's model does the thinking. A chat-app endpoint
+(`render_diagram`, drawn inline in the chat) is in the package too; to run it yourself, see
+[the server README](https://github.com/openflowkit/openflowkit/tree/main/mcp-server#readme).
+
+## Connect your client
+
+Pick your client. Every route runs the same command, `npx -y openflowkit mcp`.
+
+- **Cursor:** [Add to Cursor](https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19)
+- **VS Code:** [Install in VS Code](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522openflowkit%2522%252C%2522mcp%2522%255D%257D)
+
+### Claude Code
+
+One line:
 
 ```bash
-npx -y @vrun-design/openflowkit-mcp
+claude mcp add -s user openflowkit -- npx -y openflowkit mcp
 ```
 
-Or install it globally:
+Or install the plugin, which adds the server and the skill together:
 
 ```bash
-npm install -g @vrun-design/openflowkit-mcp
-openflowkit-mcp
+claude plugin marketplace add openflowkit/openflowkit
+claude plugin install openflowkit@openflowkit
 ```
 
-The server requires Node 18 or newer.
+### Codex
 
-## Claude Desktop setup
+Codex reads MCP servers from `~/.codex/config.toml`:
 
-Add the server to your Claude Desktop config:
+```toml
+[mcp_servers.openflowkit]
+command = "npx"
+args = ["-y", "openflowkit", "mcp"]
+```
+
+Or install the plugin, then pick **OpenFlowKit** in the Plugins Directory:
+
+```bash
+codex plugin marketplace add openflowkit/openflowkit
+```
+
+### Claude Desktop, Windsurf and other clients
+
+Point your client at the command. In Claude Desktop's `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "openflowkit": {
       "command": "npx",
-      "args": ["-y", "@vrun-design/openflowkit-mcp"]
+      "args": ["-y", "openflowkit", "mcp"]
     }
   }
 }
 ```
 
-For Cursor, Windsurf, and other MCP clients, use the same command and args in that client's MCP settings.
+Restart the client, then click **Connect agent** in the app.
 
-## How generation works
+Node 20.11 or newer is required.
 
-OpenFlowKit MCP is agent-native:
+## Two modes
 
-1. The agent reads `openflowkit://docs/dsl-cheatsheet`.
-2. The agent writes OpenFlow DSL itself.
-3. The agent calls `find_icon` when it needs exact cloud or developer icon slugs.
-4. The agent calls `validate_openflow_dsl`.
-5. The agent fixes any diagnostics.
-6. The agent calls `create_viewer_url`.
-7. The agent returns editable DSL and a viewer link.
+- **Live** — open the app, click **Connect agent**, and every op runs against the document
+you see. The bridge listens on `127.0.0.1:43119` by default (change it in the Connect agent panel;
+the server reads `OPENFLOWKIT_BRIDGE_PORT`), checks the request's host and origin, and can be gated
+with a shared token (`OPENFLOWKIT_BRIDGE_TOKEN` on the server, the same token in the panel). Edits land as one undo step per
+call; `screenshot` returns a real PNG; `fit_view` moves your view.
+- **File** — `openflow_open` a `.openflow.json` path and the same ops run headlessly on
+that document, with `openflow_save` writing it back. There is no canvas here, so PNG/GIF/
+MP4/WebM export and `screenshot` ask you to connect the live editor; SVG, animated SVG,
+JSON and PDF (a print-ready HTML page) export work.
 
-No API keys are required for MCP diagram generation.
+If no editor is paired, pass `documentId` (from `openflow_open`) to target a file-mode
+document; without it, tools use the paired editor or, in file mode, the document opened or
+created last. Page-scoped ops take a `pageId` from `list_pages`.
 
-## Tools
-
-The current server exposes 8 local-first tools (no API key, deterministic, run on your machine):
+## Document and server tools
 
 | Tool | What it does |
 | --- | --- |
-| `validate_openflow_dsl` | Lint DSL with structured diagnostics |
-| `create_viewer_url` | Create a shareable OpenFlowKit viewer URL from DSL |
-| `analyze_codebase` | Detect platforms, services, top-level structure, and language mix from a local repo |
-| `find_icon` | Search 1,600+ provider and developer icons for exact `archProvider` and `archResourceType` values |
-| `list_starter_templates` | Browse built-in templates |
-| `get_starter_template` | Fetch a template's DSL |
-| `list_diagram_node_types` | Return DSL node and edge reference data |
-| `server_info` | Return version and capability metadata |
+| `analyze_codebase` | Scan a repository and suggest architecture elements |
+| `discover_architecture` | Derive an architecture model from a repository |
+| `drift_report` | Compare a model against the repository; matches by name and tech only |
+| `explain_element` | What the model says about one element, plus linked ADR markdown |
+| `get_starter_template` | One starter template, by name |
+| `get_syntax` | The DSL grammar, whole or one family (unknown families are rejected); also listed as an op below |
+| `list_diagram_node_types` | Family names, shape words and edge styles |
+| `list_starter_templates` | List the starter DSL templates |
+| `openflow_create` | Create an empty file-mode document |
+| `openflow_open` | Load a .openflow.json from disk into file mode |
+| `openflow_save` | Write a document back to disk |
+| `render_diagram` | Remote endpoint only (`npm run start:http`): draw DSL or Mermaid inline in the chat, with an editor link |
+| `server_info` | Server name, version and capabilities |
+| `validate_openflow_dsl` | Parse DSL with the real parser and return its diagnostics |
+| `whoami` | Which mode the server is in, and which documents it holds |
 
 ## Resources and prompts
 
-The server exposes five resources:
+The server also exposes MCP resources: `grammar`, `icons-by-provider`, `icons-catalog`, `template`, `templates-catalog` — the
+grammar, the icon catalogs and the starter templates. Two prompts steer a client toward
+the right tools: `flowchart_from_description` and `architecture_from_codebase`. Mermaid,
+Structurizr DSL and D2 need no prompt: `create_diagram`, `update_diagram` and
+`validate_openflow_dsl` take them directly.
 
-| URI | Description |
+## The operations
+
+One MCP tool per operation; every mutating op has an inverse, and the live editor applies it
+as a single undo step. The manifest names the human operation each one mirrors.
+
+### `create_diagram`
+
+Create diagram — mirrors **Generate diagram from code** in the code panel; changes the document (one undo step in live mode).
+
+| Argument | Type |
 | --- | --- |
-| `openflowkit://docs/dsl-cheatsheet` | OpenFlow DSL syntax reference |
-| `openflowkit://templates` | Starter template catalog |
-| `openflowkit://templates/{name}` | DSL for a named starter template |
-| `openflowkit://icons` | Full architecture icon catalog |
-| `openflowkit://icons/{provider}` | Icons for one provider pack (`aws`, `azure`, `gcp`, `cncf`, or `developer`) |
+| `dsl` | string |
+| `pageId` | string *(optional)* |
+| `at` | object: x (number), y (number) *(optional)* |
+| `palette` | `pastel` \| `paper` \| `builder` \| `mono` *(optional)* |
 
-Clients can also surface three prompt templates: `flowchart_from_description`, `convert_mermaid_to_openflow`, and `architecture_from_codebase`.
+### `update_diagram`
 
-## Try it
+Update diagram — mirrors **Regenerate a diagram frame** in the code panel; changes the document (one undo step in live mode).
 
-Paste this into a connected MCP client:
+| Argument | Type |
+| --- | --- |
+| `frameId` | string |
+| `dsl` | string |
+| `palette` | `pastel` \| `paper` \| `builder` \| `mono` *(optional)* |
+| `pageId` | string (MCP tool; the CLI says `--page`) |
 
-```text
-Using the openflowkit MCP server: read openflowkit://docs/dsl-cheatsheet, then write an OpenFlow DSL flowchart for a checkout flow (cart → shipping → promo-code decision → payment → Stripe webhook → confirm). Call validate_openflow_dsl on your output, fix any errors, then call create_viewer_url. Show me the final DSL and viewer URL.
-```
+### `get_diagram`
 
-For codebases:
+Read diagram — mirrors **Edit as code** in the context bar; read-only.
 
-```text
-Using openflowkit: call analyze_codebase on /path/to/project, read openflowkit://docs/dsl-cheatsheet, use find_icon for exact architecture icons, write OpenFlow DSL, validate it, then create a viewer URL.
-```
+| Argument | Type |
+| --- | --- |
+| `frameId` | string *(optional)* |
+| `pageId` | string *(optional)* |
 
-## Privacy model
+### `list_diagrams`
 
-The server does not store diagrams, require an OpenFlowKit account, ask for provider keys, or phone home. Local tools run on your machine. Codebase analysis only reads the directory you explicitly pass to `analyze_codebase`.
+List diagrams — an agent-only lookup; read-only.
 
-## Related pages
+Takes no arguments.
 
-- [OpenFlow DSL](/openflow-dsl/)
-- [AI Generation](/ai-generation/)
-- [Prompting AI Agents](/prompting-agents/)
+### `get_syntax`
+
+Read the grammar — an agent-only lookup; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `family` | `architecture` \| `flowchart` \| `gitgraph` \| `sequence` \| `state` \| `erd` \| `class` \| `mindmap` \| `bpmn` \| `org` \| `gantt` \| `wireframe` \| `chart` \| `sankey` \| `journey` \| `timeline` *(optional)* |
+
+### `search_icons`
+
+Search icons — an agent-only lookup; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `query` | string |
+| `limit` | number *(default `10`)* |
+
+### `find_icons_for`
+
+Find icons for a concept — an agent-only lookup; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `concept` | string |
+| `limit` | number *(default `8`)* |
+
+### `move`
+
+Move shapes — mirrors **Move / nudge shapes** in a canvas gesture; changes the document (one undo step in live mode). Pass exactly one of `to` or `delta`.
+
+| Argument | Type |
+| --- | --- |
+| `ids` | string[] |
+| `to` | object: x (number), y (number) *(optional)* |
+| `delta` | object: x (number), y (number) *(optional)* |
+| `pageId` | string (MCP tool; the CLI says `--page`) |
+
+### `style`
+
+Style shapes — mirrors **Fill / stroke / width / dash / opacity** in the context bar; changes the document (one undo step in live mode).
+
+| Argument | Type |
+| --- | --- |
+| `ids` | string[] |
+| `fill` | string *(optional)* |
+| `stroke` | string *(optional)* |
+| `strokeWidth` | number *(optional)* |
+| `strokeStyle` | `solid` \| `dashed` \| `dotted` *(optional)* |
+| `opacity` | number *(optional)* |
+| `textColor` | string *(optional)* |
+| `iconPlacement` | `top` \| `left` *(optional)* |
+| `pageId` | string (MCP tool; the CLI says `--page`) |
+
+### `delete`
+
+Delete shapes — mirrors **Delete selection** in a keyboard action; changes the document (one undo step in live mode).
+
+| Argument | Type |
+| --- | --- |
+| `ids` | string[] |
+| `kind` | `node` \| `connector` \| `any` *(default `"any"`)* |
+| `pageId` | string (MCP tool; the CLI says `--page`) |
+
+### `add_shape`
+
+Add shape — mirrors **Create rectangle / ellipse / text** in the toolbar; changes the document (one undo step in live mode).
+
+| Argument | Type |
+| --- | --- |
+| `kind` | `rectangle` \| `ellipse` \| `text` \| `rounded` \| `capsule` \| `circle` \| `diamond` \| `triangle` \| `trapezoid` \| `parallelogram` \| `hexagon` \| `octagon` \| `pentagon-tag` \| `chevron` \| `plus` \| `star` \| `heart` \| `cloud` \| `lightning` \| `bookmark` \| `speech-bubble` \| `page` \| `folder` \| `list-card` \| `filled-bar` \| `half-round` \| `cylinder` \| `document` \| `cube` \| `prism` \| `layer-stack` \| `target` \| `check-circle` \| `cross-circle` \| `numbered-circle` \| `brace` \| `bracket` \| `pin` \| `actor` \| `arrow-up` \| `arrow-down` \| `arrow-left` \| `arrow-right` \| `venn` \| `process` \| `start` \| `decision` \| `end` \| `custom` \| `image` \| `annotation` \| `sticky` \| `callout` \| `pen` \| `highlighter` \| `line` \| `arrow` \| `architecture` \| `provider_icon` \| `group` \| `section` \| `swimlane` \| `class` \| `er_entity` \| `mindmap` \| `journey` \| `sequence_participant` \| `sequence_note` \| `sequence_fragment` \| `browser` \| `mobile` \| "chart" \| "widget" \| "frame" *(default `"process"`)* |
+| `label` | string *(optional)* |
+| `x` | number *(default `0`)* |
+| `y` | number *(default `0`)* |
+| `id` | string *(optional)* |
+| `chart` | object: kind (`bar` \| `line` \| `area` \| `scatter` \| `pie` \| `donut` \| `radar` \| `heatmap` \| `table` \| `quadrant` *(default `"bar"`)*), categories (string[] *(optional)*), series (object: name (string), values (number[])[] *(optional)*), points (object: label (string), x (number), y (number)[] *(optional)*) *(optional)* |
+| `widget` | object: kind (`button` \| `input` \| `search` \| `checkbox` \| `radio` \| `toggle` \| `dropdown` \| `slider` \| `navbar` \| `tabs` \| `image` \| `avatar` \| `heading` \| `paragraph` \| `divider` \| `link` \| `textarea` \| `stepper` \| `badge` \| `progress` \| `breadcrumbs` \| `pagination` \| `rating` \| `card` \| `list` \| `alert` \| `menu` \| `tooltip` \| `accordion` \| `datepicker` \| `sidebar` \| `segmented` \| `tabbar` \| `statusbar` \| `fab`), checked (boolean *(optional)*), value (number *(optional)*), active (number *(optional)*), variant (`primary` \| `info` \| `success` \| `warning` \| `error` *(optional)*) *(optional)* |
+| `preset` | `frame` \| `phone` \| `tablet` \| `browser` \| `window` *(optional)* |
+| `parentId` | string *(optional)* |
+| `pageId` | string (MCP tool; the CLI says `--page`) |
+
+### `export`
+
+Export — mirrors **Export PNG / SVG / PDF / JSON** in the document bar; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `format` | `svg` \| `png` \| `pdf` \| `json` \| `svg-animated` \| `gif` \| `mp4` \| `webm` *(default `"svg"`)* |
+| `scope` | `selection` \| `page` \| `document` *(default `"document"`)* |
+| `pageId` | string *(optional)* |
+| `ids` | string[] *(optional)* |
+| `scale` | 1 \| 2 \| 3 *(default `1`)* |
+| `theme` | `light` \| `dark` \| `print` *(default `"light"`)* |
+| `preset` | `build` \| `walkthrough` \| `pulse` *(default `"build"`)* |
+| `order` | string *(optional)* |
+| `durationMs` | number *(optional)* |
+| `loop` | boolean *(default `false`)* |
+| `size` | 720 \| 1080 \| 1440 *(default `1080`)* |
+| `fps` | 12 \| 24 \| 30 *(default `24`)* |
+
+### `screenshot`
+
+Screenshot a diagram — an agent-only lookup; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `frameId` | string *(optional)* |
+| `pageId` | string *(optional)* |
+| `scale` | 1 \| 2 \| 3 *(default `2`)* |
+| `theme` | `light` \| `dark` *(default `"light"`)* |
+
+### `fit_view`
+
+Fit the view — mirrors **Zoom to fit / zoom to selection** in a keyboard action; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `ids` | string[] *(optional)* |
+| `frameId` | string *(optional)* |
+
+### `get_document`
+
+Read the page — mirrors **Read document, page and selection** in a canvas gesture; read-only.
+
+| Argument | Type |
+| --- | --- |
+| `pageId` | string *(optional)* |
+
+### `list_pages`
+
+List pages — mirrors **Page list** in the document bar; read-only.
+
+Takes no arguments.
+
+## What it does not do
+
+- **No cloud, no telemetry.** The server is stdio and local; OpenFlowKit hosts no MCP endpoint.
+- **No account or key.** Your MCP client's model is the only AI involved.
+- **No raster in file mode.** PNG, GIF, MP4 and WebM need the live editor's canvas.
+- **No collaboration.** One editor pairs with the bridge at a time.

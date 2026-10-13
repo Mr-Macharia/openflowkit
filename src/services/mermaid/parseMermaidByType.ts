@@ -1,7 +1,14 @@
 import type { DiagramType } from '@/lib/types';
 import type { ParseResult } from '@/lib/mermaidParser';
-import { getDiagramPlugin } from '@/diagram-types/core';
-import { initializeDiagramTypeRuntime } from '@/diagram-types/bootstrap';
+import { ARCHITECTURE_PLUGIN } from './families/architecture';
+import { CLASS_DIAGRAM_PLUGIN } from './families/classDiagram';
+import { ER_DIAGRAM_PLUGIN } from './families/erDiagram';
+import { FLOWCHART_PLUGIN } from './families/flowchart';
+import { JOURNEY_PLUGIN } from './families/journey';
+import { MINDMAP_PLUGIN } from './families/mindmap';
+import type { DiagramPlugin } from './families/plugin';
+import { SEQUENCE_PLUGIN } from './families/sequence';
+import { STATE_DIAGRAM_PLUGIN } from './families/stateDiagram';
 import {
   determineMermaidImportStatus,
   normalizeMermaidImportDiagnostics,
@@ -11,7 +18,7 @@ import {
 import { detectMermaidDiagramType, extractMermaidDiagramHeader } from './detectDiagramType';
 import { detectMermaidWithOfficialParser } from './officialMermaidValidation';
 
-export interface MermaidDispatchParseResult extends ParseResult {
+interface MermaidDispatchParseResult extends ParseResult {
   diagramType?: DiagramType;
   diagnostics?: string[];
   structuredDiagnostics?: MermaidImportDiagnostic[];
@@ -19,20 +26,22 @@ export interface MermaidDispatchParseResult extends ParseResult {
   originalSource?: string;
 }
 
-export interface ParseMermaidByTypeOptions {
+interface ParseMermaidByTypeOptions {
   architectureStrictMode?: boolean;
 }
 
-const SUPPORTED_MERMAID_FAMILIES: DiagramType[] = [
-  'flowchart',
-  'stateDiagram',
-  'classDiagram',
-  'erDiagram',
-  'mindmap',
-  'journey',
-  'architecture',
-  'sequence',
+const MERMAID_FAMILY_PLUGINS: DiagramPlugin[] = [
+  FLOWCHART_PLUGIN,
+  STATE_DIAGRAM_PLUGIN,
+  CLASS_DIAGRAM_PLUGIN,
+  ER_DIAGRAM_PLUGIN,
+  MINDMAP_PLUGIN,
+  JOURNEY_PLUGIN,
+  ARCHITECTURE_PLUGIN,
+  SEQUENCE_PLUGIN,
 ];
+
+const SUPPORTED_MERMAID_FAMILIES: DiagramType[] = MERMAID_FAMILY_PLUGINS.map((plugin) => plugin.id);
 
 const SUPPORTED_MERMAID_FAMILY_LIST = SUPPORTED_MERMAID_FAMILIES.join(', ');
 
@@ -111,8 +120,6 @@ export function parseMermaidByType(
   input: string,
   options: ParseMermaidByTypeOptions = {}
 ): MermaidDispatchParseResult {
-  initializeDiagramTypeRuntime();
-
   const oracleValidation = detectMermaidWithOfficialParser(input);
   const header = extractMermaidDiagramHeader(input);
   const detectedType = oracleValidation.detectedType ?? detectMermaidDiagramType(input);
@@ -169,7 +176,7 @@ export function parseMermaidByType(
     );
   }
 
-  const plugin = getDiagramPlugin(detectedType);
+  const plugin = MERMAID_FAMILY_PLUGINS.find((candidate) => candidate.id === detectedType);
   if (plugin) {
     const parsed = finalizeResult(
       input,

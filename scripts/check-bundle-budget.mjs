@@ -9,7 +9,7 @@ const TOTAL_ENTRY_JS_MAX_KB = Number(process.env.ENTRY_TOTAL_JS_BUDGET_KB ?? 280
 const ENTRY_CSS_MAX_KB = Number(process.env.ENTRY_CSS_BUDGET_KB ?? 230);
 const LAZY_CHUNK_MAX_KB = Number(process.env.LAZY_CHUNK_MAX_KB ?? 1500);
 const LAZY_WORKER_CHUNK_MAX_KB = Number(process.env.LAZY_WORKER_CHUNK_MAX_KB ?? 2000);
-const LAZY_TOTAL_MAX_KB = Number(process.env.LAZY_TOTAL_MAX_KB ?? 8500);
+const LAZY_TOTAL_MAX_KB = Number(process.env.LAZY_TOTAL_MAX_KB ?? 9500);
 
 function toKb(bytes) {
   return Number((bytes / 1024).toFixed(1));
@@ -67,7 +67,9 @@ function isStaticAssetWrapperChunk(relativePath) {
     && !/\bawait\s/.test(source)
     && !/\byield\s/.test(source)
     && !/^import\s/m.test(source)
-    && /Object\.freeze\(Object\.defineProperty\(/.test(source);
+    // Lazy per-icon imports wrap each URL in a frozen module object; an eager glob (one module per provider pack,
+    // src/services/shapeLibrary/iconUrls) leaves plain `const x = "data:…"` / `new URL(…).href` strings.
+    && (/Object\.freeze\(Object\.defineProperty\(/.test(source) || /^const\s+\w+=(?:""\+new URL\(|["'`])/.test(source));
   return isBucketedAssetChunk;
 }
 

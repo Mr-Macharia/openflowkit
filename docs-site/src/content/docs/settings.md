@@ -1,66 +1,51 @@
 ---
-draft: false
-title: Settings & Preferences
-description: Configure OpenFlowKit to match your workflow — AI providers, canvas behavior, and keyboard shortcuts.
+title: Settings and preferences
+description: Every preference OpenFlowKit keeps — appearance, grid, palette, icons from labels, the agent bridge — and where each one lives.
 ---
 
-OpenFlowKit offers customizable settings across three areas: Canvas preferences, AI configuration, and Keyboard shortcuts.
+Preferences are stored per browser in `localStorage` under one key and are validated
+field by field on read; a corrupt entry falls back to the default. Nothing is synced: every
+origin and browser has its own set.
 
-## Accessing Settings
+## Settings popover
 
-Click the **Settings** option from the home screen navigation, or press `Cmd+,` (Mac) / `Ctrl+,` (Windows) when inside an editor to open the Settings modal.
+Open the canvas menu → **Settings**.
 
-## Canvas Settings
+| Setting | Options | Effect |
+| --- | --- | --- |
+| Theme (under Appearance) | Light, Dark, System | The app's theme; System follows the OS |
+| Interface density | Comfortable, Compact | Control sizes throughout the chrome |
+| Dot grid | On, Off | The canvas grid |
+| Snap to grid | On, Off | Whether drags snap to the grid (hold `⌘`/`Ctrl` to bypass) |
+| Icons from labels | On (default), Off | Generated diagrams put a logo on nodes that name a technology; a diagram's `icons:` line wins — see [Architecture](/diagram-architecture/#icons-from-labels) |
 
-The Canvas tab controls how the editor behaves:
+## Elsewhere in the app
 
-- **Snap to Grid**: Toggle whether nodes snap to a grid when moved
-- **Snap to Objects**: Toggle whether nodes snap to other nodes and edges
-- **Auto-fit View**: Choose whether the canvas automatically fits content on load
-- **Minimap**: Toggle the minimap visibility in the bottom corner
-- **Connection Line**: Choose between smoothstep, straight, or bezier connection lines
+Some preferences live with the thing they affect:
 
-These preferences persist across sessions and apply to all diagrams.
+| Preference | Where |
+| --- | --- |
+| Canvas background | Camera controls; reset to the theme default |
+| Diagram palette (`pastel`, `paper`, `builder`, `mono`) | The code panel's palette picker; the default for generated frames, and synced from a frame you open with **Edit as code** |
+| Agent bridge port, token, enable | The **Connect agent** panel — see [MCP Server](/mcp-server/) |
+| Tag perspectives | The [model panel](/architecture-c4/) — which tags stay bright |
+| Recent emoji | The [emoji picker](/insert-media/), newest first |
 
-## AI Settings
+## The diagram palette
 
-The AI tab configures how Flowpilot generates diagrams:
+The diagram palette is a browser preference (Pastel by default), not part of the document.
+Every Generate uses it unless the source has its own `appearance:` line, which wins. The
+compiled shapes keep the colours they were generated with. Paper and Mono exist for
+print-friendly and greyscale output; see [Theming](/theming/).
 
-### Supported Providers
+## What it cannot do
 
-- **OpenAI** (GPT-4o, GPT-4o mini)
-- **Anthropic** (Claude 3.5 Sonnet, Claude 3 Haiku)
-- **Google** (Gemini 1.5 Pro, Gemini 1.5 Flash)
+- **No account or profile.** Preferences are per browser, not per person.
+- **No preference import/export.** Copy them by hand if you move machines.
+- **No per-document theme.** The theme is an app preference. The only per-document palette
+  is an `appearance:` line in a diagram's source.
 
-### Configuration Options
+## Where to go next
 
-1. **Select Provider**: Choose your preferred AI provider from the dropdown
-2. **Enter API Key**: Paste your API key for the selected provider
-3. **Key Persistence**: Choose whether the key persists across browser sessions or is cleared when the tab closes
-
-If you don't have an API key, visit the provider's website to create one. OpenFlowKit does not require any server-side configuration — all AI requests go directly from your browser to the provider.
-
-### Troubleshooting
-
-- **Key not working**: Verify the key is valid and has API access
-- **Rate limits**: Check the provider's dashboard for usage limits
-- **Model availability**: Some models may not be available in all regions
-
-## Keyboard Shortcuts
-
-The Shortcuts tab displays all available keyboard shortcuts organized by category:
-
-- **Essentials**: Undo, redo, select all, delete, clear selection
-- **Manipulation**: Multi-select, selection box, duplicate, copy, paste
-- **Nodes**: Mindmap navigation, rename, quick create
-- **Navigation**: Select tool, hand tool, pan, zoom, fit view
-- **Help**: Keyboard shortcuts modal, command bar, search
-
-Shortcuts automatically adapt to Mac or Windows — `Cmd` becomes `Ctrl` on Windows, and `Opt` becomes `Alt`.
-
-## Related Pages
-
-- [Quick Start](/quick-start/)
-- [Keyboard Shortcuts](/keyboard-shortcuts/)
-- [AI Generation](/ai-generation/)
-- [Ask Flowpilot](/ask-flowpilot/)
+- [Theming](/theming/) — palettes and the light/dark pair.
+- [Canvas basics](/canvas-basics/) — how grid and snapping behave during a drag.

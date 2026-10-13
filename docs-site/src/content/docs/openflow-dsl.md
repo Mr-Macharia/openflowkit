@@ -1,99 +1,83 @@
 ---
-draft: false
 title: OpenFlow DSL
-description: Use OpenFlow DSL as the editor-native text representation for OpenFlowKit diagrams.
+description: The editor-native text language — write a diagram, generate it as a frame, and keep the text and canvas from lying to each other.
 ---
 
-OpenFlow DSL is the native text representation used by OpenFlowKit Studio. It is the best option when you want a code-first representation that stays close to the editor's own graph model.
+OpenFlow DSL is the hub of OpenFlowKit: the code panel, AI generation, Mermaid import and the
+MCP tools all produce it, and one compiler turns it into the canvas. The grammar is versioned
+and written down in full in the [DSL reference](/openflow-dsl-reference/).
 
-## Where it fits
+## The code panel
 
-Use OpenFlow DSL when you want:
+Press `⌥C` to open **Diagram as code**. It opens with the text selected, so typing or pasting
+replaces it. Press `⌘↵` anywhere in the panel (or click **Generate diagram**). Diagnostics appear under the editor as you type; **the diagram is the compiled
+result of the text you see**, not a parallel copy of the canvas.
 
-- a readable editor-native syntax
-- deterministic structural edits before layout
-- a better fit than Mermaid for OpenFlowKit-specific workflows
-- an easier target for AI-generated code than raw JSON
+- **Generate** compiles the draft into a frame. The frame is placed after the existing
+  diagrams, or in place when the panel is editing one.
+- **Edit as code** (right-click a generated frame) reopens its source in the panel; generate
+  again to replace that same frame.
+- A **canvas edited** warning appears when the frame on screen no longer matches the text that
+  produced it. Generate overwrites those canvas edits — and one undo restores them.
+- The **diagram palette** picker sets the default palette for the generated frame; an
+  `appearance:` line in the source wins over it.
 
-The Studio code panel can generate DSL from the current canvas and apply DSL back onto it.
+## This text
 
-Use Mermaid instead when ecosystem compatibility matters more than editor-native fidelity. See [Mermaid vs OpenFlow](/mermaid-vs-openflow/).
-
-## Basic document structure
-
-Start with a header:
-
-```text
-flow: User Signup
-direction: TB
+```openflow
+flowchart
+Client -> API : request
+API -> Database : query
 ```
 
-Common direction values:
+The first line names the family (`flowchart` here; every family is listed in the
+[reference](/openflow-dsl-reference/)). Names are ids: `API` in two places is the same node.
+Edges declare their endpoints, so you never have to pre-declare a node you are about to use.
 
-- `TB`
-- `LR`
-- `RL`
-- `BT`
+## Round-trip, or why dragging does not rewrite your text
 
-## Nodes
+Two laws hold for the whole grammar, and the test suite checks them over a fixture corpus:
 
-Use explicit node declarations with stable ids.
+- formatting the text again changes nothing: `format(format(x)) == format(x)`;
+- compiling and serialising preserves structure and attributes.
 
-```text
-[start] start
-[process] signup: Signup Form { icon: "UserPlus", color: "blue" }
-[process] verify: Verify Email { icon: "Mail", color: "violet" }
-[end] success: Workspace Ready { color: "emerald" }
-```
+The canvas is a view of the text, not its owner. Drag a node and the text is untouched — the
+canvas keeps the position in the document. **Generate** compiles the text again and re-lays
+the frame out from it; manual moves are discarded (except for a node pinned with
+`pin: x,y`), and one undo brings them back. The
+exceptions are deliberate and small: chart data and the `animate` block are written back from
+their panels, because there they *are* the data.
 
-Good ids are:
+## Every family, one grammar
 
-- short
-- lowercase
-- semantic
-- stable enough to survive edits
+[Flowchart](/diagram-flowchart/), [architecture](/diagram-architecture/),
+[sequence](/diagram-sequence/), [state](/diagram-state/), [ERD](/diagram-erd/),
+[class](/diagram-class/), [mindmap](/diagram-mindmap/), [gitgraph](/diagram-gitgraph/),
+[chart](/diagram-chart/) and [wireframe](/diagram-wireframe/) — plus the model layer for [C4 workspaces](/architecture-c4/).
 
-## Edges
+Reserved family names (`bpmn`, `org`, `gantt`, `sankey`, `journey`, `timeline`)
+parse as a flowchart with warning W105; they are not rendered as their own family yet.
 
-Create edges with arrow syntax:
+## Foreign syntax
 
-```text
-start ==> signup
-signup -> verify
-verify ==> success
-```
+Paste Mermaid, D2 or Structurizr DSL and the panel offers to [convert it](/mermaid-import/).
+Structurizr becomes an architecture workspace. Every converter reports what it could not
+represent instead of dropping it silently.
 
-You can attach labels with inline branch syntax:
+## What it cannot do
 
-```text
-[decision] approved: Approved? { color: "amber" }
-verify -> approved
-approved ->|Yes| success
-approved ->|No| signup
-```
+- **One frame per generate.** Generating replaces the bound frame; to keep a variant, duplicate
+  it as a new document or edit the copy by hand.
+- **Few layout controls in the text.** ELK decides the layout. `pin: x,y` fixes a node at that
+  position in the frame after layout, and survives Generate. `rank` is kept in the text but does
+  not change the layout yet. Canvas drags are not written back, so they are lost on regenerate
+  unless the node is pinned; a C4 workspace also keeps `views/*.snap` overrides (see
+  [Architecture workspace](/architecture-workspace/)).
+- **No silent fixes.** A line the parser cannot read is dropped with a warning naming its
+  number; it is never guessed at.
 
-Common edge styles are `->` for default flow, `==>` for primary flow, `-->` for secondary flow, and `..` for dotted async or optional relationships.
+## Where to go next
 
-## Why teams use it
-
-OpenFlow DSL is useful when:
-
-- OpenFlowKit is the primary editing environment
-- you want a reviewable text representation without committing to Mermaid’s constraints
-- you want a format that maps more directly to editor-native concepts
-- you want AI to target a structure that is closer to the actual canvas model
-
-## Recommended workflow
-
-Use DSL when you want to control the structure, then switch back to the canvas for final visual tuning. It is especially useful for:
-
-- architecture drafts
-- system workflows
-- iterative AI-assisted editing where text inspection matters
-
-## Related pages
-
-- [Mermaid vs OpenFlow](/mermaid-vs-openflow/)
-- [MCP Server](/mcp-server/)
-- [Studio Overview](/studio-overview/)
-- [Choose an Input Mode](/choose-input-mode/)
+- [OpenFlow DSL reference](/openflow-dsl-reference/) — the whole grammar, generated from source.
+- [Mermaid import](/mermaid-import/) — bring existing text across.
+- [Architecture (C4)](/architecture-c4/) — the model layer inside the same language.

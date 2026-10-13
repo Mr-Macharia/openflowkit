@@ -1,0 +1,130 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SceneDocumentV1 } from '../../domain/document/types';
+import type { DocumentValidationIssue } from '../../domain/document/validation';
+import type { V2DocumentRepository } from '../../../services/storage/v2/v2Repository';
+import { describeStorageFailure } from '../../../services/storage/v2/v2Errors';
+import { createEmptyV2Document } from './v2Document';
+
+interface V2DocumentLoadOptions {
+  readonly documentId: string | undefined;
+  readonly repository: V2DocumentRepository | null;
+  readonly openDocument: (document: SceneDocumentV1) => void;
+  readonly onRecovered: () => void;
+  /** A document that is not stored (a shared link): opened as is, read-only, never saved. */
+  readonly fixed?: SceneDocumentV1 | undefined;
+  /** Shapes a document that is created fresh (never one that was stored), e.g. a repo map born with its source; it is saved at once. */
+  readonly initialize?: ((document: SceneDocumentV1) => SceneDocumentV1) | undefined;
+  /** False: an initialized document is opened but not saved until this turns true (a repo map that failed to read leaves nothing behind). Default true. */
+  readonly saveBorn?: boolean;
+  /** False: a missing, uninitialized document is not found (a link from another browser), never created. */
+  readonly createIfMissing?: boolean;
+}
+
+export type V2LoadPhase = 'loading' | 'ready' | 'corrupt' | 'failed' | 'not-found';
+
+// Load on mount: missing → new empty document (or not-found for an id from elsewhere); ok/recovered → open;
+// read-only → open with editing disabled; corrupt → notice + export-raw.
+export function useV2DocumentLoad(options: V2DocumentLoadOptions) {
+  const [phase, setPhase] = useState<V2LoadPhase>('loading');
+  const [readOnly, setReadOnly] = useState(false);
+  const [baseRevision, setBaseRevision] = useState(0);
+  const [corruptIssues, setCorruptIssues] = useState<readonly DocumentValidationIssue[]>([]);
+  const [loadError, setLoadError] = useState<ReturnType<typeof describeStorageFailure> | null>(null);
+  const [reloadCount, setReloadCount] = useState(0);
+
+  const bornRef = useRef<SceneDocumentV1 | null>(null);
+
+  const reload = useCallback(() => setReloadCount((count) => count + 1), []);
+
+  useEffect(() => {
+    if (options.fixed) {
+      options.openDocument(options.fixed);
+      setBaseRevision(0);
+      setReadOnly(true);
+      setPhase('ready');
+      return;
+    }
+    if (!options.documentId || !options.repository) return;
+    bornRef.current = null;
+    let cancelled = false;
+    setPhase('loading');
+    setReadOnly(false);
+    setLoadError(null);
+    options.repository
+      .loadDocument(options.documentId)
+      .then((result) => {
+        if (cancelled) return;
+        switch (result.status) {
+          case 'missing': {
+            if (!options.initialize && options.createIfMissing === false) { setPhase('not-found'); break; }
+            const fresh = createEmptyV2Document(options.documentId!);
+            if (!options.initialize) {
+              options.openDocument(fresh);
+              setBaseRevision(0);
+              setPhase('ready');
+              break;
+            }
+            // A born-shaped document (a repo map) is saved at once: nothing the reader can do would ever make it dirty.
+            const born = options.initialize(fresh);
+            if (options.saveBorn === false) {
+              bornRef.current = born;
+              options.openDocument(born);
+              setBaseRevision(0);
+              setPhase('ready');
+              break;
+            }
+            return options.repository!.saveDocument(options.documentId!, born, 1).then((saved) => {
+              if (cancelled) return;
+              if (saved.status !== 'saved') { setReloadCount((count) => count + 1); return; } // another tab made it first
+              options.openDocument(born);
+              setBaseRevision(1);
+              setPhase('ready');
+            });
+          }
+          case 'ok':
+            options.openDocument(result.record.document);
+            setBaseRevision(result.record.revision);
+            setPhase('ready');
+            break;
+          case 'recovered':
+            options.openDocument(result.record.document);
+            setBaseRevision(result.record.revision);
+            setPhase('ready');
+            options.onRecovered();
+            break;
+          case 'read-only':
+            options.openDocument(result.record.document);
+            setBaseRevision(result.record.revision);
+            setReadOnly(true);
+            setPhase('ready');
+            break;
+          case 'corrupt':
+            setCorruptIssues(result.issues);
+            setPhase('corrupt');
+            break;
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadError(describeStorageFailure(error));
+        setPhase('failed');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.documentId, options.repository, options.fixed, reloadCount]);
+
+  // The born document is saved the moment the caller says it is worth keeping.
+  useEffect(() => {
+    const born = bornRef.current;
+    if (options.saveBorn === false || !born || !options.documentId || !options.repository) return;
+    bornRef.current = null;
+    void options.repository.saveDocument(options.documentId, born, 1).then((saved) => {
+      if (saved.status === 'saved') setBaseRevision(1); else setReloadCount((count) => count + 1);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.saveBorn]);
+
+  return { phase, readOnly, baseRevision, corruptIssues, loadError, reload };
+}

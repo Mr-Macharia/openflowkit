@@ -1,0 +1,117 @@
+---
+// The not-found page, in the docs' own chrome: what to search, and the four
+// places most readers were heading. Starlight's default 404 is disabled in
+// astro.config.mjs; Cloudflare serves this file for any missing path.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { APP_URL } from '../components/links';
+
+const destinations = [
+  { href: '/quick-start/', title: 'Quick start', copy: 'Your first diagram in five minutes.' },
+  { href: '/mcp-server/', title: 'Agents & MCP', copy: 'Let Claude Code, Cursor or Codex draw on your canvas.' },
+  { href: '/openflow-dsl/', title: 'OpenFlow DSL', copy: 'Ten diagram types in one small text language.' },
+  { href: APP_URL, title: 'Open the app', copy: 'Nothing to install. Your diagrams stay in your browser.' },
+];
+---
+
+<StarlightPage frontmatter={{ title: 'Page not found', template: 'splash', pagefind: false, editUrl: false }}>
+  <div class="not-found not-content">
+    <p class="lead">
+      This page moved or never existed. Search the docs with
+      <button type="button" class="search-hint" data-open-search><kbd>⌘</kbd><kbd>K</kbd></button>
+      or pick up from one of these.
+    </p>
+    <ul class="destinations">
+      {destinations.map((destination) => (
+        <li>
+          <a href={destination.href}>
+            <strong>{destination.title}</strong>
+            <span>{destination.copy}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+    <p class="home"><a href="/">← Back to the home page</a></p>
+  </div>
+</StarlightPage>
+
+<script>
+  // The ⌘K chip opens the same search dialog the header does.
+  document.querySelector('[data-open-search]')?.addEventListener('click', () => {
+    document.querySelector<HTMLButtonElement>('site-search button[data-open-modal]')?.click();
+  });
+</script>
+
+<style>
+  .not-found {
+    max-width: 40rem;
+  }
+  .lead {
+    margin: 0;
+    font-size: 1.125rem;
+    line-height: 1.65;
+    color: var(--ofk-text);
+  }
+  .search-hint {
+    display: inline-flex;
+    gap: 0.2rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    margin-inline: 0.2em;
+    vertical-align: 0.05em;
+  }
+  .search-hint kbd {
+    min-width: 1.5rem;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--ofk-border);
+    border-radius: 6px;
+    background: var(--ofk-raised);
+    font: 500 0.8125rem/1.4 var(--sl-font);
+    color: var(--ofk-text);
+  }
+  .destinations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 0.75rem;
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .destinations a {
+    display: grid;
+    align-content: start;
+    gap: 0.25rem;
+    height: 100%;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--ofk-border);
+    border-radius: 12px;
+    background: var(--ofk-surface);
+    text-decoration: none;
+    transition: border-color 150ms ease, transform 120ms var(--ofk-ease);
+  }
+  .destinations a:active {
+    transform: scale(0.98);
+  }
+  @media (hover: hover) {
+    .destinations a:hover {
+      border-color: var(--ofk-border-strong);
+    }
+  }
+  .destinations strong {
+    color: var(--ofk-text);
+    font-weight: 600;
+  }
+  .destinations span {
+    font-size: 0.9rem;
+    color: var(--ofk-muted);
+  }
+  .home {
+    margin: 2rem 0 0;
+    font-size: 0.9rem;
+  }
+  .home a {
+    color: var(--ofk-muted);
+    text-decoration: none;
+  }
+</style>

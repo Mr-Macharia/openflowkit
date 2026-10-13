@@ -1,0 +1,20 @@
+architecture right
+
+You [icon: tabler/user, blue]
+Agent [icon: tabler/robot, blue]
+"Mermaid · Structurizr · D2" [icon: tabler/file-import, slate]
+"OpenFlow DSL" [icon: tabler/braces, orange, bold]
+Compiler [icon: tabler/cpu, emerald]
+"Scene document" [icon: tabler/file-text, violet]
+Canvas [icon: tabler/artboard, slate]
+Exports [icon: tabler/photo, slate]
+"Browser storage" [icon: tabler/database, slate]
+
+You -> "OpenFlow DSL" : write
+Agent -> "OpenFlow DSL" : MCP
+"Mermaid · Structurizr · D2" -> "OpenFlow DSL" : convert
+"OpenFlow DSL" -> Compiler
+Compiler -> "Scene document" : one undo step
+"Scene document" -> Canvas
+"Scene document" -> Exports
+"Scene document" -> "Browser storage"

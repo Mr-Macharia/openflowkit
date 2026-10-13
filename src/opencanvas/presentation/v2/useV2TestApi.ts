@@ -1,0 +1,121 @@
+import { useEffect, type RefObject } from 'react';
+import type { SceneDocumentV1 } from '../../domain/document/types';
+import type { CanvasSelection } from '../../application/selection/selection';
+import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
+import type { AnimationPreset } from '../../domain/animation/types';
+import { frameAt } from '../../domain/animation/frame';
+import { frameDrawList } from '../../domain/animation/drawList';
+import { svgViewBox } from '../../infrastructure/export/canonicalSvg';
+import { motionCanvasSize } from '../../infrastructure/export/motionSchedule';
+import { paintFrame } from '../../infrastructure/export/framePainter';
+import { withEmbeddedInter } from '../../infrastructure/export/raster';
+import { animatedSvgFor, motionFrameSvgFor, motionTimeline, timelineDuration } from './v2Motion';
+import type { V2Tool } from './V2CreationToolbar';
+import type { V2SaveStatus } from './useV2Autosave';
+import type { useV2Proposal } from './useV2Proposal';
+
+interface V2TestApiOptions {
+  readonly hostRef: RefObject<PixiRendererHost | null>;
+  readonly selectionRef: RefObject<CanvasSelection>;
+  readonly toolRef: RefObject<V2Tool>;
+  readonly selectedConnectorIds: readonly string[];
+  readonly document: SceneDocumentV1 | null;
+  readonly revision: number;
+  readonly saveStatus: V2SaveStatus;
+  readonly proposal: ReturnType<typeof useV2Proposal>;
+  /** Map mode's view state: mode, open boxes, and what the scene draws. */
+  readonly mapState: () => unknown;
+  /** The last Map open/close move: frames, drawing cost, frame gaps, page renders. */
+  readonly mapMotion: () => unknown;
+  /** Opens exactly these Map boxes (view state only), landing the camera on `focus`. */
+  readonly mapOpen: (ids: readonly string[], focus?: string) => void;
+}
+
+// Read-only handle for the Playwright gate and deterministic evaluations
+// (create→…→reload→export). Mounted with the editor route; it exposes
+// document state and geometry, never writes.
+export function useV2TestApi(options: V2TestApiOptions) {
+  const {
+    hostRef, selectionRef, toolRef, selectedConnectorIds, document, revision, saveStatus, proposal, mapState, mapMotion, mapOpen,
+  } = options;
+  useEffect(() => {
+    const api = {
+      getState: () => ({
+        revision,
+        save: saveStatus.state,
+        nodes: document?.pages[0]?.nodes.map((node) => node.id) ?? [],
+        connectors: document?.pages[0]?.connectors.map((connector) => connector.id) ?? [],
+        selectedNodes: selectionRef.current.nodeIds,
+        selectedConnector: selectedConnectorIds.length === 1 ? selectedConnectorIds[0]! : null,
+        selectedConnectors: selectedConnectorIds,
+        tool: toolRef.current,
+      }),
+      getMapState: mapState,
+      openMapBoxes: mapOpen,
+      getMapMotion: () => ({ ...(mapMotion() as object), ...hostRef.current?.getMotionState() }),
+      pickTransformHandle: (point: { x: number; y: number }) => hostRef.current?.pickTransformHandle(point) ?? null,
+      getDocument: () => document,
+      getProposal: () => ({
+        phase: proposal.phase, stale: proposal.stale, id: proposal.proposal?.id ?? null,
+        baseRevision: proposal.proposal?.baseRevision ?? null,
+        changeIds: proposal.changes.map(({ id }) => id), decisions: proposal.decisions,
+        error: proposal.error,
+      }),
+      worldToScreen: (point: { x: number; y: number }) => hostRef.current?.worldToScreen(point) ?? null,
+      getRenderDiagnostics: () => hostRef.current?.getRenderDiagnostics(),      getNodeDebugSnapshot: () => hostRef.current?.getNodeDebugSnapshot(),
+      getConnectorDebugSnapshot: () => hostRef.current?.getConnectorDebugSnapshot(),
+      getLiveConnectorSamples: (connectorId: string) =>
+        hostRef.current?.getLiveConnectorSamples(connectorId) ?? null,
+      getConnectorScreenSamples: (connectorId: string) => {
+        const host = hostRef.current;
+        return host?.getLiveConnectorSamples(connectorId)?.map((point) => host.worldToScreen(point)) ?? null;
+      },
+      getNodeRect: (nodeId: string) => {
+        const bounds = hostRef.current?.getNodeScreenBounds(nodeId);
+        return bounds
+          ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+          : null;
+      },
+      // Animated-export parity probe: the animated SVG and the still at any t
+      // come from the same timeline, so the gate can pixel-compare them.
+      getMotionExport: (preset: AnimationPreset = 'build', pageId?: string) => {
+        if (!document) return null;
+        const target = pageId ?? document.pages[0]?.id;
+        if (!target) return null;
+        const request = { document, pageId: target, preset };
+        const timeline = motionTimeline(request);
+        return {
+          durationMs: timelineDuration(timeline),
+          steps: timeline.steps.length,
+          animatedSvg: animatedSvgFor({ ...request, timeline }),
+          stillAt: (tMs: number) => motionFrameSvgFor({ ...request, timeline }, tMs),
+        };
+      },
+      // What the encoder does to an SVG frame before it rasterises it.
+      embedExportFonts: withEmbeddedInter,
+      // The frame renderer's own output at the export size, as a PNG; null
+      // when the frame is a fallback (the encoder rasterises the SVG instead).
+      // The parity gate rasterises the SVG still into the same pixels and
+      // diffs them, so the canvas path can never drift from the file.
+      getMotionFrameCanvas: (tMs: number, preset: AnimationPreset = 'build', pageId?: string) => {
+        if (!document) return null;
+        const page = document.pages.find(({ id }) => id === (pageId ?? document.pages[0]?.id));
+        if (!page) return null;
+        const timeline = motionTimeline({ document, pageId: page.id, preset });
+        const viewBox = svgViewBox(document, { pageId: page.id });
+        const { width, height } = motionCanvasSize(viewBox, 1080);
+        const ops = frameDrawList(page, frameAt(timeline, tMs), 'light', viewBox);
+        if (ops[0]?.kind === 'fallback') return null;
+        const canvas = window.document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) return null;
+        const scale = Math.min(width / viewBox.width, height / viewBox.height);
+        paintFrame(context, ops, viewBox, scale);
+        return canvas.toDataURL('image/png');
+      },
+    };
+    (window as unknown as { __V2__?: typeof api }).__V2__ = api;
+  });
+}

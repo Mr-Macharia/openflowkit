@@ -1,0 +1,151 @@
+import { act, renderHook } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_CANVAS_CAMERA } from '../../domain/camera/camera';
+import type { CanvasCamera } from '../../domain/camera/types';
+import type { ScenePage } from '../../domain/document/types';
+import { createTestDocument, createTestNode } from '../../testing/builders/documentBuilder';
+import type { PixiRendererHost } from '../../infrastructure/pixi/PixiRendererHost';
+import { typeToEditNames, useV2LabelEditing } from './useV2LabelEditing';
+
+function setup() {
+  const page = createTestDocument({ nodes: [
+    createTestNode('n1', { content: { label: 'Old' } }),
+    createTestNode('new', { kind: 'text', content: { label: 'Text' } }),
+  ] }).pages[0];
+  const getNodeLabelScreenBounds = vi.fn(() => new DOMRect(10, 20, 100, 40));
+  const commit = vi.fn();
+  const amendNewNode = vi.fn();
+  const focusCanvas = vi.fn();
+  const announce = vi.fn();
+  const hostRef = { current: { getNodeLabelScreenBounds } as unknown as PixiRendererHost };
+  const hook = renderHook(
+    ({ camera, page }: { camera: CanvasCamera; page: ScenePage }) =>
+      useV2LabelEditing({
+        hostRef,
+        page,
+        camera,
+        commit,
+        amendNewNode,
+        announce,
+        focusCanvas,
+      }),
+    { initialProps: { camera: DEFAULT_CANVAS_CAMERA, page } }
+  );
+  act(() => hook.result.current.openEditor('n1'));
+  return { ...hook, page, getNodeLabelScreenBounds, commit, amendNewNode, focusCanvas, announce };
+}
+
+describe('useV2LabelEditing', () => {
+  it('cancel closes the editor and it stays closed across re-renders', () => {
+    const { result, rerender, focusCanvas, page } = setup();
+    expect(result.current.editing?.nodeId).toBe('n1');
+    act(() => result.current.cancelEdit());
+    rerender({ camera: DEFAULT_CANVAS_CAMERA, page });
+    expect(result.current.editing).toBeNull();
+    expect(result.current.editingRef.current).toBe(false);
+    expect(focusCanvas).toHaveBeenCalledOnce();
+  });
+
+  it('re-anchors the overlay only when the camera changes', () => {
+    const { result, rerender, getNodeLabelScreenBounds, page } = setup();
+    const opened = result.current.editing;
+    rerender({ camera: DEFAULT_CANVAS_CAMERA, page });
+    expect(result.current.editing).toBe(opened);
+    getNodeLabelScreenBounds.mockReturnValue(new DOMRect(50, 60, 100, 40));
+    rerender({ camera: { ...DEFAULT_CANVAS_CAMERA, zoom: 2 }, page });
+    expect(result.current.editing?.bounds.x).toBe(50);
+  });
+
+  it('defers opening until the page containing the node renders', () => {
+    const { result, rerender, getNodeLabelScreenBounds, page } = setup();
+    act(() => result.current.cancelEdit());
+    getNodeLabelScreenBounds.mockReturnValueOnce(null as unknown as DOMRect);
+    act(() => result.current.openEditor('n1'));
+    expect(result.current.editing).toBeNull();
+    rerender({ camera: DEFAULT_CANVAS_CAMERA, page: { ...page } });
+    expect(result.current.editing?.nodeId).toBe('n1');
+  });
+
+  it('commits one set-node only when the label changed', () => {
+    const { result, commit } = setup();
+    act(() => result.current.commitLabel('Old'));
+    expect(commit).not.toHaveBeenCalled();
+    act(() => result.current.openEditor('n1'));
+    act(() => result.current.commitLabel('New'));
+    expect(commit).toHaveBeenCalledOnce();
+    expect(commit.mock.calls[0][0]).toMatchObject({ kind: 'set-node', after: { content: { label: 'New' } } });
+    expect(result.current.editing).toBeNull();
+  });
+
+  it('announces open and save', () => {
+    const { result, announce } = setup();
+    expect(announce).toHaveBeenLastCalledWith('Editing label');
+    act(() => result.current.commitLabel('New'));
+    expect(announce).toHaveBeenLastCalledWith('Label saved');
+  });
+
+  it('type-to-edit opens with the typed character replacing the label', () => {
+    const { result } = setup();
+    act(() => result.current.openEditor('n1', { initialValue: 'Q' }));
+    expect(result.current.editing).toMatchObject({ nodeId: 'n1', value: 'Q' });
+  });
+
+  it('empty commit or cancel on a new node deletes it, folded into the step that made it', () => {
+    const { result, commit, amendNewNode } = setup();
+    act(() => result.current.openEditor('new', { isNew: true }));
+    act(() => result.current.commitLabel('   '));
+    expect(amendNewNode).toHaveBeenCalledOnce();
+    expect(amendNewNode.mock.calls[0]).toMatchObject(['new', { kind: 'batch', label: 'Delete selection' }]);
+    act(() => result.current.openEditor('new', { isNew: true }));
+    act(() => result.current.cancelEdit());
+    expect(amendNewNode).toHaveBeenCalledTimes(2);
+    // Existing nodes keep the old label on cancel and are never deleted.
+    act(() => result.current.openEditor('n1'));
+    act(() => result.current.cancelEdit());
+    expect(amendNewNode).toHaveBeenCalledTimes(2);
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('a new node\'s first label joins the step that created it: one undo for create + type', () => {
+    const { result, commit, amendNewNode } = setup();
+    act(() => result.current.openEditor('new', { isNew: true }));
+    act(() => result.current.commitLabel('Hello'));
+    expect(amendNewNode.mock.calls[0]).toMatchObject(['new', { kind: 'set-node' }]);
+    expect(commit).not.toHaveBeenCalled();
+  });
+});
+
+ it('keeps derived architecture view titles out of the generic label editor', () => {
+    const node = createTestNode('view', {kind: 'frame', content: {label: 'container of Shop'}, metadata: {dsl: {viewTitle: 'container of Shop'}}});
+    const announce = vi.fn();
+    const {result} = renderHook(() => useV2LabelEditing({page: createTestDocument({nodes: [node]}).pages[0]!, hostRef: {current: null}, camera: DEFAULT_CANVAS_CAMERA, commit: vi.fn(), amendNewNode: vi.fn(), announce, focusCanvas: vi.fn()}));
+    act(() => result.current.openEditor(node.id));
+    expect(result.current.editing).toBeNull();
+    expect(announce).toHaveBeenCalledWith('This title comes from the architecture view. Edit it in diagram source.');
+  });
+
+describe('typeToEditNames (U1-01, U4-04)', () => {
+  it('a blank shape takes the typed letter as its name; a named one keeps its tool letters', () => {
+    expect(typeToEditNames(createTestNode('a', { content: { label: '' } }))).toBe(true);
+    expect(typeToEditNames(createTestNode('b', { content: {} }))).toBe(true);
+    expect(typeToEditNames(createTestNode('c', { content: { label: '  ' } }))).toBe(true);
+    expect(typeToEditNames(createTestNode('d', { content: { label: 'Client' } }))).toBe(false);
+    expect(typeToEditNames(createTestNode('e', { kind: 'text', content: { label: 'Note' } }))).toBe(false);
+    expect(typeToEditNames(undefined)).toBe(false);
+  });
+
+  it('never claims a key for something with no label to edit', () => {
+    expect(typeToEditNames(createTestNode('g', { kind: 'group', content: {} }))).toBe(false);
+    const view = createTestNode('v', { kind: 'frame', content: { label: '' }, metadata: { dsl: { viewTitle: 'x' } } });
+    expect(typeToEditNames(view)).toBe(false);
+  });
+
+  // Review 2026-10-11: a generated frame (no title) and a pen stroke counted as blank, so R/O/T still named them.
+  it('a generated diagram frame and a drawn stroke keep their tool letters', () => {
+    const generated = createTestNode('f', { kind: 'frame', content: { label: '' }, metadata: { dsl: { source: 'flowchart\nA -> B' } } });
+    expect(typeToEditNames(generated)).toBe(false);
+    for (const kind of ['pen', 'highlighter', 'line', 'arrow']) {
+      expect(typeToEditNames(createTestNode(kind, { kind, content: { points: [] } } as never)), kind).toBe(false);
+    }
+  });
+});

@@ -1,106 +1,62 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import App from './App';
-import { useFlowStore } from './store';
+import { describe, expect, it, vi } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
+import App, { LEGACY_HOME_PATHS } from './App';
 
-vi.mock('./components/HomePage', () => ({
-  HomePage: ({
-    onLaunch,
-    onLaunchWithTemplates,
-    onImportJSON,
-  }: {
-    onLaunch: () => void;
-    onLaunchWithTemplates: () => void;
-    onImportJSON: () => void;
-  }) => (
-    <div data-testid="home-page">
-      <button type="button" onClick={onLaunch}>
-        Create Flow
-      </button>
-      <button type="button" onClick={onLaunchWithTemplates}>
-        Open Templates
-      </button>
-      <button type="button" onClick={onImportJSON}>
-        Import Flow
-      </button>
-    </div>
-  ),
+let editorMounts = 0;
+vi.mock('@/opencanvas/presentation/v2/V2EditorPage', () => ({
+  V2EditorPage: function Editor() {
+    const [mount] = useState(() => (editorMounts += 1));
+    return <div data-testid="editor" data-mount={mount}>{useParams().id}</div>;
+  },
 }));
-
-vi.mock('./components/FlowEditor', () => ({
-  FlowEditor: () => <div data-testid="flow-editor">Editor</div>,
+vi.mock('@/opencanvas/presentation/v2/V2HomePage', () => ({
+  V2HomePage: function Home() {
+    return <div data-testid="home">{(useLocation().state as { notice?: string } | null)?.notice}</div>;
+  },
 }));
-
-vi.mock('@/components/app/MobileWorkspaceGate', () => ({
-  MobileWorkspaceGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-vi.mock('@/components/app/DocsSiteRedirect', () => ({
-  DocsSiteRedirect: () => <div data-testid="docs-redirect" />,
-}));
-
-function resetEmptyWorkspace(): void {
-  useFlowStore.setState({
-    ...useFlowStore.getInitialState(),
-    documents: [],
-    activeDocumentId: '',
-    tabs: [],
-    activeTabId: '',
-    nodes: [],
-    edges: [],
-  });
-}
 
 describe('App routing', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    resetEmptyWorkspace();
+  it('redirects / to a new document and opens the editor', async () => {
+    window.location.hash = '#/';
+    const { findByTestId } = render(<App />);
+    // A first visit waits up to 2 s for the v1 import (loaded on demand) before minting a document.
+    await findByTestId('editor', {}, { timeout: 4000 });
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/d\/doc-/));
   });
 
-  it('redirects /canvas to home when no active document exists', async () => {
-    window.history.pushState({}, '', '/#/canvas');
-
-    render(<App />);
-
-    expect(await screen.findByTestId('home-page')).toBeTruthy();
-    expect(screen.queryByTestId('flow-editor')).toBeNull();
+  it('gives each document its own editor, so leaving one saves it under its own id', async () => {
+    window.location.hash = '#/d/doc-a';
+    const { findByText } = render(<App />);
+    const first = (await findByText('doc-a')).dataset.mount;
+    window.location.hash = '#/d/doc-b';
+    expect((await findByText('doc-b')).dataset.mount).not.toBe(first);
   });
 
-  it('redirects invalid flow routes to home when no matching document exists', async () => {
-    window.history.pushState({}, '', '/#/flow/missing-flow');
-
+  it('redirects legacy /v2/:id to /d/:id', async () => {
+    window.location.hash = '#/v2/abc';
     render(<App />);
-
-    expect(await screen.findByTestId('home-page')).toBeTruthy();
-    expect(screen.queryByTestId('flow-editor')).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/d/abc'));
   });
 
-  it('creates a document before opening the import flow from home', async () => {
-    window.history.pushState({}, '', '/#/home');
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Import Flow' }));
-
-    expect(await screen.findByTestId('flow-editor')).toBeTruthy();
-    await waitFor(() => {
-      expect(useFlowStore.getState().documents).toHaveLength(1);
-      expect(useFlowStore.getState().activeDocumentId).not.toBe('');
-      expect(window.location.hash).toMatch(/^#\/flow\//);
-    });
+  // Phase 12.5: every v1 route lands somewhere real. jsdom has no IndexedDB, so no v1 document exists.
+  const v1Routes: readonly (readonly [string, string])[] = [
+    ['#/home', '#/home'],
+    ...LEGACY_HOME_PATHS.map((path) => [`#${path.replace(':slug', 'intro').replace(':lang', 'en')}`, '#/home'] as const),
+    ['#/view', '#/home'],
+    ['#/flow/doc-gone', '#/home'],
+  ];
+  it.each(v1Routes)('sends v1 %s to %s', async (from, to) => {
+    window.location.hash = from;
+    const { findByTestId } = render(<App />);
+    await findByTestId('home');
+    expect(window.location.hash).toBe(to);
   });
 
-  it('navigates to the templates page from home without creating a document', async () => {
-    window.history.pushState({}, '', '/#/home');
-
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Templates' }));
-
-    await waitFor(() => {
-      expect(window.location.hash).toBe('#/templates');
-      expect(useFlowStore.getState().documents).toHaveLength(0);
-      expect(useFlowStore.getState().activeDocumentId).toBe('');
-    });
+  it('tells a visitor whose old diagram link found nothing', async () => {
+    window.location.hash = '#/flow/doc-gone';
+    const { findByText } = render(<App />);
+    await findByText("That diagram isn't in this browser.");
   });
 });

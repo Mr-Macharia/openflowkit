@@ -1,0 +1,461 @@
+import type { SceneDocumentV1, SceneNode, ScenePage } from '../../opencanvas/domain/document/types';
+import { slugifyDslId } from '../text';
+import {
+  ELEMENT_KINDS, ELEMENT_KINDS_WITH_CHILDREN, FLOW_STEP_KINDS, MODEL_KIND_LABEL, VIEW_KINDS,
+  type ArchElement, type ArchModel, type ArchRelation, type ArchView,
+  type ElementKind, type FlowStep, type FlowStepKind, type ViewKind, type ViewRuleWhere,
+} from './types';
+
+/**
+ * Queries over an `ArchModel`: paths, ancestry, name resolution and the
+ * Structurizr implied-relationship strategy. Pure; the model itself never
+ * mutates — builders produce a new one.
+ */
+
+export interface ArchIndex {
+  readonly model: ArchModel;
+  readonly byId: ReadonlyMap<string, ArchElement>;
+  readonly childIds: ReadonlyMap<string, readonly string[]>;
+  /** Explicit + implied, in that order. */
+  readonly relations: readonly ArchRelation[];
+  readonly explicitPairs: ReadonlySet<string>;
+  readonly byNamePath: ReadonlyMap<string, ArchElement>;
+}
+
+/** Element id a placed node carries (`metadata.model.elementId`), or null. */
+export function placedElementId(node: Pick<SceneNode, 'metadata'>): string | null {
+  const model = node.metadata.model;
+  if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
+  const elementId = (model as Record<string, unknown>).elementId;
+  return typeof elementId === 'string' ? elementId : null;
+}
+
+export function relationPairKey(from: string, to: string): string {
+  return `${from}->${to}`;
+}
+
+function namePathOf(index: { byId: ReadonlyMap<string, ArchElement> }, id: string): string {
+  const names: string[] = [];
+  let current: ArchElement | undefined = index.byId.get(id);
+  while (current) {
+    names.unshift(current.name);
+    current = current.parent ? index.byId.get(current.parent) : undefined;
+  }
+  return names.join('.');
+}
+
+export function createArchIndex(model: ArchModel): ArchIndex {
+  const byId = new Map(model.elements.map((element) => [element.id, element]));
+  const childIds = new Map<string, string[]>();
+  for (const element of model.elements) {
+    if (!element.parent) continue;
+    childIds.set(element.parent, [...(childIds.get(element.parent) ?? []), element.id]);
+  }
+  const explicitPairs = new Set(model.relations.map((relation) => relationPairKey(relation.from, relation.to)));
+  const index: ArchIndex = {
+    model, byId, childIds, explicitPairs,
+    relations: [...model.relations],
+    byNamePath: new Map(),
+  };
+  const byNamePath = new Map<string, ArchElement>();
+  for (const element of model.elements) {
+    byNamePath.set(namePathOf(index, element.id).toLowerCase(), element);
+    byNamePath.set(namePathOf(index, element.id).toLowerCase().split('.').map(slugifyDslId).join('.'), element);
+  }
+  return { ...index, byNamePath, relations: [...model.relations, ...deriveImpliedRelations({ ...index, byNamePath, relations: model.relations })] };
+}
+
+/**
+ * Structurizr's `CreateImpliedRelationshipsUnlessAnyRelationshipExistsStrategy`:
+ * `a.x -> b.y` implies `a -> b` (every ancestor pair) unless an explicit
+ * relation already exists there. Derived, never serialized.
+ */
+export function deriveImpliedRelations(index: ArchIndex): ArchRelation[] {
+  const seen = new Set(index.explicitPairs);
+  const implied: ArchRelation[] = [];
+  for (const relation of index.model.relations) {
+    const fromAncestors = elementAncestors(index, relation.from);
+    const toAncestors = elementAncestors(index, relation.to);
+    for (const from of fromAncestors) {
+      for (const to of toAncestors) {
+        if (from === to) continue;
+        const key = relationPairKey(from, to);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        implied.push({
+          id: `implied:${from}->${to}`,
+          from, to,
+          ...(relation.label ? { label: relation.label } : {}),
+          ...(relation.tech ? { tech: relation.tech } : {}),
+          tags: relation.tags,
+          ...(relation.line !== undefined ? { line: relation.line } : {}),
+          implied: true,
+        });
+      }
+    }
+  }
+  return implied;
+}
+
+export function elementChildren(index: ArchIndex, id: string): readonly ArchElement[] {
+  return (index.childIds.get(id) ?? []).flatMap((childId) => {
+    const child = index.byId.get(childId);
+    return child ? [child] : [];
+  });
+}
+
+export function elementDescendantIds(index: ArchIndex, id: string): readonly string[] {
+  const out: string[] = [];
+  const stack = [...(index.childIds.get(id) ?? [])];
+  while (stack.length > 0) {
+    const next = stack.pop()!;
+    out.push(next);
+    stack.push(...(index.childIds.get(next) ?? []));
+  }
+  return out;
+}
+
+/** Parent first, root last. */
+export function elementAncestors(index: ArchIndex, id: string): readonly string[] {
+  const out: string[] = [];
+  let current = index.byId.get(id)?.parent ?? null;
+  while (current) {
+    out.push(current);
+    current = index.byId.get(current)?.parent ?? null;
+  }
+  return out;
+}
+
+export interface CrossingRelation { readonly relation: ArchRelation; readonly via: string | null }
+
+/**
+ * What an element talks to and is used by: its own relations plus those of everything inside it that cross
+ * its boundary, each tagged with the inner element it runs through (`via`, null when it is the element's own).
+ * Relations wholly inside are not its business.
+ */
+export function crossingRelations(index: ArchIndex, id: string): { talksTo: CrossingRelation[]; usedBy: CrossingRelation[] } {
+  const inside = new Set([id, ...elementDescendantIds(index, id)]);
+  const seen = new Set<string>();
+  const talksTo: CrossingRelation[] = [];
+  const usedBy: CrossingRelation[] = [];
+  for (const relation of index.model.relations) {
+    const fromIn = inside.has(relation.from);
+    if (fromIn === inside.has(relation.to) || seen.has(relation.id)) continue;
+    seen.add(relation.id);
+    const near = fromIn ? relation.from : relation.to;
+    (fromIn ? talksTo : usedBy).push({ relation, via: near === id ? null : near });
+  }
+  return { talksTo, usedBy };
+}
+
+export function hasChildren(index: ArchIndex, element: ArchElement): boolean {
+  return ELEMENT_KINDS_WITH_CHILDREN.includes(element.kind) && (index.childIds.get(element.id)?.length ?? 0) > 0;
+}
+
+/**
+ * Resolves a reference the way the DSL writes them (§9.2): exact id, then
+ * relative to the enclosing scope walking up, then a slug path, then a
+ * display-name path. Case-insensitive on slugs; never throws.
+ */
+export function resolveElementRef(index: ArchIndex, reference: string, scopeId: string | null = null): ArchElement | null {
+  const wanted = reference.trim();
+  if (!wanted) return null;
+  const lower = wanted.toLowerCase();
+  // Explicit ids match exactly (`opsEngineer`, grammar §9.2); slugs case-insensitively.
+  const direct = index.byId.get(wanted) ?? index.byId.get(lower);
+  if (direct) return direct;
+  if (scopeId) {
+    for (let scope: string | null = scopeId; scope; scope = index.byId.get(scope)?.parent ?? null) {
+      const relative = index.byId.get(`${scope}.${wanted}`) ?? index.byId.get(`${scope}.${lower}`);
+      if (relative) return relative;
+      const byName = index.byNamePath.get(`${namePathOf(index, scope).toLowerCase()}.${lower}`);
+      if (byName) return byName;
+    }
+  }
+  const slugPath = wanted.split('.').map((segment) => slugifyDslId(segment)).join('.');
+  const byPath = index.byId.get(slugPath) ?? index.byNamePath.get(lower) ?? index.byNamePath.get(slugPath);
+  if (byPath) return byPath;
+  // Last resort: a bare display name that is unique in the model. Ambiguous
+  // names stay unresolved rather than guessing.
+  const byName = index.model.elements.filter((element) => element.name.toLowerCase() === lower);
+  if (byName.length === 1) return byName[0]!;
+  const partial = wanted.includes('.') ? pathEndsWith(index, slugPath) : [];
+  return partial.length === 1 ? partial[0]! : null;
+}
+
+/** Elements whose slug path ends with `tail` on a segment boundary (`Gateway.Auth` → `Payments.Gateway.Auth`). */
+function pathEndsWith(index: ArchIndex, tail: string): ArchElement[] {
+  return index.model.elements.filter((element) => element.id.endsWith(`.${tail}`));
+}
+
+/** For an unresolved reference: the full paths of elements it may have meant, `did you mean A or B?`. */
+export function suggestElementRef(index: ArchIndex, reference: string): string | undefined {
+  const last = slugifyDslId(reference.trim().split('.').at(-1) ?? '');
+  const matches = index.model.elements.filter((element) => element.id === last || element.id.endsWith(`.${last}`));
+  return matches.length ? `did you mean ${matches.slice(0, 3).map((element) => elementPathRef(index, element.id)).join(' or ')}?` : undefined;
+}
+
+/** The Model panel's kind word; a container drawn as a cylinder or a queue says what it holds. */
+export function modelKindLabel(element: Pick<ArchElement, 'kind' | 'attrs'>): string {
+  if (element.kind === 'container') {
+    const shape = element.attrs?.find((entry) => !entry.key && (entry.value === 'cylinder' || entry.value === 'queue'))?.value;
+    if (shape) return shape === 'queue' ? 'Queue' : 'Database';
+  }
+  return MODEL_KIND_LABEL[element.kind];
+}
+
+/** Display reference for text output: `Shop.API` when ids are the slug chain, else the id. */
+export function elementPathRef(index: ArchIndex, id: string): string {
+  const names = namePathOf(index, id);
+  const slugs = names.split('.').map((segment) => slugifyDslId(segment)).join('.');
+  return slugs === id ? names : id;
+}
+
+/**
+ * The nearest shown ancestor of an element, or the element itself. Used to
+ * project a relation onto a view that hides some of its endpoints.
+ */
+export function nearestShown(index: ArchIndex, id: string, shown: ReadonlySet<string>): string | null {
+  if (shown.has(id)) return id;
+  for (const ancestor of elementAncestors(index, id)) if (shown.has(ancestor)) return ancestor;
+  return null;
+}
+
+/** Every view that depicts an element directly (`view.container of Shop`). */
+export function viewsOf(index: ArchIndex, elementId: string): readonly ArchView[] {
+  return index.model.views.filter((view) => view.of === elementId);
+}
+
+/**
+ * A view's name by level and the element it zooms into, in plain words: C4 is the
+ * engine, not the surface (R4). Context → "Overview: Shop", container → "Services:
+ * Shop", component → "Inside API". Landscape and custom views keep their own.
+ */
+export function viewDisplayName(view: Pick<ArchView, 'kind' | 'name' | 'env'>, target: ArchElement): string {
+  switch (view.kind) {
+    case 'context': return `Overview: ${target.name}`;
+    case 'container': return `Services: ${target.name}`;
+    case 'component': return `Inside ${target.name}`;
+    case 'deployment': return `Deployment${view.env ? ` (${view.env})` : ''}: ${target.name}`;
+    default: return view.name;
+  }
+}
+
+/** The canonical child view of an element: a container view of a system, component view of a container. */
+export function childViewOf(index: ArchIndex, elementId: string): ArchView | undefined {
+  const element = index.byId.get(elementId);
+  if (!element) return undefined;
+  const desired: ViewKind | null = element.kind === 'system' ? 'container'
+    : element.kind === 'container' ? 'component'
+      : null;
+  const candidates = viewsOf(index, elementId);
+  if (desired) {
+    const exact = candidates.find((view) => view.kind === desired);
+    if (exact) return exact;
+  }
+  return candidates.find((view) => view.kind === 'custom') ?? candidates.find((view) => view.kind !== 'landscape');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function canonicalAttrs(value: unknown): { key?: string; value: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.value !== 'string') return [];
+    return [{ ...(typeof entry.key === 'string' ? { key: entry.key } : {}), value: entry.value }];
+  });
+}
+
+function elementFromJson(value: unknown): ArchElement | null {
+  if (!isRecord(value)) return null;
+  const { id, kind, name } = value;
+  if (typeof id !== 'string' || typeof kind !== 'string' || typeof name !== 'string') return null;
+  if (!ELEMENT_KINDS.includes(kind as ElementKind)) return null;
+  return {
+    id, kind: kind as ElementKind, name,
+    parent: typeof value.parent === 'string' ? value.parent : null,
+    tags: strings(value.tags), links: strings(value.links),
+    ...(canonicalAttrs(value.attrs).length ? { attrs: canonicalAttrs(value.attrs) } : {}),
+    ...(typeof value.tech === 'string' ? { tech: value.tech } : {}),
+    ...(typeof value.desc === 'string' ? { desc: value.desc } : {}),
+    ...(typeof value.icon === 'string' ? { icon: value.icon } : {}),
+    ...(typeof value.color === 'string' ? { color: value.color } : {}),
+    ...(typeof value.env === 'string' ? { env: value.env } : {}),
+    ...(typeof value.instanceOf === 'string' ? { instanceOf: value.instanceOf } : {}),
+    ...(typeof value.line === 'number' ? { line: value.line } : {}),
+  };
+}
+
+function relationFromJson(value: unknown): ArchRelation | null {
+  if (!isRecord(value)) return null;
+  const { id, from, to } = value;
+  if (typeof id !== 'string' || typeof from !== 'string' || typeof to !== 'string') return null;
+  return {
+    id, from, to, tags: strings(value.tags),
+    ...(canonicalAttrs(value.attrs).length ? { attrs: canonicalAttrs(value.attrs) } : {}),
+    ...(typeof value.label === 'string' ? { label: value.label } : {}),
+    ...(typeof value.tech === 'string' ? { tech: value.tech } : {}),
+    ...(typeof value.link === 'string' ? { link: value.link } : {}),
+    ...(typeof value.line === 'number' ? { line: value.line } : {}),
+    ...(value.implied === true ? { implied: true } : {}),
+  };
+}
+
+function stepFromJson(value: unknown): FlowStep | null {
+  if (!isRecord(value)) return null;
+  const { id, kind } = value;
+  if (typeof id !== 'string' || typeof kind !== 'string' || !FLOW_STEP_KINDS.includes(kind as FlowStepKind)) return null;
+  const branches = Array.isArray(value.branches)
+    ? value.branches.flatMap((branch) => {
+      if (!isRecord(branch)) return [];
+      return [{
+        ...(typeof branch.label === 'string' ? { label: branch.label } : {}),
+        steps: Array.isArray(branch.steps) ? branch.steps.flatMap((step) => stepFromJson(step) ?? []) : [],
+      }];
+    })
+    : undefined;
+  return {
+    id, kind: kind as FlowStepKind, tags: strings(value.tags),
+    ...(typeof value.from === 'string' ? { from: value.from } : {}),
+    ...(typeof value.to === 'string' ? { to: value.to } : {}),
+    ...(typeof value.label === 'string' ? { label: value.label } : {}),
+    ...(typeof value.tech === 'string' ? { tech: value.tech } : {}),
+    ...(typeof value.goto === 'string' ? { goto: value.goto } : {}),
+    ...(branches ? { branches } : {}),
+    ...(typeof value.line === 'number' ? { line: value.line } : {}),
+  };
+}
+
+function whereFromJson(value: unknown): ViewRuleWhere | undefined {
+  if (!isRecord(value)) return undefined;
+  const where: Record<string, unknown> = {};
+  for (const key of ['kind', 'kindNot', 'tag', 'tagNot'] as const) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'string' || !value[key]) return undefined;
+    where[key] = value[key];
+  }
+  for (const key of ['all', 'any'] as const) {
+    if (value[key] === undefined) continue;
+    if (!Array.isArray(value[key]) || !value[key].length) return undefined;
+    const clauses = value[key].map(whereFromJson);
+    if (clauses.some((clause) => !clause)) return undefined;
+    where[key] = clauses;
+  }
+  return Object.keys(where).length ? where as ViewRuleWhere : undefined;
+}
+
+function viewFromJson(value: unknown): ArchView | null {
+  if (!isRecord(value)) return null;
+  const { id, kind, name } = value;
+  if (typeof id !== 'string' || typeof kind !== 'string' || typeof name !== 'string') return null;
+  if (!VIEW_KINDS.includes(kind as ViewKind)) return null;
+  const rules = Array.isArray(value.rules)
+    ? value.rules.flatMap((rule) => {
+      if (!isRecord(rule) || (rule.op !== 'include' && rule.op !== 'exclude') || typeof rule.subject !== 'string') return [];
+      const arrow = isRecord(rule.arrow)
+        ? { ...(typeof rule.arrow.from === 'string' ? { from: rule.arrow.from } : {}), ...(typeof rule.arrow.to === 'string' ? { to: rule.arrow.to } : {}) }
+        : undefined;
+      const where = whereFromJson(rule.where);
+
+      return [{
+        op: rule.op === 'exclude' ? 'exclude' as const : 'include' as const,
+        subject: rule.subject,
+        ...(arrow && (arrow.from || arrow.to) ? { arrow } : {}),
+        ...(where ? { where } : {}),
+        ...(typeof rule.raw === 'string' ? { raw: rule.raw } : rule.where !== undefined && !where ? {raw: `${rule.op} ${rule.subject} where invalid-saved-predicate`} : {}),
+        ...(typeof rule.line === 'number' ? { line: rule.line } : {}),
+      }];
+    })
+    : [];
+  return {
+    id, kind: kind as ViewKind, name, rules,
+    ...(typeof value.of === 'string' ? { of: value.of } : {}),
+    ...(typeof value.env === 'string' ? { env: value.env } : {}),
+    ...(typeof value.direction === 'string' ? { direction: value.direction as ArchView['direction'] } : {}),
+    ...(typeof value.line === 'number' ? { line: value.line } : {}),
+  };
+}
+
+/** Reads a model out of JSON metadata; anything malformed is dropped, never thrown. */
+/**
+ * A parent chain that loops (only reachable through hand-edited JSON) has no root, and every walk up it never
+ * ends. The element authored first in each loop becomes top level, as Map mode reads it (`fromArch`).
+ */
+function withoutParentLoops(elements: readonly ArchElement[]): ArchElement[] {
+  const parentOf = new Map(elements.map((element) => [element.id, element.parent]));
+  const order = new Map(elements.map((element, i) => [element.id, i]));
+  const done = new Set<string>();
+  for (const element of elements) {
+    const path: string[] = [];
+    let at: string | null | undefined = element.id;
+    while (at && !done.has(at) && !path.includes(at)) { path.push(at); at = parentOf.get(at); }
+    if (at && path.includes(at)) {
+      const loop = path.slice(path.indexOf(at));
+      parentOf.set(loop.reduce((a, b) => (order.get(b)! < order.get(a)! ? b : a)), null);
+    }
+    path.forEach((id) => done.add(id));
+  }
+  return elements.map((element) => parentOf.get(element.id) === element.parent ? element : { ...element, parent: null });
+}
+
+export function archModelFromJson(value: unknown): ArchModel | null {
+  if (!isRecord(value)) return null;
+  if (!Array.isArray(value.elements) || !Array.isArray(value.relations) || !Array.isArray(value.views)) return null;
+  return {
+    ...(typeof value.name === 'string' ? { name: value.name } : {}),
+    ...(typeof value.palette === 'string' ? { palette: value.palette } : {}),
+    ...(value.icons === 'auto' || value.icons === 'off' ? { icons: value.icons } : {}),
+    elements: withoutParentLoops(value.elements.flatMap((element) => elementFromJson(element) ?? [])),
+    relations: value.relations.flatMap((relation) => relationFromJson(relation) ?? []),
+    views: value.views.flatMap((view) => viewFromJson(view) ?? []),
+    flows: Array.isArray(value.flows)
+      ? value.flows.flatMap((flow) => {
+        if (!isRecord(flow) || typeof flow.id !== 'string' || typeof flow.name !== 'string') return [];
+        return [{
+          id: flow.id, name: flow.name,
+          steps: Array.isArray(flow.steps) ? flow.steps.flatMap((step) => stepFromJson(step) ?? []) : [],
+          ...(typeof flow.line === 'number' ? { line: flow.line } : {}),
+        }];
+      })
+      : [],
+  };
+}
+
+/** The frame that carries the workspace model, if the page is a model view. */
+export function archFrameOf(page: ScenePage): SceneNode | null {
+  return page.nodes.find((node) => {
+    const dsl = node.metadata.dsl;
+    return isRecord(dsl) && isRecord(dsl.arch);
+  }) ?? null;
+}
+
+export function archModelOfPage(page: ScenePage): ArchModel | null {
+  const arch = archFrameOf(page)?.metadata.dsl;
+  return isRecord(arch) && isRecord(arch.arch) ? archModelFromJson(arch.arch.model) : null;
+}
+
+export function archViewIdOfPage(page: ScenePage): string | null {
+  const arch = archFrameOf(page)?.metadata.dsl;
+  if (!isRecord(arch) || !isRecord(arch.arch)) return null;
+  return typeof arch.arch.view === 'string' ? arch.arch.view : null;
+}
+
+/** First page of the document that belongs to a model. */
+export function archModelOfDocument(document: SceneDocumentV1 | null | undefined): ArchModel | null {
+  if (!document) return null;
+  for (const page of document.pages) {
+    const model = archModelOfPage(page);
+    if (model) return model;
+  }
+  return null;
+}
+
+/** Flattened, playback-ordered steps with their structural depth and branch label. */
+export type { FlatTimelineStep as FlatFlowStep } from '../../opencanvas/domain/animation/flow';
+export { flattenTimelineSteps as flattenFlowSteps } from '../../opencanvas/domain/animation/flow';

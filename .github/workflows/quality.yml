@@ -2,8 +2,11 @@ name: Quality Checks
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, v2 ]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   quality:
@@ -16,17 +19,147 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Release notes script
+        run: node scripts/release-notes.mjs --self-check
+
+      # action/*.integration.test.mjs runs the built MCP CLI against a real git repo.
+      - name: Build the agent bundle and the MCP CLI
+        run: npm run build:agent && npm --prefix mcp-server run build
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run CI quality suite
         run: npm run test:ci
+
+      - name: MCP server tests (typecheck + suite)
+        run: npm --prefix mcp-server run lint && npm --prefix mcp-server run test:run
+
+  # The browser suite runs serially (one WebGL canvas at a time), so it is split across
+  # four machines instead; each shard starts at once, not after the unit suite.
+  e2e:
+    name: e2e (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E smoke suite
-        run: npm run e2e:ci
+      - name: Run E2E shard (software WebGL; @local specs need a GPU)
+        run: npm run e2e:ci -- --shard=${{ matrix.shard }}/4
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
+
+      # Flaky tests pass on retry and leave the job green; their first-failure traces still land here.
+      - name: Upload failure traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces-${{ matrix.shard }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # One HTML report for the whole suite, and one check that is red when any shard is.
+  e2e-report:
+    if: ${{ !cancelled() }}
+    needs: e2e
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into one HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Fail when a shard failed
+        if: needs.e2e.result != 'success'
+        run: exit 1
+
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails on: an example that does not compile, a dead internal link, a
+      # shipped feature with no page, or a page with no inventory backing.
+      - name: Build docs
+        run: npm run build --workspace docs-site
+
+  # docker-publish only runs on main; this keeps the self-host image from breaking unseen on v2.
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image and serve the app
+        run: |
+          docker build -t openflowkit:check .
+          docker run -d --name ofk -p 3045:3045 openflowkit:check
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:3045/ | grep -q '<div id="root"' && exit 0; sleep 1; done
+          docker logs ofk; exit 1

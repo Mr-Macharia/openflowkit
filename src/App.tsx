@@ -1,285 +1,90 @@
-import React, { lazy, Suspense, useEffect } from 'react';
-import {
-  HashRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-  useNavigate,
-  useLocation,
-  useParams,
-} from 'react-router-dom';
-import { ReactFlowProvider } from '@/lib/reactflowCompat';
-import {
-  createFlowEditorAIRouteState,
-  createFlowEditorInitialTemplateRouteState,
-  createFlowEditorImportRouteState,
-  type FlowEditorRouteState,
-} from '@/app/routeState';
-import { DocsSiteRedirect } from '@/components/app/DocsSiteRedirect';
-import { RouteLoadingFallback } from '@/components/app/RouteLoadingFallback';
-import { MobileWorkspaceGate } from '@/components/app/MobileWorkspaceGate';
-import { CinematicExportProvider } from '@/context/CinematicExportContext';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { lastDocumentId, mintV2Id } from '@/opencanvas/presentation/v2/v2Document';
+import { V2ErrorBoundary } from '@/opencanvas/presentation/v2/V2ErrorBoundary';
 
-import { useFlowStore } from './store';
-import { useEditorPageActions } from '@/store/editorPageHooks';
-import { useWorkspaceDocumentActions, useWorkspaceRouteResolver } from '@/store/documentHooks';
-import { useShortcutHelpOpen } from '@/store/viewHooks';
-
-// Import i18n configuration
-import './i18n/config';
-
-async function loadFlowEditorModule() {
-  const module = await import('./components/FlowEditor');
-  return { default: module.FlowEditor };
-}
-
-const FlowEditor = lazy(loadFlowEditorModule);
-
-const LazyHomePage = lazy(async () => {
-  const module = await import('./components/HomePage');
-  return { default: module.HomePage };
+const HomePage = lazy(async () => {
+  const module = await import('@/opencanvas/presentation/v2/V2HomePage');
+  return { default: module.V2HomePage };
 });
 
-const LazyKeyboardShortcutsModal = lazy(async () => {
-  const module = await import('./components/KeyboardShortcutsModal');
-  return { default: module.KeyboardShortcutsModal };
-});
+const LegacyFlowRedirect = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2LegacyRoutes')).LegacyFlowRedirect }));
+const LegacyViewPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2LegacyRoutes')).LegacyViewPage }));
 
-const LazyDiagramViewer = lazy(async () => {
-  const module = await import('./components/DiagramViewer');
-  return { default: module.DiagramViewer };
-});
+/** v1 routes that were screens of the old app (phase 12.5); bookmarks land on home. */
+export const LEGACY_HOME_PATHS = ['/templates', '/settings', '/canvas', '/mcp'] as const;
+/** v1 forwarded `#/docs…` to the docs site. Its pages were rebuilt (phase 9), so old slugs land on its home. */
+const LEGACY_DOCS_PATHS = ['/docs', '/docs/:slug', '/docs/:lang/:slug'] as const;
+const DOCS_SITE = 'https://docs.openflowkit.com/';
 
-function navigateHome(navigate: ReturnType<typeof useNavigate>): void {
-  navigate('/home', { replace: true });
+function DocsSiteRedirect(): null {
+  useEffect(() => { window.location.replace(DOCS_SITE); }, []);
+  return null;
 }
 
-function normalizeLegacyViewerUrl(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
+const SharedPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2SharedPage')).V2SharedPage }));
 
-  const { pathname, search, hash } = window.location;
-  if (hash || !pathname.endsWith('/view') || !new URLSearchParams(search).has('flow')) {
-    return;
-  }
+const FromGithubPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2FromGithubPage')).V2FromGithubPage }));
+const MapRoute = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/map/MapRoute')).MapRoute }));
+const FromDslPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2FromDslPage')).V2FromDslPage }));
 
-  const basePathPrefix = pathname.slice(0, -'/view'.length);
-  const basePath = basePathPrefix ? `${basePathPrefix}/` : '/';
-  window.history.replaceState(null, '', `${basePath}#/view${search}`);
-}
+const loadEditor = () => import('@/opencanvas/presentation/v2/V2EditorPage');
+const EditorPage = lazy(async () => ({ default: (await loadEditor()).V2EditorPage }));
 
-function FlowCanvasRoute(): React.JSX.Element {
-  const { flowId } = useParams();
-  const navigate = useNavigate();
-  const { setActiveDocumentId } = useWorkspaceDocumentActions();
-  const { setActivePageId } = useEditorPageActions();
-  const { documents, resolveTarget } = useWorkspaceRouteResolver();
+// A first visit lands on the newest diagram brought over from v1, if the import finishes
+// within 2 s; otherwise a new document, and the import carries on in the background.
+const FIRST_VISIT_WAIT_MS = 2000;
 
+function HomeDocument(): React.JSX.Element | null {
+  const [target, setTarget] = useState(lastDocumentId);
   useEffect(() => {
-    if (!flowId) {
-      navigateHome(navigate);
-      return;
-    }
+    if (target) return undefined;
+    let live = true;
+    const fresh = mintV2Id('doc');
+    // The editor downloads while the v1 check runs; it is where this route lands either way.
+    void loadEditor();
+    void Promise.race([
+      // Loaded on demand: the converter it carries is the biggest thing a first paint never needs.
+      import('@/services/storage/v2/v1Import').then(({ runV1Import }) => runV1Import())
+        .then((report) => report.imported[0] ?? fresh, () => fresh),
+      new Promise<string>((resolve) => setTimeout(() => resolve(fresh), FIRST_VISIT_WAIT_MS)),
+    ]).then((id) => { if (live) setTarget(id); });
+    return () => { live = false; };
+  }, [target]);
+  return target ? <Navigate to={`/d/${target}`} replace /> : null;
+}
 
-    const target = resolveTarget(flowId);
-    if (!target) {
-      navigateHome(navigate);
-      return;
-    }
+/** One editor per document: switching /d/A → /d/B (back, forward) unmounts A's editor, which saves A's pending edit as A. */
+function EditorRoute(): React.JSX.Element {
+  return <EditorPage key={useParams().id} />;
+}
 
-    setActiveDocumentId(target.documentId);
-    setActivePageId(target.pageId);
-  }, [documents, flowId, navigate, resolveTarget, setActiveDocumentId, setActivePageId]);
+function LegacyV2Redirect(): React.JSX.Element {
+  const { id } = useParams();
+  return <Navigate to={`/d/${id}`} replace />;
+}
 
+export default function App(): React.JSX.Element {
   return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <ReactFlowProvider>
-        <CinematicExportProvider>
-          <FlowEditor onGoHome={() => navigate('/home')} />
-        </CinematicExportProvider>
-      </ReactFlowProvider>
-    </Suspense>
+    <HashRouter>
+      <V2ErrorBoundary>
+        <Suspense fallback={<div className="ofk-boot" />}>
+          <Routes>
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/flow/:flowId" element={<LegacyFlowRedirect />} />
+            <Route path="/view" element={<LegacyViewPage />} />
+            {LEGACY_HOME_PATHS.map((path) => <Route key={path} path={path} element={<Navigate to="/home" replace />} />)}
+            {LEGACY_DOCS_PATHS.map((path) => <Route key={path} path={path} element={<DocsSiteRedirect />} />)}
+            <Route path="/d/:id" element={<EditorRoute />} />
+            <Route path="/s/:id/:key?" element={<SharedPage />} />
+            <Route path="/from/github/*" element={<FromGithubPage />} />
+            <Route path="/map/github/*" element={<MapRoute />} />
+            <Route path="/from/dsl" element={<FromDslPage />} />
+            <Route path="/v2/:id" element={<LegacyV2Redirect />} />
+            <Route path="*" element={<HomeDocument />} />
+          </Routes>
+        </Suspense>
+      </V2ErrorBoundary>
+    </HashRouter>
   );
 }
-
-function HomePageRoute(): React.JSX.Element {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { createDocument } = useWorkspaceDocumentActions();
-
-  const activeTab = getHomePageTab(location.pathname);
-
-  useEffect(() => {
-    void loadFlowEditorModule();
-  }, []);
-
-  function openNewFlow(routeState?: FlowEditorRouteState): void {
-    const newDocumentId = createDocument();
-    navigate(`/flow/${newDocumentId}`, routeState ? { state: routeState } : undefined);
-  }
-
-  function handleLaunch(): void {
-    openNewFlow();
-  }
-
-  function handleLaunchWithTemplates(): void {
-    navigate('/templates');
-  }
-
-  function handleLaunchWithAI(): void {
-    openNewFlow(createFlowEditorAIRouteState());
-  }
-
-  function handleLaunchWithInitialTemplate(templateId: string): void {
-    openNewFlow(createFlowEditorInitialTemplateRouteState(templateId));
-  }
-
-  function handleImportJSON(): void {
-    openNewFlow(createFlowEditorImportRouteState());
-  }
-
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyHomePage
-        onLaunch={handleLaunch}
-        onLaunchWithTemplates={handleLaunchWithTemplates}
-        onLaunchWithTemplate={handleLaunchWithInitialTemplate}
-        onLaunchWithAI={handleLaunchWithAI}
-        onImportJSON={handleImportJSON}
-        onOpenFlow={(flowId) => navigate(`/flow/${flowId}`)}
-        activeTab={activeTab}
-        onSwitchTab={(tab) => navigate(getHomePagePath(tab))}
-      />
-    </Suspense>
-  );
-}
-
-function FlowCanvasRedirectRoute(): React.JSX.Element {
-  const activeDocumentId = useFlowStore((state) => state.activeDocumentId);
-
-  return <Navigate to={activeDocumentId ? `/flow/${activeDocumentId}` : '/home'} replace />;
-}
-
-function EditorRouteGate({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const navigate = useNavigate();
-
-  return (
-    <MobileWorkspaceGate onOpenDocs={() => navigate('/docs')} onGoHome={() => navigate('/home')}>
-      {children}
-    </MobileWorkspaceGate>
-  );
-}
-
-function App(): React.JSX.Element {
-  const { setShortcutsHelpOpen } = useFlowStore();
-  const isShortcutsHelpOpen = useShortcutHelpOpen();
-
-  normalizeLegacyViewerUrl();
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
-      const activeElement = document.activeElement as HTMLElement | null;
-      const isInput =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement?.isContentEditable;
-
-      if (isInput) return;
-
-      const isQuestionMark = e.key === '?';
-      const isCmdSlash = (e.metaKey || e.ctrlKey) && e.key === '/';
-
-      if (isQuestionMark || isCmdSlash) {
-        if (isCmdSlash) e.preventDefault();
-        const { isShortcutsHelpOpen } = useFlowStore.getState().viewSettings;
-        setShortcutsHelpOpen(!isShortcutsHelpOpen);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setShortcutsHelpOpen]);
-
-  return (
-    <>
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-slate-900 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium"
-      >
-        Skip to content
-      </a>
-      <Router>
-        <Routes>
-          <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route
-            path="/view"
-            element={
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <LazyDiagramViewer />
-              </Suspense>
-            }
-          />
-          <Route path="/home" element={<HomePageRoute />} />
-          <Route path="/templates" element={<HomePageRoute />} />
-          <Route path="/mcp" element={<HomePageRoute />} />
-          <Route path="/settings" element={<HomePageRoute />} />
-          <Route
-            path="/canvas"
-            element={
-              <EditorRouteGate>
-                <FlowCanvasRedirectRoute />
-              </EditorRouteGate>
-            }
-          />
-          <Route
-            path="/flow/:flowId"
-            element={
-              <EditorRouteGate>
-                <FlowCanvasRoute />
-              </EditorRouteGate>
-            }
-          />
-          <Route path="/docs" element={<DocsSiteRedirect />} />
-          <Route path="/docs/:slug" element={<DocsSiteRedirect />} />
-          <Route path="/docs/:lang/:slug" element={<DocsSiteRedirect />} />
-        </Routes>
-
-        {isShortcutsHelpOpen ? (
-          <Suspense fallback={null}>
-            <LazyKeyboardShortcutsModal />
-          </Suspense>
-        ) : null}
-      </Router>
-    </>
-  );
-}
-
-function getHomePageTab(pathname: string): 'home' | 'templates' | 'settings' | 'mcp' {
-  switch (pathname) {
-    case '/settings':
-      return 'settings';
-    case '/templates':
-      return 'templates';
-    case '/mcp':
-      return 'mcp';
-    default:
-      return 'home';
-  }
-}
-
-function getHomePagePath(tab: 'home' | 'templates' | 'settings' | 'mcp'): string {
-  switch (tab) {
-    case 'settings':
-      return '/settings';
-    case 'templates':
-      return '/templates';
-    case 'mcp':
-      return '/mcp';
-    default:
-      return '/home';
-  }
-}
-
-export default App;

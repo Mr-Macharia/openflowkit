@@ -1,6 +1,6 @@
 import { MarkerType } from '@/lib/reactflowCompat';
-import { createDefaultEdge } from '@/constants';
-import { SECTION_MIN_HEIGHT, SECTION_MIN_WIDTH } from '@/hooks/node-operations/sectionBounds';
+import { createId } from '@/lib/id';
+import { SECTION_MIN_HEIGHT, SECTION_MIN_WIDTH } from '@/lib/sectionBounds';
 import { setNodeParent } from './nodeParent';
 import {
   createMermaidParseState,
@@ -24,6 +24,26 @@ import {
 } from './mermaidParserHelpers';
 import type { FlowEdge, FlowNode } from './types';
 
+// v1's edge defaults: the importer still builds v1-shaped edges before they convert.
+const DEFAULT_EDGE_OPTIONS = {
+  type: 'smoothstep' as const,
+  markerEnd: { type: MarkerType.ArrowClosed },
+  animated: false,
+  style: { stroke: '#94a3b8', strokeWidth: 2 },
+  labelStyle: { fill: '#334155', fontWeight: 500, fontSize: 12 },
+  labelBgStyle: { fill: '#ffffff', stroke: '#cbd5e1', strokeWidth: 1 },
+  labelBgPadding: [8, 4] as [number, number],
+  labelBgBorderRadius: 4,
+};
+
+const createDefaultEdge = (source: string, target: string, label?: string, id?: string): FlowEdge => ({
+  id: id || createId(`e-${source}-${target}`),
+  source,
+  target,
+  label,
+  ...DEFAULT_EDGE_OPTIONS,
+});
+
 const NODE_TYPE_DEFAULTS: Record<string, string> = {
   start: 'emerald',
   end: 'red',
@@ -44,24 +64,63 @@ export interface ParseResult {
   diagnostics?: string[];
 }
 
-function preprocessMermaidInput(input: string): string[] {
-  const processed = normalizeEdgeLabels(normalizeMultilineStrings(input.replace(/\r\n/g, '\n')));
-  return processed.split('\n');
+/**
+ * Flowchart `;` ends a statement (`graph LR; A-->B; B-->C`) unless it sits in quotes, brackets or a |label|;
+ * `%%` there starts a comment that runs to the end of the line.
+ */
+function splitStatements(line: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let piped = false;
+  let start = 0;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (char === '"') quoted = !quoted;
+    else if (quoted) continue;
+    else if (char === '%' && line[index + 1] === '%' && depth === 0 && !piped) {
+      parts.push(line.slice(start, index));
+      return parts;
+    }
+    else if (char === '|' && depth === 0) piped = !piped;
+    else if ('[({'.includes(char)) depth++;
+    else if (')]}'.includes(char)) depth = Math.max(0, depth - 1);
+    else if (char === ';' && depth === 0 && !piped) {
+      parts.push(line.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(line.slice(start));
+  return parts;
+}
+
+/** Source lines, with flowchart statements split apart; each keeps its 1-based source line. */
+function preprocessMermaidInput(input: string): { lines: string[]; lineNumbers: number[] } {
+  const processed = normalizeEdgeLabels(normalizeMultilineStrings(input.replace(/\r\n/g, '\n'))).split('\n');
+  const flowchart = /^(?:flowchart|graph)\b/i.test(processed.find((line) => line.trim() && !line.trim().startsWith('%%'))?.trim() ?? '');
+  const lines: string[] = [];
+  const lineNumbers: number[] = [];
+  processed.forEach((line, index) => {
+    for (const part of flowchart && !line.trim().startsWith('%%') ? splitStatements(line) : [line]) {
+      lines.push(part);
+      lineNumbers.push(index + 1);
+    }
+  });
+  return { lines, lineNumbers };
 }
 
 function isSkippableLine(line: string): boolean {
   return !line || SKIP_PATTERNS.some((pattern) => pattern.test(line));
 }
 
+/** `flowchart LR`, or a bare `flowchart` / `graph`, which Mermaid draws top to bottom. */
 function parseFlowchartDeclaration(line: string): MermaidDirection | null {
-  const flowchartMatch = line.match(/^(?:flowchart|graph)\s+(TD|TB|LR|RL|BT)/i);
+  const flowchartMatch = line.match(/^(?:flowchart|graph)(?:\s+(TD|TB|LR|RL|BT))?\s*$/i);
   if (!flowchartMatch) {
     return null;
   }
-
-  return (
-    flowchartMatch[1].toUpperCase() === 'TD' ? 'TB' : flowchartMatch[1].toUpperCase()
-  ) as MermaidDirection;
+  const direction = (flowchartMatch[1] ?? 'TB').toUpperCase();
+  return (direction === 'TD' ? 'TB' : direction) as MermaidDirection;
 }
 
 function parseStateDiagramDirection(nextLine: string | undefined): MermaidDirection {
@@ -187,6 +246,34 @@ function applyNodeStyleDirective(
   return true;
 }
 
+const CLICK_RE = /^click\s+([a-zA-Z0-9_][\w.-]*)\s+(.*)$/i;
+
+/** `click A "url" "tooltip"` (or `click A href "url"`) is a link; a callback or a tooltip has nowhere to go. */
+function applyClickDirective(
+  state: ReturnType<typeof createMermaidParseState>,
+  line: string,
+  lineNumber: number
+): boolean {
+  const match = line.match(CLICK_RE);
+  if (!match) {
+    return false;
+  }
+
+  const [, id, rest] = match;
+  const link = rest.match(/^(?:href\s+)?"([^"]*)"\s*(.*)$/i);
+  if (!link) {
+    state.diagnostics.push(`Click callback on ${id} dropped at line ${lineNumber}: "${line}"`);
+  } else {
+    if (!state.nodesMap.has(id)) registerMermaidNode(state, id);
+    state.nodesMap.get(id)!.link = link[1];
+    if (/^"[^"]*"/.test(link[2])) {
+      state.diagnostics.push(`Click tooltip on ${id} dropped at line ${lineNumber}: "${line}"`);
+    }
+  }
+
+  return true;
+}
+
 function applyClassAssignmentDirective(
   state: ReturnType<typeof createMermaidParseState>,
   line: string
@@ -220,27 +307,39 @@ function parseEdgeDeclaration(
     return false;
   }
 
-  const edgesFound = parseEdgeLine(line);
+  // `A e1@--> B`: the id names the link that follows it.
+  const ids: string[] = [];
+  const unnamed = line.replace(/(^|\s)([A-Za-z_][\w-]*)@(?=[<ox]?[-=.~])/g, (_, lead: string, id: string) => {
+    ids.push(id);
+    return lead;
+  });
+  const edgesFound = parseEdgeLine(unnamed);
   if (edgesFound.length === 0) {
     state.diagnostics.push(`Invalid Mermaid edge syntax at line ${lineNumber}: "${line}"`);
     return true;
   }
 
-  edgesFound.forEach((edge) => {
+  edgesFound.forEach((edge, index) => {
     const type = state.diagramType === 'stateDiagram' ? 'state' : 'process';
     const sourceId = registerMermaidNode(state, edge.sourceRaw, type);
     const targetId = registerMermaidNode(state, edge.targetRaw, type);
 
     if (sourceId && targetId) {
-      state.rawEdges.push({
-        source: sourceId,
-        target: targetId,
-        label: edge.label,
-        arrowType: edge.arrowType,
-      });
+      const rawEdge = { source: sourceId, target: targetId, label: edge.label, arrowType: edge.arrowType };
+      state.rawEdges.push(rawEdge);
+      if (ids.length === edgesFound.length) state.edgeIds.set(ids[index]!, rawEdge);
     }
   });
 
+  return true;
+}
+
+/** `e1@{ animate: true }` (or `animation: fast|slow`) on an edge named earlier. */
+function applyEdgeProperties(state: ReturnType<typeof createMermaidParseState>, line: string): boolean {
+  const match = line.match(/^([A-Za-z_][\w-]*)@\{(.*)\}$/);
+  const edge = match ? state.edgeIds.get(match[1]!) : undefined;
+  if (!edge) return false;
+  if (/\banimat(?:e\s*:\s*true|ion\s*:)/.test(match![2]!)) edge.animate = true;
   return true;
 }
 
@@ -258,21 +357,30 @@ function parseStateDiagramNodeDeclaration(
     return true;
   }
 
-  const stateDescMatch = line.match(/^(\w+)\s*:\s*(.+)/);
+  // `id : text` (never `id:::class`): the shown name, or under a name `state "…" as id` already gave.
+  const stateDescMatch = line.match(/^(\w+)\s*:(?!:)\s*(.+)/);
   if (stateDescMatch) {
-    registerMermaidNode(state, stateDescMatch[1], 'state', stateDescMatch[2]);
+    const named = state.nodesMap.get(stateDescMatch[1]);
+    if (named && named.label !== named.id) named.description = stateDescMatch[2].trim();
+    else registerMermaidNode(state, stateDescMatch[1], 'state', stateDescMatch[2]);
     return true;
   }
 
   return false;
 }
 
-function buildMermaidParseModel(lines: string[]): MermaidParseModel {
+function buildMermaidParseModel({ lines, lineNumbers }: { lines: string[]; lineNumbers: number[] }): MermaidParseModel {
   const state = createMermaidParseState();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    const lineNumber = i + 1;
+    const lineNumber = lineNumbers[i];
+    const subgraphDirection = state.diagramType === 'flowchart' ? parseFlowchartDeclaration(`flowchart ${line.replace(/^direction\s+/i, '')}`) : null;
+    const section = state.nodesMap.get(state.parentStack[state.parentStack.length - 1] ?? '');
+    if (/^direction\s/i.test(line) && subgraphDirection && section) {
+      section.metadata = { ...section.metadata, sectionMermaidDirection: subgraphDirection };
+      continue;
+    }
     if (isSkippableLine(line)) {
       continue;
     }
@@ -322,9 +430,17 @@ function buildMermaidParseModel(lines: string[]): MermaidParseModel {
       continue;
     }
 
+    if (applyClickDirective(state, line, lineNumber)) {
+      continue;
+    }
+
     const linkStyleMatch = parseLinkStyleLine(line);
     if (linkStyleMatch) {
       linkStyleMatch.indices.forEach((index) => state.linkStyles.set(index, linkStyleMatch.style));
+      continue;
+    }
+
+    if (applyEdgeProperties(state, line)) {
       continue;
     }
 
@@ -338,7 +454,11 @@ function buildMermaidParseModel(lines: string[]): MermaidParseModel {
 
     const standalone = parseNodeDeclaration(line);
     if (standalone) {
-      registerMermaidNode(state, line);
+      const id = registerMermaidNode(state, line);
+      // A bare id listed inside a subgraph joins it when nothing has claimed it yet (`A --> B` first, then `subgraph G` / `A` / `end`).
+      const listed = id ? state.nodesMap.get(id) : undefined;
+      const group = state.parentStack[state.parentStack.length - 1];
+      if (listed && group && !listed.parentId) listed.parentId = group;
       continue;
     }
 
@@ -368,14 +488,19 @@ function createFlowNodes(model: MermaidParseModel): FlowNode[] {
       position: { x: 0, y: 0 },
       data: {
         label: node.label,
-        subLabel: '',
+        subLabel: node.description ?? '',
         color: getDefaultColor(node.type),
         ...(node.shape ? { shape: node.shape } : {}),
+        ...(node.subroutine ? { mermaidSubroutine: true } : {}),
+        ...(node.link ? { link: node.link } : {}),
         ...(node.metadata?.sectionMermaidId
           ? { sectionMermaidId: node.metadata.sectionMermaidId }
           : {}),
         ...(node.metadata?.sectionMermaidTitle
           ? { sectionMermaidTitle: node.metadata.sectionMermaidTitle }
+          : {}),
+        ...(node.metadata?.sectionMermaidDirection
+          ? { sectionMermaidDirection: node.metadata.sectionMermaidDirection }
           : {}),
       },
       ...(node.type === 'section'
@@ -450,6 +575,10 @@ function createFlowEdges(model: MermaidParseModel): FlowEdge[] {
       `e-mermaid-${index}`
     );
 
+    // `~~~` positions its ends like a link but draws nothing.
+    if (edge.arrowType === '~~~') {
+      flowEdge.style = { ...flowEdge.style, stroke: 'transparent' };
+    }
     if (edge.arrowType.includes('-.') || edge.arrowType.includes('-.-')) {
       flowEdge.style = { ...flowEdge.style, strokeDasharray: '5 3' };
     }
@@ -462,11 +591,20 @@ function createFlowEdges(model: MermaidParseModel): FlowEdge[] {
     if (!edge.arrowType.includes('>')) {
       flowEdge.markerEnd = undefined;
     }
+    // `--o` / `--x` end in a circle or cross; `o--o` / `x--x` at both ends.
+    const markerKind = (end: string | undefined) => (end === 'o' ? 'circle' : end === 'x' ? 'cross' : undefined);
+    const head = markerKind(edge.arrowType.at(-1));
+    const tail = markerKind(edge.arrowType[0]);
+    if (head || tail || edge.animate) {
+      flowEdge.data = { ...flowEdge.data, ...(head ? { head } : {}), ...(tail ? { tail } : {}), ...(edge.animate ? { animate: true } : {}) };
+    }
 
     const style = model.linkStyles.get(index);
     if (style) {
       if (style.stroke) {
         flowEdge.style = { ...flowEdge.style, stroke: style.stroke };
+        // Authored, unlike the default stroke every edge carries.
+        flowEdge.data = { ...flowEdge.data, linkStroke: style.stroke };
       }
       if (style['stroke-width']) {
         flowEdge.style = {

@@ -1,8 +1,8 @@
 {
-  "name": "@vrun-design/openflowkit-mcp",
-  "version": "0.1.2",
-  "mcpName": "io.github.Vrun-design/openflowkit-mcp",
-  "description": "Local-first Model Context Protocol server for OpenFlowKit — deterministic diagramming tools (validate DSL, templates, icons, viewer links) for Claude Desktop, Cursor, Windsurf, and other MCP clients. No API key, no cloud round-trip.",
+  "name": "@openflowkit/openflowkit-mcp",
+  "version": "0.2.3",
+  "mcpName": "io.github.openflowkit/openflowkit-mcp",
+  "description": "Local-first Model Context Protocol server for OpenFlowKit — pair the live editor or edit .openflow.json files: create/update/read diagrams from DSL, scene ops, icon search, export. No account, no cloud.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -15,44 +15,54 @@
     "windsurf",
     "local-first"
   ],
-  "homepage": "https://github.com/Vrun-design/openflowkit#readme",
-  "bugs": "https://github.com/Vrun-design/openflowkit/issues",
+  "homepage": "https://github.com/openflowkit/openflowkit#readme",
+  "bugs": "https://github.com/openflowkit/openflowkit/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Vrun-design/openflowkit.git",
+    "url": "https://github.com/openflowkit/openflowkit.git",
     "directory": "mcp-server"
   },
   "license": "MIT",
   "type": "module",
   "bin": {
-    "openflowkit-mcp": "./dist/index.js"
+    "openflowkit-mcp": "./dist/index.js",
+    "openflowkit": "./dist/cli.js"
   },
   "files": [
     "dist",
     "data",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11"
   },
   "scripts": {
     "build:icons": "node scripts/build-icon-manifest.mjs",
-    "prebuild": "npm run build:icons",
-    "build": "tsc -p tsconfig.json",
+    "prebuild": "npm run build:icons && npm run build:grammar && npm run build:agent && npm run build:map-viewer",
+    "build": "node scripts/build-dist.mjs",
     "dev": "tsx src/index.ts",
+    "start:http": "node dist/http.js",
     "test": "vitest --config vitest.config.ts",
     "test:run": "vitest --config vitest.config.ts --run",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "build:agent": "npm --prefix .. run build:agent",
+    "build:map-viewer": "npm --prefix .. run build:map-viewer",
+    "pretest": "npm run build:icons && npm run build:agent && node scripts/ensure-map-viewer.mjs",
+    "pretest:run": "npm run build:icons && npm run build:agent && node scripts/ensure-map-viewer.mjs",
+    "prelint": "npm run build:agent",
+    "eval:agent": "npm run build:agent && vitest --config vitest.config.ts --run evals",
+    "build:grammar": "node scripts/build-grammar-doc.mjs",
+    "eval:validity": "npm run build:icons && npm run build:agent && tsx evals/validity/run.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "pako": "^2.1.0",
+    "elkjs": "^0.11.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/pako": "^2.0.4",
     "tsx": "^4.19.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0"

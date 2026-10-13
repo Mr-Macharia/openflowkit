@@ -1,76 +1,65 @@
 ---
-draft: false
-title: Quick Start
-description: Create your first OpenFlowKit diagram from builder templates, imports, AI, code, or the canvas.
+title: Quick start
+description: From an empty canvas to an exported diagram in five minutes — shapes, connectors, code, export.
 ---
 
-This is the fastest reliable way to get productive if you are building software, documenting systems, or preparing technical diagrams for docs and reviews.
+Open [app.openflowkit.com](https://app.openflowkit.com). There is nothing to install and no
+account. To run your own copy instead, see [Self-hosting](/self-hosting/).
 
-## 1. Start from the home screen
+## 1. Draw something
 
-The first screen is the workspace home, not a forced blank diagram. From there you can:
+1. Press `R` and click the canvas. A rectangle appears, selected, with no label yet.
+2. Type `Client`. Typing on a selected shape that has no label starts its label. Press `Enter`
+   to finish.
+3. Press `O` and click to the right of the rectangle. Once a shape has a label, letters are
+   tool shortcuts again, so `O` picks the ellipse. Type `API`, then `Enter`.
+4. Hover the rectangle and four side handles appear. Drag from the right one onto the ellipse
+   to connect them.
 
-- create a blank flow
-- open an existing browser-stored flow
-- duplicate a saved flow
-- import a JSON diagram document
-- jump directly into templates or AI-assisted generation paths
+To rename a shape that already has a label, select it and press `Enter` (or double-click it).
+The canvas is infinite: `Space + drag` pans and `⌘`/`Ctrl + scroll` zooms at the pointer.
 
-Each flow opens in the editor only after a real document exists.
+Every edit is autosaved in your browser. The cloud icon in the document bar shows the save
+state. Press `?` at any time for the shortcut cheatsheet.
 
-## 2. Pick the strongest input you already have
+## 2. Or write it
 
-OpenFlowKit works best when you start from the most truthful source available, then refine visually.
+Press `⌥C`. The code panel opens with its text already selected, so pasting replaces it. Paste
+this, then press `⌘↵` (or click **Generate diagram**):
 
-### Template-first
+```openflow
+flowchart
+Start [ellipse]
+Check [diamond]
+Ship [rounded]
 
-Use **Browse Templates** when you need a strong developer-oriented starting structure fast. The starter set is strongest for release flows, incident runbooks, cloud diagrams, sequence flows, C4 context, and architecture communication.
-
-### Import or code-first
-
-Use import or the Studio code flows when you already have a technical source artifact:
-
-- Mermaid or OpenFlow DSL for editable diagram-as-code
-- SQL or OpenAPI for structured system drafts
-- Terraform, source code, or infrastructure text for system and architecture imports
-- JSON/OpenFlow when you are restoring a saved graph exactly
-
-### Prompt-to-diagram
-
-Switch the right rail to Studio and open the **Flowpilot** tab. Enter a prompt such as:
-
-```text
-Create a SaaS onboarding workflow with signup, email verification,
-team invite, workspace creation, billing setup, and first success milestone.
+Start -> Check : submit
+Check -> Ship : yes
+Check -> Start : no
 ```
 
-Use this when the shape is still fuzzy and you want a first draft quickly. For technical work, prompt generation is usually strongest after you already know the systems involved.
+`⌘↵` works anywhere in the panel. The text compiles into one frame. Edit the text and
+generate again: the frame is replaced in place, and one undo brings back what was there.
+Right-click a generated frame and choose **Edit as code** to get its source back.
 
-If AI is not configured yet, use the **Add key** action to open the shared AI settings modal, choose your provider, and decide whether the key should persist on this device or only for the current session.
+## 3. Export
 
-### Blank canvas and assets
+Click **Export** at the top right. Pick a format (PNG, SVG, PDF or JSON) and a scope
+(selection, page or all pages). PNG has a 1× or 2× resolution. Images and PDF take a theme
+(light, dark or print), and PNG and SVG can drop the background with **Transparent**.
 
-Use blank canvas when the structure is already in your head and visual iteration is faster than import. Open **Assets** from the Command Center to add developer logos, cloud-provider libraries, CNCF shapes, and icon packs into the current flow.
+## 4. Put an agent on it
 
-## 3. Refine the diagram visually
+- **MCP**: click **Connect agent** in the right-hand rail, copy the MCP configuration (or the
+  one-line Claude Code command) into your client, restart it, then click **Connect**. Every tool
+  then acts on the document you see. See [MCP Server](/mcp-server/).
+- **Bring your own key**: press `⌘J`, add a provider key in the assistant panel and describe
+  the diagram you want. You review the proposal before it lands, and it applies as one undo
+  step. See [AI generation](/ai-generation/).
 
-Once something is on the canvas:
+## Where to go next
 
-- move nodes into rough position
-- use the [Properties Panel](/properties-panel/) for exact edits and architecture metadata
-- use [Layers](/command-center/) and page tabs when the diagram needs more structure
-- run [Smart Layout](/smart-layout/) when the structure is right but spacing is rough
-- use the [Command Center](/command-center/) to search, switch workflows, or insert more assets
-
-## 4. Save recovery points
-
-Before a major AI rewrite or import refresh, review the snapshot/history tooling so you can recover quickly if the new result is worse. See [Playback & History](/playback-history/).
-
-## 5. Share or export the result
-
-Use the export menu when you are ready to move the diagram into docs, design tools, code review threads, or launch assets.
-
-- See [Choose an Export Format](/choose-export-format/)
-- See [Exporting](/exporting/)
-- See [Collaboration & Sharing](/collaboration-sharing/)
-- Use viewer links and embed snippets when you want the diagram to stay live instead of pasting a screenshot
+- [Home and templates](/templates/): twelve starter diagrams, and every way to begin.
+- [OpenFlow DSL](/openflow-dsl/): the language behind **Generate**.
+- [Keyboard shortcuts](/keyboard-shortcuts/): the full map.
+- [Exporting](/exporting/): every format and option.

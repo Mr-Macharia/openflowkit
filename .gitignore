@@ -10,9 +10,6 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-dist-lib
-src/lib/dist
-src/lib/*.tgz
 playwright-report
 test-results
 *.local
@@ -29,19 +26,25 @@ test-results
 *.sln
 *.sw?
 CLAUDE.md
-PRODUCT_HUNT_LAUNCH.md
-code_fixer.md
-ANNOUNCEMENT_2026-03-02.md
-CODEBASE_AUDIT_2026-03-02.md
-Q1_2026_MASTER_PLAN.md
-docs/en/codebase-audit-*.md
-docs/en/fix-log.md
-docs/en/next-level-roadmap-*.md
-docs/internal
+# Planning, strategy and evidence are the owner's working notes, not the product.
+# The grammar is NOT here: it lives at src/dsl/grammar.md because the MCP package
+# and the docs site generate from it at build time.
+/docs/
 .claude/scheduled_tasks.lock
 docs-site/.astro/
+# Rendered `openflow` examples: regenerated from the docs markdown by prebuild.
+docs-site/public/examples/
 
-# Local AI tooling (skills, agents, scratch edits) — not product code
-.agents/
+# Generated stress-test canvases; regenerate with `npm run stress:generate`.
+stress/*.json
+
+# Local AI tooling (skills, agents, scratch edits) — not product code; the Codex marketplace ships
+.agents/*
+!.agents/plugins/
 .claude/skills/
 .codex-skill-edits/
+tsconfig.tsbuildinfo
+blob-report
+
+# Local renders (launch art, covers); never committed.
+/output/

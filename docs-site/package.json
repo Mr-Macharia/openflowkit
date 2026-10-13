@@ -6,15 +6,25 @@
   "scripts": {
     "dev": "astro dev --port 4321",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "generate:dsl": "node scripts/generate-dsl-reference.mjs",
+    "generate:examples": "tsx scripts/build-examples.mts",
+    "generate:refs": "tsx scripts/generate-references.mts",
+    "check:docs": "node scripts/check-docs.mjs",
+    "predev": "npm run generate:dsl && npm run generate:examples && npm run generate:refs && npm run check:docs",
+    "prebuild": "npm run generate:dsl && npm run generate:examples && npm run generate:refs && npm run check:docs",
+    "postbuild": "node scripts/check-built-pages.mjs"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.34.0",
-    "astro": "^5.7.0",
-    "posthog-js": "^1.347.2",
-    "sharp": "^0.34.1"
+    "@astrojs/markdown-remark": "^7.3.1",
+    "@astrojs/starlight": "^0.42.5",
+    "astro": "^7.3.5",
+    "sharp": "^0.35.5"
   },
   "overrides": {
     "zod": "3"
+  },
+  "devDependencies": {
+    "@tabler/icons": "^3.47.0"
   }
 }

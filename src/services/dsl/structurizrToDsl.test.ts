@@ -1,0 +1,921 @@
+import { describe, expect, it } from 'vitest';
+import { compile, compileWorkspace } from '../../dsl/compile';
+import { dslFrameRaw } from '../../dsl/sceneMeta';
+import { archModelFromJson } from '../../dsl/model/model';
+import { format } from '../../dsl/serialize';
+import { looksLikeStructurizr, structurizrToDsl, type StructurizrConversion } from './structurizrToDsl';
+
+const fixtures = import.meta.glob('./fixtures/structurizr/*.txt', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
+const fixturePaths = Object.keys(fixtures).sort();
+
+function convert(source: string): StructurizrConversion {
+  const result = structurizrToDsl(source);
+  if ('error' in result) throw new Error(`unexpected error: ${result.error}`);
+  return result;
+}
+
+/** E, W101 and W122 are the import's red lines: the emitted text must never hit them. */
+function hardDiagnostics(diagnostics: readonly { code: string; severity: string; line: number; message: string }[]): string[] {
+  return diagnostics
+    .filter((item) => item.severity === 'error' || item.code === 'W101' || item.code === 'W122')
+    .map((item) => `${item.code} L${item.line}: ${item.message}`);
+}
+
+async function expectClean(dsl: string): Promise<void> {
+  const workspace = await compileWorkspace(dsl);
+  for (const view of workspace.views) expect(hardDiagnostics(view.result.diagnostics)).toEqual([]);
+}
+
+/** The emitted text is a fixed point of format after one pass (see the direction/id notes). */
+async function expectIdempotent(dsl: string): Promise<void> {
+  const once = await format(dsl);
+  expect(await format(once)).toBe(once);
+}
+
+async function expectCleanAndIdempotent(dsl: string): Promise<void> {
+  await expectClean(dsl);
+  await expectIdempotent(dsl);
+}
+
+/** Every element drawn by any view: nodes plus the boundary containers. */
+async function viewElementIds(dsl: string): Promise<string[]> {
+  const workspace = await compileWorkspace(dsl);
+  return [...new Set(workspace.views.flatMap((view) => [...view.result.nodes, ...view.result.groups].map((node) => node.id)))];
+}
+
+async function viewConnectorIds(dsl: string): Promise<string[]> {
+  const workspace = await compileWorkspace(dsl);
+  return [...new Set(workspace.views.flatMap((view) => view.result.connectors.map((connector) => `${connector.source.nodeId}->${connector.target.nodeId}`)))];
+}
+
+describe('looksLikeStructurizr', () => {
+  it('accepts workspace blocks and model + Structurizr-only keywords', () => {
+    expect(looksLikeStructurizr('workspace "Bank" { model { person Customer } }')).toBe(true);
+    expect(looksLikeStructurizr('model {\n  softwareSystem Shop\n}')).toBe(true);
+    expect(looksLikeStructurizr('!identifiers flat\nmodel { system Shop }')).toBe(true);
+    expect(looksLikeStructurizr('workspace { }')).toBe(true);
+  });
+
+  it('rejects OFK, Mermaid and prose', () => {
+    expect(looksLikeStructurizr('%% ofk 1\narchitecture\nmodel { person Customer }')).toBe(false);
+    expect(looksLikeStructurizr('architecture\nmodel { person Customer }')).toBe(false);
+    expect(looksLikeStructurizr('flowchart LR\nA --> B')).toBe(false);
+    expect(looksLikeStructurizr('model { a -> b }')).toBe(false);
+    expect(looksLikeStructurizr('just some prose')).toBe(false);
+  });
+});
+
+describe('header', () => {
+  it('returns an error only when no workspace or model block exists', () => {
+    expect(structurizrToDsl('person Customer')).toEqual({ error: 'No Structurizr workspace or model block found' });
+    expect(structurizrToDsl('views { systemLandscape }')).toEqual({ error: 'No Structurizr workspace or model block found' });
+    expect(convert('workspace { model { } }').dsl).toBe('%% ofk 1\narchitecture\n');
+  });
+
+  it('turns the workspace name into the title and drops the description with a loss', async () => {
+    const result = convert('workspace "Big Bank" "The bank" { model { person "Customer" } }');
+    expect(result.dsl.startsWith('%% ofk 1\narchitecture\ntitle: Big Bank\n\nmodel {')).toBe(true);
+    expect(result.losses).toContain('workspace description dropped');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('accepts a bare model block without a workspace', async () => {
+    const result = convert('model { softwareSystem "Shop" }');
+    expect(result.dsl).not.toContain('title:');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('ignores // and # comments but keeps #hex colours', async () => {
+    const result = convert(`workspace {
+      // a workspace
+      model {
+        # a person
+        person "Customer" // trailing comment
+        softwareSystem "Shop" "desc" "core" # trailing hash
+      }
+      views {
+        systemLandscape {
+          include *
+        }
+        styles {
+          element "core" {
+            background #1168bd
+            shape Box
+          }
+        }
+      }
+    }`);
+    expect(result.dsl).toContain('person Customer');
+    expect(result.dsl).toContain('system Shop [rect, color: #1168bd, desc: desc, tags: core]');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('elements', () => {
+  it('maps kinds, positional strings and nesting', async () => {
+    const result = convert(`model {
+      person "P" "the description" "the tech" "tag one, tag two"
+      softwareSystem "S" "sys desc" "sys tech" "sys tag" {
+        container "C" "c desc" "c tech" "c tag" {
+          component "K" "k desc" "k tech" "k tag"
+        }
+      }
+    }`);
+    expect(result.dsl).toContain('person P [tech: the tech, desc: the description, tags: "tag one, tag two"]');
+    expect(result.dsl).toContain('system S [tech: sys tech, desc: sys desc, tags: sys tag] {');
+    expect(result.dsl).toContain('container C [tech: c tech, desc: c desc, tags: c tag] {');
+    expect(result.dsl).toContain('component K [tech: k tech, desc: k desc, tags: k tag]');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('keeps an explicit id and the display label', async () => {
+    const result = convert('workspace { model { x = container "Web API" "desc" { component "Router" } } }');
+    expect(result.dsl).toContain('x = container Web API [desc: desc] {');
+    expect(result.dsl).toContain('component Router');
+    await expectClean(result.dsl);
+    const compiled = await compile(`${result.dsl}\nviews {view custom Imported {include x.**}}`);
+    expect(compiled.groups.map((group) => group.id)).toEqual(['x']);
+    expect(compiled.nodes.map((node) => node.id)).toEqual(['x.router']);
+  });
+
+  it('emits a container with no parent', async () => {
+    const result = convert('model { container "Orphan" }');
+    expect(result.dsl).toContain('container Orphan');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('reads tags statements and drops url/properties/perspectives', async () => {
+    const result = convert(`model {
+      container "API" "desc" "Go" {
+        tags "core, internal"
+        url "https://wiki/api"
+        properties { "team" "core" }
+        perspectives { "Security" "high" "1" }
+      }
+    }`);
+    expect(result.dsl).toContain('tags: "core, internal"');
+    expect(result.dsl).not.toContain('wiki/api');
+    expect(result.losses).toContain('url https://wiki/api dropped');
+    expect(result.losses).toContain('properties dropped');
+    expect(result.losses).toContain('perspectives dropped');
+    expect(result.dsl).not.toContain('properties');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('relations', () => {
+  it('maps description, technology and tags', async () => {
+    const result = convert(`model {
+      softwareSystem "Shop"
+      softwareSystem "Billing"
+      Shop -> Billing "calls" "HTTPS" "sync, core"
+    }`);
+    expect(result.dsl).toContain('Shop -> Billing : calls [tech: HTTPS, tags: "sync, core"]');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('resolves a scoped arrow to the enclosing element', async () => {
+    const result = convert(`model {
+      softwareSystem "Shop" {
+        container "Web"
+        container "API"
+        -> API "calls"
+      }
+    }`);
+    expect(result.dsl).toContain('Shop -> API : calls');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('drops a nested relationship block with a loss', async () => {
+    const result = convert(`model {
+      softwareSystem "A"
+      softwareSystem "B"
+      A -> B "calls" { tags "async" }
+    }`);
+    expect(result.dsl).toContain('A -> B : calls');
+    expect(result.dsl).not.toContain('async');
+    expect(result.losses).toContain('relationship block A -> B flattened');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('uses dotted paths when display names repeat', async () => {
+    const result = convert(`model {
+      softwareSystem "A" { container "API" }
+      softwareSystem "B" { container "API" }
+      A.API -> B.API "calls"
+    }`);
+    expect(result.dsl).toContain('a.api -> b.api : calls');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('drops unknown endpoints instead of emitting W122', async () => {
+    const result = convert(`model {
+      softwareSystem "Shop"
+      Mystery -> Shop "x"
+    }`);
+    expect(result.dsl).not.toContain('Mystery');
+    expect(result.losses.some((loss) => loss.includes('unknown element'))).toBe(true);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('promotes technology to the label when there is no description', async () => {
+    const result = convert(`model {
+      softwareSystem "A"
+      softwareSystem "B"
+      A -> B "" "HTTPS"
+    }`);
+    expect(result.dsl).toContain('A -> B : HTTPS [tech: HTTPS]');
+    expect(result.losses.some((loss) => loss.includes('technology shown as the label'))).toBe(true);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('groups', () => {
+  it('flattens nested groups and keeps member order', async () => {
+    const result = convert(`model {
+      group "Frontend" {
+        softwareSystem "Web"
+        group "Inner" { softwareSystem "Widget" }
+      }
+      softwareSystem "Backend"
+    }`);
+    expect(result.losses).toContain('group "Frontend" flattened');
+    expect(result.losses).toContain('group "Inner" flattened');
+    expect(result.dsl.indexOf('system Web')).toBeLessThan(result.dsl.indexOf('system Widget'));
+    expect(result.dsl.indexOf('system Widget')).toBeLessThan(result.dsl.indexOf('system Backend'));
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('deployment', () => {
+  it('maps environments, nodes, infrastructure nodes and instances', async () => {
+    const result = convert(`model {
+      softwareSystem "Shop" { container "API" "desc" "Go" }
+      deploymentEnvironment "Live" {
+        deploymentNode "AWS" "Cloud" "Amazon" "cloud" {
+          deploymentNode "ECS" {
+            containerInstance API
+          }
+          infrastructureNode "Load Balancer" "Balances" "ELB"
+        }
+      }
+    }`);
+    expect(result.dsl).toContain('deployment Live {');
+    expect(result.dsl).toContain('node AWS [tech: Amazon, desc: Cloud, tags: cloud] {');
+    expect(result.dsl).toContain('node ECS {');
+    expect(result.dsl).toContain('instance Shop.API');
+    expect(result.dsl).toContain('node Load Balancer [tech: ELB, desc: Balances]');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('accepts deployment nodes declared inside the deployment view', async () => {
+    const result = convert(`model { softwareSystem "Shop" { container "API" } }
+      views {
+        deployment Shop Live {
+          include *
+          deploymentNode "AWS" {
+            containerInstance API
+          }
+        }
+      }`);
+    expect(result.dsl).toContain('deployment Live {');
+    expect(result.dsl).toContain('instance Shop.API');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('drops an instance of an unknown element', async () => {
+    const result = convert(`model {
+      deploymentEnvironment "Live" {
+        deploymentNode "AWS" { containerInstance Mystery }
+      }
+    }`);
+    expect(result.dsl).not.toContain('Mystery');
+    expect(result.losses.some((loss) => loss.includes('containerInstance Mystery dropped'))).toBe(true);
+  });
+});
+
+describe('views', () => {
+  const WORKSPACE = `model {
+      person "P"
+      softwareSystem "Shop" { container "Web" { component "Router" } }
+      softwareSystem "Ext"
+      deploymentEnvironment "Live" { deploymentNode "AWS" }
+    }`;
+
+  it('maps every supported view kind', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        systemLandscape
+        systemContext Shop
+        container Shop
+        component Shop.Web
+        deployment Shop Live
+        dynamic Shop { P -> Web "uses" }
+      }`);
+    expect(result.dsl).toContain('view landscape');
+    expect(result.dsl).toContain('view context of Shop');
+    expect(result.dsl).toContain('view container of Shop');
+    expect(result.dsl).toContain('view component of Shop.Web');
+    expect(result.dsl).toContain('view deployment of Shop in Live');
+    expect(result.dsl).toContain('flow "Shop" {');
+    expect(result.dsl).toContain('step P -> Web : uses');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('translates supported include/exclude expressions', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        systemLandscape {
+          include *
+          include Shop Ext
+          exclude Ext
+          include -> Web ->
+          include Web ->
+          include -> Web
+          include element.type==Container
+          include element.tag==core
+          include element.type==Container || element.tag==core
+        }
+      }`);
+    expect(result.dsl).toContain('include *');
+    expect(result.dsl).toContain('include Shop');
+    expect(result.dsl).toContain('include Ext');
+    expect(result.dsl).toContain('exclude Ext');
+    expect(result.dsl).toContain('include -> Web');
+    expect(result.dsl).toContain('include Web ->');
+    expect(result.dsl).toContain('include * where kind is container');
+    expect(result.dsl).toContain('include * where tag is @core');
+    expect(result.losses.some((loss) => loss.includes('no OFK equivalent'))).toBe(false);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('keeps unsupported expressions verbatim and reports them', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        container Shop {
+          include element.parent==Shop
+          include technology==React
+          include relationship.tag==async
+        }
+      }`);
+    expect(result.dsl).toContain('include element.parent==Shop');
+    expect(result.dsl).toContain('include technology==React');
+    expect(result.dsl).toContain('include relationship.tag==async');
+    expect(result.losses.filter((loss) => loss.includes('no OFK equivalent'))).toHaveLength(3);
+    // OFK's parseRule accepts any `include <text>` without a diagnostic; the loss notes are
+    // the only signal, and the kept lines match nothing in the view.
+    await expectClean(result.dsl);
+    await expectIdempotent(result.dsl);
+  });
+
+  it('preserves supported && conjunctions', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        container Shop {
+          include element.type==Container && element.tag==core
+        }
+      }`);
+    expect(result.dsl).toContain('include * where kind is container and tag is @core');
+    expect(result.losses.some((loss) => loss.includes('conjunction flattened to a union'))).toBe(false);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('preserves single tag filters containing logical operator words', async () => {
+    const result = convert(`workspace {
+      model { softwareSystem Shop { tags "foo or bar" } }
+      views { systemLandscape { exclude element.tag=="foo or bar" } }
+    }`);
+    expect(result.dsl).toContain('exclude * where tag is "foo or bar"');
+    expect(result.losses).toEqual([]);
+    expect(await viewElementIds(result.dsl)).toEqual([]);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('maps autoLayout to the view direction and drops separations', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        systemLandscape {
+          autoLayout tb
+        }
+        systemContext Shop {
+          autoLayout lr 300 300
+        }
+        container Shop {
+          autoLayout rl
+        }
+        component Shop.Web {
+          autoLayout bt
+        }
+      }`);
+    expect(result.dsl).toContain('view landscape down');
+    expect(result.dsl).toContain('view context of Shop right');
+    expect(result.dsl).toContain('view container of Shop left');
+    expect(result.dsl).toContain('view component of Shop.Web up');
+    expect(result.losses.filter((loss) => loss === 'autoLayout separations dropped')).toHaveLength(1);
+    expect(result.losses.filter((loss) => loss.startsWith('autoLayout "'))).toEqual([]);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('drops view keys, titles and unknown view kinds', async () => {
+    const result = convert(`${WORKSPACE}
+      views {
+        systemContext Shop "Context" {
+          include *
+          title "Ctx"
+        }
+        filtered Shop {
+          include *
+        }
+      }`);
+    expect(result.losses).toContain('view key "Context" dropped');
+    expect(result.losses).toContain('title "Ctx" inside a view dropped');
+    expect(result.losses).toContain('view "filtered" dropped');
+    expect(result.dsl).not.toContain('filtered');
+    expect(result.dsl).not.toContain('Ctx');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('dynamic views', () => {
+  it('turns steps into flow steps, including numbering and scoped arrows', async () => {
+    const result = convert(`model {
+      person "P"
+      softwareSystem "Shop" {
+        container "Web"
+        container "API"
+        container "DB"
+      }
+    }
+    views {
+      dynamic Shop "Checkout" {
+        P -> Web "opens cart"
+        1. Web -> API "POST /orders" "HTTPS"
+        -> DB "reads"
+      }
+    }`);
+    expect(result.dsl).toContain('flow "Checkout" {');
+    expect(result.dsl).toContain('step P -> Web : opens cart');
+    expect(result.dsl).toContain('step Web -> API : POST /orders (HTTPS)');
+    expect(result.dsl).toContain('step API -> DB : reads');
+    expect(result.losses).toContain('flow step technology/tags folded into the labels');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('names an unnamed dynamic view after its scope and drops unknown steps', async () => {
+    const result = convert(`model { softwareSystem "Shop" { container "Web" } }
+      views {
+        dynamic Shop {
+          Web -> Mystery "lost"
+        }
+      }`);
+    expect(result.dsl).toContain('flow "Shop"');
+    expect(result.dsl).not.toContain('Mystery');
+    expect(result.losses.some((loss) => loss.includes('flow step Web -> Mystery dropped'))).toBe(true);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('flattens nested scopes inside a dynamic view', async () => {
+    const result = convert(`model {
+      softwareSystem "Shop" {
+        container "Web"
+        container "API"
+      }
+    }
+    views {
+      dynamic Shop {
+        group "Checkout" {
+          Web -> API "calls"
+        }
+      }
+    }`);
+    expect(result.dsl).toContain('step Web -> API : calls');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+});
+
+describe('styles and dropped blocks', () => {
+  it('copies colour, shape and icon onto tagged elements with one W180', async () => {
+    const result = convert(`model {
+      person "Plain" "desc"
+      person "Guest" "desc" "external"
+      softwareSystem "Shop" {
+        container "DB" "desc" "Postgres" "database"
+      }
+    }
+    views {
+      styles {
+        element "Person" {
+          background #08427b
+        }
+        element "external" {
+          background #999999
+          shape Box
+        }
+        element "database" {
+          background #438dd5
+          shape Cylinder
+          icon "aws:rds"
+        }
+        relationship "async" {
+          thickness 2
+        }
+      }
+    }`);
+    expect(result.dsl).toContain('person Plain [color: #08427b, desc: desc]');
+    expect(result.dsl).toContain('person Guest [rect, color: #999999, desc: desc, tags: external]');
+    expect(result.dsl).toContain('store DB [cylinder, color: #438dd5, icon: aws/rds, tech: Postgres, desc: desc, tags: database]');
+    expect(result.losses.filter((loss) => loss.startsWith('styles'))).toHaveLength(1);
+    const styleDiagnostics = result.diagnostics.filter((item) => item.message.startsWith('styles'));
+    expect(styleDiagnostics).toHaveLength(1);
+    expect(styleDiagnostics[0]).toMatchObject({ code: 'W180', severity: 'warning', source: 'import' });
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('drops theme, branding, terminology, configuration, docs, adrs and includes', async () => {
+    const result = convert(`workspace {
+      model { softwareSystem "Shop" }
+      views {
+        systemLandscape { include * }
+        theme default
+        branding {
+          logo "https://example.com/logo.png"
+        }
+        terminology {
+          person "User"
+        }
+        configuration {
+          scope softwareSystem
+        }
+      }
+      !docs docs
+      !adrs adrs
+      !include extra.dsl
+    }`);
+    for (const loss of ['theme dropped', 'branding dropped', 'terminology dropped', 'configuration dropped', '!docs docs dropped', '!adrs adrs dropped', '!include extra.dsl dropped']) {
+      expect(result.losses).toContain(loss);
+    }
+    expect(result.dsl).not.toContain('logo');
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('notes flat identifiers and disabled implied relationships', async () => {
+    const flat = convert('!identifiers flat\nmodel { softwareSystem "Shop" { container "Web" } }');
+    expect(flat.losses).toContain('identifiers: flat ids rewritten to paths');
+    const hierarchical = convert('!identifiers hierarchical\nmodel { softwareSystem "Shop" }');
+    expect(hierarchical.losses.some((loss) => loss.startsWith('identifiers'))).toBe(false);
+    const disabled = convert('!impliedRelationships false\nmodel { softwareSystem "Shop" }');
+    expect(disabled.losses.some((loss) => loss.includes('!impliedRelationships false'))).toBe(true);
+    const enabled = convert('!impliedRelationships true\nmodel { softwareSystem "Shop" }');
+    expect(enabled.losses.some((loss) => loss.includes('!impliedRelationships'))).toBe(false);
+    const unknown = convert('!constant "x" "y"\nmodel { softwareSystem "Shop" }');
+    expect(unknown.losses).toContain('!constant x y dropped');
+  });
+
+  it('reports every loss as an import-sourced W180', () => {
+    const result = convert('workspace "X" "desc" { model { softwareSystem "Shop" } }');
+    expect(result.diagnostics).toHaveLength(result.losses.length);
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic).toMatchObject({ code: 'W180', severity: 'warning', source: 'import', col: 1, endCol: 1 });
+    }
+  });
+});
+
+describe('output shape', () => {
+  it('writes the pragma, family, title and 2-space indentation', async () => {
+    const result = convert(`workspace "Shop" {
+      model {
+        person "Customer"
+        softwareSystem "Shop" { container "Web" }
+      }
+      views { container Shop { include * } }
+    }`);
+    expect(result.dsl.startsWith('%% ofk 1\narchitecture\ntitle: Shop\n\n')).toBe(true);
+    expect(result.dsl).toContain('\n  person Customer');
+    expect(result.dsl).toContain('\n    container Web');
+    expect(result.dsl.endsWith('\n')).toBe(true);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it('emits no model block when the model is empty', () => {
+    const result = convert('workspace { model { } }');
+    expect(result.dsl).toBe('%% ofk 1\narchitecture\n');
+  });
+
+  it('never throws on malformed bodies', async () => {
+    for (const source of [
+      'model {\n  ???\n  person\n  -> -> ->\n}',
+      'model { person "Unterminated }',
+      'model {\n  softwareSystem "Shop" {\n    container "Web"',
+      'workspace {\n  model {\n    component "Orphan"\n  }\n  views {\n    systemContext Missing {\n      include *\n    }\n  }\n}',
+    ]) {
+      const result = structurizrToDsl(source);
+      expect('dsl' in result).toBe(true);
+      if ('dsl' in result) await expectClean(result.dsl);
+    }
+  });
+});
+
+describe('fixture corpus', () => {
+  it('ships the four workspaces', () => {
+    expect(fixturePaths).toHaveLength(4);
+    expect(fixturePaths.every((path) => path.endsWith('.txt'))).toBe(true);
+  });
+
+  it.each(fixturePaths)('%s imports without errors and is format-idempotent', async (path) => {
+    const result = convert(fixtures[path]!);
+    expect(result.dsl.startsWith('%% ofk 1\narchitecture\n')).toBe(true);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+  it.each(fixturePaths)('%s keeps the model structure in compiled scenes', async (path) => {
+    const result = convert(fixtures[path]!);
+    const workspace = await compileWorkspace(result.dsl);
+    expect(workspace.family).toBe('architecture');
+    expect(workspace.views.length).toBeGreaterThan(0);
+  });
+
+  it('01-web-3tier: components, deployment instances and styles', async () => {
+    const result = convert(fixtures['./fixtures/structurizr/01-web-3tier.txt']!);
+    const compiled = await compile(result.dsl);
+    const raw = dslFrameRaw(compiled.frame).arch as {model?: unknown};
+    const ids = archModelFromJson(raw.model)!.elements.map((element) => element.id);
+    expect(ids).toContain('banking');
+    expect(ids).toContain('banking.web');
+    expect(ids).toContain('banking.web.sign-in-controller');
+    expect(ids).toContain('banking.web.security-component');
+    expect(ids).toContain('banking.api.accounts');
+    expect(ids).toContain('banking.database');
+    expect(result.dsl).toContain('instance Banking.Web');
+    expect(result.dsl).toContain('instance Banking.API');
+    expect(result.dsl).toContain('instance Banking.Database');
+    expect(result.dsl).toContain('node Load Balancer');
+    expect(result.dsl).toContain('[cylinder, color: #438dd5, icon: aws/rds');
+    expect(result.losses).toContain('workspace description dropped');
+    expect(result.losses).toContain('view key "Context" dropped');
+    expect(result.losses.some((loss) => loss.startsWith('styles'))).toBe(true);
+  });
+
+  it('02-microservices-dynamic: groups flattened and flows built', async () => {
+    const result = convert(fixtures['./fixtures/structurizr/02-microservices-dynamic.txt']!);
+    expect(result.losses).toContain('group "Channels" flattened');
+    expect(result.losses).toContain('group "Core" flattened');
+    expect(result.dsl).toContain('flow "Authorise payment" {');
+    expect(result.dsl).toContain('step Checkout -> Gateway : POST /authorise');
+    expect(result.dsl).toContain('step Authorisation -> Card Network : Calls card network');
+    expect(result.dsl).toContain('flow "Gateway" {');
+    await expectClean(result.dsl);
+  });
+
+  it('03-flat-identifiers: flat ids resolve to nested paths', async () => {
+    const result = convert(fixtures['./fixtures/structurizr/03-flat-identifiers.txt']!);
+    expect(result.losses).toContain('identifiers: flat ids rewritten to paths');
+    const ids = await viewElementIds(result.dsl);
+    expect(ids).toEqual(expect.arrayContaining(['shop', 'shop.web', 'shop.api', 'shop.database']));
+    expect(await viewConnectorIds(result.dsl))
+      .toEqual(expect.arrayContaining(['shop.web->shop.api', 'shop.api->shop.database']));
+    expect(result.dsl).toContain('instance Shop.Web');
+    expect(result.dsl).toContain('instance Shop.Database');
+  });
+
+  it('04-styles-expressions: styles copied and unsupported expressions kept', async () => {
+    const result = convert(fixtures['./fixtures/structurizr/04-styles-expressions.txt']!);
+    expect(result.dsl).toContain('include * where kind is container');
+    expect(result.dsl).toContain('include * where kind is container and tag is @critical');
+    expect(result.dsl).toContain('include -> Warehouse');
+    expect(result.dsl).toContain('include Warehouse ->');
+    expect(result.dsl).toContain('include element.parent==Collector');
+    expect(result.dsl).toContain('include technology==Kafka');
+    expect(result.dsl).toContain('include relationship.tag==async');
+    expect(result.dsl).toContain('container Ingest [rounded, color: #b20000');
+    expect(result.dsl).toContain('system Warehouse [cylinder, color: #438dd5, icon: aws/rds');
+    for (const loss of ['perspectives dropped', 'properties dropped', 'theme dropped', 'branding dropped', 'terminology dropped', '!docs docs dropped', '!adrs adrs dropped', '!include extra.dsl dropped']) {
+      expect(result.losses).toContain(loss);
+    }
+    expect(result.losses.some((loss) => loss.includes('conjunction flattened to a union'))).toBe(false);
+    expect(result.losses.some((loss) => loss.includes('no OFK equivalent'))).toBe(true);
+    await expectClean(result.dsl);
+  });
+});
+
+const realFiles = import.meta.glob('./fixtures/structurizr-real/*.dsl', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
+const real = (name: string) => convert(realFiles[`./fixtures/structurizr-real/${name}.dsl`]!);
+
+describe('real workspaces (structurizr/structurizr test corpus)', () => {
+  it.each(Object.keys(realFiles).sort())('%s converts clean, every view draws, format-idempotent', async (path) => {
+    const result = convert(realFiles[path]!);
+    await expectCleanAndIdempotent(result.dsl);
+    const workspace = await compileWorkspace(result.dsl);
+    for (const view of workspace.views) expect(view.result.nodes.length, `${path} ${view.name}`).toBeGreaterThan(0);
+  });
+
+  it('big-bank-plc: block comments vanish, six views, deployment instances keep their model element', async () => {
+    const result = real('big-bank-plc');
+    expect(result.losses.some((loss) => loss.includes('"*"') || loss.includes('"/*"'))).toBe(false);
+    expect((await compileWorkspace(result.dsl)).views).toHaveLength(6);
+    expect(result.dsl).not.toMatch(/instance\s*$/m);
+    expect(result.losses.filter((loss) => loss.includes('relation'))).toEqual([]);
+    expect(result.dsl).toContain('Oracle - Primary -> Oracle - Secondary : Replicates data to');
+  });
+
+  it('amazon-web-services: an assigned environment, theme tags as icons, deployment and model relations drawn', async () => {
+    const result = real('amazon-web-services');
+    expect(result.dsl).toContain('deployment Live {');
+    expect(result.dsl).toMatch(/node Route 53 \[[^\]]*icon: aws\/route-53/);
+    const [view] = (await compileWorkspace(result.dsl)).views;
+    expect(view!.result.connectors).toHaveLength(3);
+    expect(view!.result.diagnostics.filter(({ severity }) => severity !== 'info')).toEqual([]);
+  });
+
+  it('getting-started: a bare autoLayout is not a loss', () => {
+    expect(real('getting-started').losses.filter((loss) => loss.startsWith('autoLayout'))).toEqual([]);
+  });
+});
+
+ it('imports relations between separate deployment nodes without dropping them', async () => {
+    const result = convert(`workspace {model {
+ softwareSystem Shop
+ deploymentEnvironment Prod {
+  edge = deploymentNode Edge
+  server = deploymentNode Server
+  edge -> server "forwards" "HTTPS"
+ }
+} views {deployment Shop Prod {include *}}}`);
+    expect(result.losses.some((loss) => loss.includes('relation') && loss.includes('dropped'))).toBe(false);
+    const workspace = await compileWorkspace(result.dsl);
+    expect(workspace.views[0]!.result.connectors.map((connector) => connector.labels[0]?.text)).toEqual(['forwards [HTTPS]']);
+    await expectCleanAndIdempotent(result.dsl);
+  });
+
+/** A Structurizr architect's workspace: styled people, tagged externals, a database and a queue. */
+const PAYMENTS = `workspace "Payments Platform" "Card payments for the online store" {
+    !identifiers hierarchical
+    model {
+        customer = person "Customer" "Buys goods online" "External"
+        opsEngineer = person "Ops Engineer" "Runs the platform"
+        payments = softwareSystem "Payments Platform" "Takes card payments and issues refunds" {
+            web = container "Checkout Web" "Checkout pages" "React, TypeScript" "Web Browser"
+            api = container "Payments API" "Authorises and captures payments" "Java, Spring Boot"
+            ledger = container "Ledger DB" "Stores payments and refunds" "PostgreSQL 15" "Database"
+            queue = container "Event Bus" "Payment events" "Kafka" "Queue"
+        }
+        bank = softwareSystem "Acquiring Bank" "Card network gateway" "External"
+        customer -> payments.web "Pays using" "HTTPS"
+        payments.web -> payments.api "Calls" "JSON/HTTPS"
+        payments.api -> payments.ledger "Reads from and writes to" "JDBC"
+        payments.api -> payments.queue "Publishes PaymentCaptured" "Kafka protocol"
+        payments.api -> bank "Authorises cards with" "ISO 8583"
+        opsEngineer -> payments.api "Monitors" "Grafana"
+    }
+    views {
+        systemContext payments "Context" "System context for payments" {
+            include *
+            autolayout lr
+        }
+        container payments "Containers" {
+            include *
+            autolayout lr
+        }
+        dynamic payments "CheckoutFlow" "A card payment" {
+            customer -> payments.web "Submits card details"
+            autolayout lr
+        }
+        styles {
+            element "Person" {
+                shape Person
+                background #08427b
+                color #ffffff
+            }
+            element "Database" {
+                shape Cylinder
+            }
+            element "Queue" {
+                shape Pipe
+            }
+            element "External" {
+                background #999999
+            }
+        }
+    }
+}`;
+
+/** What each view draws: element, fill, text colour, card colour and where it sits. */
+async function drawnViews(dsl: string) {
+  const workspace = await compileWorkspace(dsl);
+  return workspace.views.map((view) => ({
+    view: view.viewId,
+    nodes: view.result.nodes.map((node) => [
+      node.id, node.kind, node.content.shape, node.content.color, node.appearance.fill, node.appearance.textColor,
+      node.transform.translation, node.size,
+    ]),
+  }));
+}
+
+describe('import → generate → generate', () => {
+  it.each(['payments', ...Object.keys(realFiles).sort()])('%s draws the same after two regenerates', async (path) => {
+    const imported = convert(path === 'payments' ? PAYMENTS : realFiles[path]!).dsl;
+    const generated = await format(imported);
+    const regenerated = await format(generated);
+    expect(regenerated).toBe(generated);
+    const first = await drawnViews(imported);
+    expect(await drawnViews(generated)).toEqual(first);
+  });
+
+  it('keeps the styled colours and the autolayout direction in the generated text', async () => {
+    const generated = await format(convert(PAYMENTS).dsl);
+    expect(generated).toMatch(/opsEngineer = person Ops Engineer \[person, #08427b/);
+    expect(generated).toContain('view context of payments right {');
+    expect(generated).toContain('view container of payments right {');
+    const [context] = (await compileWorkspace(generated)).views;
+    const ops = context!.result.nodes.find((node) => node.id === 'opsEngineer')!;
+    // A person is a user-icon card (2026-10-11), so the styled colour is the card's.
+    expect(ops.content).toMatchObject({ icon: 'tabler/user', color: 'custom', customColor: '#08427b' });
+  });
+});
+
+describe('what the DSL cannot hold is reported', () => {
+  it('reports view descriptions, text colours and Pipe as cylinder; maps External and Database tags to kinds', () => {
+    const result = convert(PAYMENTS);
+    expect(result.losses).toContain('view description "System context for payments" dropped');
+    expect(result.losses).toContain('dynamic view description "A card payment" dropped');
+    expect(result.losses).toContain('styles: element "Person" color (text colour) dropped');
+    expect(result.losses).toContain('styles: shape Pipe drawn as a cylinder');
+    expect(result.dsl).toMatch(/bank = external Acquiring Bank/);
+    expect(result.dsl).toMatch(/ledger = store Ledger DB/);
+    expect(result.dsl).toMatch(/queue = queue Event Bus/);
+    // A person stays a person: the DSL has no external person.
+    expect(result.dsl).toMatch(/^ {2}customer = person Customer|^ {2}person Customer/m);
+  });
+
+  it('keeps Structurizr identifiers as written', () => {
+    const result = convert(PAYMENTS);
+    expect(result.dsl).toContain('opsEngineer = person Ops Engineer');
+  });
+});
+
+describe('tag-refined kinds keep type filters whole', () => {
+  it('element.type==SoftwareSystem still selects a system tagged External', async () => {
+    const result = convert(`workspace { model {
+      shop = softwareSystem "Shop"
+      bank = softwareSystem "Bank" "" "External"
+      shop -> bank "pays"
+    } views {
+      systemLandscape { include element.type==SoftwareSystem }
+      systemLandscape "tagged" { include "element.type==SoftwareSystem && element.tag==External" }
+    } }`);
+    expect(result.dsl).toContain('include * where kind is system or kind is external');
+    expect(result.dsl).toContain('include * where kind is system and tag is @external or kind is external and tag is @external');
+    const [all] = (await compileWorkspace(result.dsl)).views;
+    expect(all!.result.nodes.map((node) => node.id).sort()).toEqual(['bank', 'shop']);
+  });
+});
+
+describe('one-line view bodies and style blocks read like multi-line ones', () => {
+  const oneLine = `workspace {
+  model {
+    customer = person "Customer"
+    ibs = softwareSystem "Internet Banking" {
+      api = container "API"
+    }
+    email = softwareSystem "E-mail System" { tags "Existing System" }
+    customer -> ibs "Uses"
+    ibs -> email "Sends"
+  }
+  views {
+    container ibs "Containers" { include * exclude email autoLayout lr 300 200 }
+    styles {
+      element "Person" { shape Person background #08427b color #ffffff }
+      element "Existing System" { background #999999 }
+    }
+  }
+}`;
+  const multiLine = oneLine
+    .replace('{ include * exclude email autoLayout lr 300 200 }', '{\n include *\n exclude email\n autoLayout lr 300 200\n }')
+    .replace('{ shape Person background #08427b color #ffffff }', '{\n shape Person\n background #08427b\n color #ffffff\n }')
+    .replace('{ background #999999 }', '{\n background #999999\n }');
+
+  it('A1: include/exclude/autoLayout on one line become separate statements', () => {
+    const dsl = convert(oneLine).dsl;
+    expect(dsl).not.toMatch(/include (exclude|autoLayout|lr|300|200)/);
+    expect(dsl).toContain('view container of ibs right {');
+    expect(dsl).toBe(convert(multiLine).dsl);
+  });
+
+  it('A1: the excluded element is not drawn', async () => {
+    const names = (await compileWorkspace(convert(oneLine).dsl)).views.flatMap((item) => item.result.nodes.map((node) => node.id));
+    expect(names).toContain('ibs.api');
+    expect(names).not.toContain('email');
+  });
+
+  it('A2: one-line style properties copy the fill and report the text colour', () => {
+    const result = convert(oneLine);
+    expect(result.dsl).toContain('color: #08427b');
+    expect(result.dsl).toContain('color: #999999');
+    expect(result.losses).toContain('styles: element "Person" color (text colour) dropped');
+    expect(result.dsl).toBe(convert(multiLine).dsl);
+  });
+
+  it('T09: a duplicated identifier is reported with both lines', () => {
+    const result = convert('workspace {\n model {\n a = softwareSystem "A"\n a = softwareSystem "B"\n a -> a\n }\n}');
+    expect(result.losses).toContain('Identifier `a` is defined twice (lines 3, 4); the second wins.');
+  });
+});

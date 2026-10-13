@@ -1,0 +1,161 @@
+// Headed: the assistant is a conversation. A greeting gets talk, not a diagram;
+// a drawing ask runs the agent (a tool step) into a reviewable proposal; an
+// attached image reaches the provider; the thread survives a reload, New chat
+// starts fresh and History reopens the old one. Every call goes to the local
+// stub (stubProviderServer.mjs).
+import { expect, test } from './test';
+import { clickNode, doc, drawShape, node, openCanvas } from './helpers';
+
+const STUB = 'http://127.0.0.1:4399/v1';
+// A 1×1 PNG.
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+
+test('talks, draws on request, and keeps the thread per document', async ({ page }) => {
+  await page.addInitScript((baseUrl) => {
+    localStorage.setItem('openflowkit-v2-ai', JSON.stringify({
+      provider: 'custom', connections: { custom: { apiKey: 'sk-ok', baseUrl, model: 'stub-model' } },
+    }));
+  }, STUB);
+  await page.goto('/');
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'AI assistant' });
+  const composer = panel.getByRole('textbox', { name: 'Ask AI assistant' });
+
+  await composer.fill('hi');
+  await composer.press('Enter');
+  await expect(panel.getByText('I can explain, review or draw diagrams.', { exact: false })).toBeVisible();
+  await expect(panel.locator('strong', { hasText: 'explain' })).toBeVisible();
+  await expect(panel.getByText('Review changes')).toHaveCount(0);
+
+  await composer.fill('draw a flow for the stub');
+  await composer.press('Enter');
+  await expect(panel.getByText('Here is a start.')).toBeVisible();
+  await expect(panel.getByText('1 step')).toBeVisible();
+  await panel.getByText('1 step').click();
+  await expect(panel.getByText('Drafted a new flowchart')).toBeVisible();
+  await expect(panel.getByText('Review changes')).toBeVisible();
+  await panel.getByRole('button', { name: /^Apply/ }).click();
+  await expect(panel.getByText('Applied 1 change.')).toBeVisible();
+
+  // Both turns are real history: the second request carried the first exchange.
+  await expect(panel.locator('.ofk-message[data-role="user"]')).toHaveCount(2);
+
+  await page.reload();
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  await expect(panel.getByText('Here is a start.')).toBeVisible();
+  await expect(panel.getByText('Applied to the canvas')).toBeVisible();
+
+  await panel.getByRole('button', { name: 'New chat' }).click();
+  await expect(panel.locator('.ofk-message')).toHaveCount(0);
+  await expect(composer).toBeFocused();
+
+  // An image rides along with the turn; the stub counts what it received.
+  await panel.getByTestId('assistant-attach-input').setInputFiles({ name: 'sketch.png', mimeType: 'image/png', buffer: PIXEL });
+  await expect(panel.getByRole('list', { name: 'Attached images' }).getByRole('img')).toHaveCount(1);
+  await composer.fill('what is this?');
+  await composer.press('Enter');
+  await expect(panel.getByText('I can see 1 image.')).toBeVisible();
+  await expect(panel.locator('.ofk-v2-turn-images img')).toHaveCount(1);
+  await expect(panel.getByRole('list', { name: 'Attached images' })).toHaveCount(0);
+
+  // History lists both chats; the first reopens with its thread.
+  await panel.getByRole('button', { name: 'Chat history' }).click();
+  const history = panel.getByRole('navigation', { name: 'Chats in this document' });
+  await expect(history.getByRole('listitem')).toHaveCount(2);
+  await history.getByRole('button', { name: /^hi/ }).click();
+  await expect(panel.getByText('Here is a start.')).toBeVisible();
+  await expect(panel.getByText('I can see 1 image.')).toHaveCount(0);
+});
+
+test('a proposal under review is brought into view and the welcome steps aside @gate', async ({ page }) => {
+  await page.addInitScript((baseUrl) => {
+    localStorage.setItem('openflowkit-v2-ai', JSON.stringify({
+      provider: 'custom', connections: { custom: { apiKey: 'sk-ok', baseUrl, model: 'stub-model' } },
+    }));
+  }, STUB);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.waitForSelector('[data-testid="v2-canvas"]');
+  const screenOf = (x: number, y: number) => page.evaluate(
+    (point) => (window as unknown as { __V2__: { worldToScreen(p: { x: number; y: number }): { x: number; y: number } | null } }).__V2__.worldToScreen(point), { x, y });
+  // Pan the empty canvas far away, so wherever the draft lands it is off screen.
+  await page.mouse.move(500, 450);
+  for (let step = 0; step < 6; step += 1) await page.mouse.wheel(3000, 3000);
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'AI assistant' });
+  const composer = panel.getByRole('textbox', { name: 'Ask AI assistant' });
+  await composer.fill('draw a flow for the stub');
+  await composer.press('Enter');
+  await expect(panel.getByText('Review changes')).toBeVisible();
+  await expect(page.getByText('Draw it, write it, or hand it to your agent.')).toBeHidden();
+  const origin = await screenOf(0, 0);
+  expect(origin).not.toBeNull();
+  await expect.poll(async () => {
+    const at = await screenOf(300, 150);
+    return at !== null && at.x > 0 && at.x < 1040 && at.y > 0 && at.y < 900;
+  }).toBe(true);
+});
+
+test('"make the selected box red and move it right" is one reviewable change and one undo step @gate', async ({ page }) => {
+  await page.addInitScript((baseUrl) => {
+    localStorage.setItem('openflowkit-v2-ai', JSON.stringify({
+      provider: 'custom', connections: { custom: { apiKey: 'sk-ok', baseUrl, model: 'stub-model' } },
+    }));
+  }, STUB);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openCanvas(page);
+  const box = await drawShape(page, 'r', 360, 320);
+  const before = await node(page, box);
+  await clickNode(page, box);
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'AI assistant' });
+  const composer = panel.getByRole('textbox', { name: 'Ask AI assistant' });
+  const ask = async () => {
+    await composer.fill('make the selected box red and move it right');
+    await composer.press('Enter');
+    await expect(panel.getByText('Review changes')).toBeVisible();
+  };
+
+  // Discarded, the canvas is untouched.
+  await ask();
+  await expect(panel.getByText('2 steps')).toBeVisible();
+  await panel.getByRole('button', { name: 'Discard', exact: true }).click();
+  expect(await node(page, box)).toEqual(before);
+
+  // Applied, both edits land as one change that one undo takes back.
+  await ask();
+  await panel.getByRole('button', { name: /^Apply/ }).click();
+  await expect(panel.getByText('Applied 2 changes.')).toBeVisible();
+  const after = await node(page, box);
+  expect(after.appearance?.fill).toBe('#ef4444');
+  expect(after.transform!.translation.x).toBe(before.transform!.translation.x + 200);
+  await page.getByTestId('v2-canvas').focus();
+  await page.keyboard.press('Meta+z');
+  await expect.poll(async () => node(page, box)).toEqual(before);
+});
+
+test('an answer in Mermaid is drawn as the diagram it describes, not as a line per node @gate', async ({ page }) => {
+  await page.addInitScript((baseUrl) => {
+    localStorage.setItem('openflowkit-v2-ai', JSON.stringify({
+      provider: 'custom', connections: { custom: { apiKey: 'sk-ok', baseUrl, model: 'stub-model' } },
+    }));
+  }, STUB);
+  await page.goto('/');
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'AI assistant' });
+  const composer = panel.getByRole('textbox', { name: 'Ask AI assistant' });
+  await composer.fill('draw it in mermaid');
+  await composer.press('Enter');
+  await panel.getByText('1 step').click();
+  await expect(panel.getByText('Drafted a new sequence')).toBeVisible();
+  await panel.getByRole('button', { name: /^Apply/ }).click();
+  await expect(panel.getByText('Applied 1 change.')).toBeVisible();
+  const shapes = (await doc(page))!.pages[0]!;
+  expect(shapes.nodes.filter((entry) => entry.kind === 'sequence_participant')).toHaveLength(2);
+  expect(shapes.connectors).toHaveLength(2);
+});

@@ -1,0 +1,108 @@
+// One headed spec for the BYOK settings surface. Every request goes to the
+// local stub server (e2e/stubProviderServer.mjs); no real provider or key is
+// touched. The stub echoes the key in its 401 body, so "the key never reaches
+// the user" is asserted against a server that is actively trying to leak it.
+import { expect, test, type Page } from './test';
+
+const STUB = 'http://127.0.0.1:4399';
+
+async function openProviderDialog(page: Page) {
+  await page.goto('/');
+  await page.getByRole('toolbar', { name: 'Workspace', exact: true })
+    .getByRole('button', { name: 'AI assistant', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'AI assistant' });
+  await panel.getByRole('button', { name: 'Connect an AI provider' }).click();
+  const dialog = page.getByRole('dialog', { name: 'AI provider' });
+  await expect(dialog.getByLabel('API key')).toBeFocused();
+  return dialog;
+}
+
+/** The endpoint section starts open when the provider has no default URL (Custom). */
+async function showEndpoint(dialog: ReturnType<Page['getByRole']>) {
+  const details = dialog.locator('details.ofk-connection-details');
+  if (!(await details.evaluate((element) => (element as HTMLDetailsElement).open))) await details.locator('summary').click();
+}
+
+test('diagnoses a bad key, never echoes it, and clears every stored key', async ({ page }) => {
+  const dialog = await openProviderDialog(page);
+  await dialog.getByRole('button', { name: 'Use Custom' }).click();
+  await dialog.getByLabel('API key').fill('sk-bad');
+  await showEndpoint(dialog);
+  await dialog.getByLabel('Base URL').fill(`${STUB}/v1`);
+  await dialog.getByLabel('Model').fill('stub-model');
+  await dialog.getByRole('button', { name: 'Test key' }).click();
+
+  const status = dialog.getByRole('status');
+  await expect(status).toContainText('rejected the key (401)');
+  await expect(status).toHaveAttribute('data-cause', 'bad-key');
+  await expect(status).not.toContainText('sk-bad');
+
+  await dialog.getByRole('button', { name: 'Clear all keys' }).click();
+  await expect(dialog.getByLabel('API key')).toHaveValue('');
+  await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('complementary', { name: 'AI assistant' })
+    .getByRole('button', { name: 'Connect an AI provider' })).toBeVisible();
+});
+
+test('tests a key through the Google wire and shows the provider risk honestly', async ({ page }) => {
+  const dialog = await openProviderDialog(page);
+  await dialog.getByRole('button', { name: 'Use Gemini' }).click();
+  await expect(dialog.getByRole('button', { name: 'Use Gemini' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByText('Browser-ready', { exact: true })).toBeVisible();
+  await dialog.getByLabel('API key').fill('sk-ok');
+  await showEndpoint(dialog);
+  await dialog.getByLabel('Base URL').fill(STUB);
+  await dialog.getByLabel('Model').fill('stub-gemini');
+  await dialog.getByRole('button', { name: 'Test key' }).click();
+  await expect(dialog.getByRole('status')).toContainText('Connected');
+  await expect(dialog.getByRole('status')).toContainText('stub-gemini answered');
+
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'AI assistant' })
+    .getByRole('button', { name: /^AI provider: stub-gemini/ })).toBeVisible();
+});
+
+test('sends the Anthropic wire and warns where the browser may refuse', async ({ page }) => {
+  const dialog = await openProviderDialog(page);
+  await dialog.getByRole('button', { name: 'Use Claude' }).click();
+  await expect(dialog.getByText('Depends on endpoint')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Use Groq' }).click();
+  await expect(dialog.getByText('Proxy likely')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Use Claude' }).click();
+
+  await dialog.getByLabel('API key').fill('sk-ok');
+  await showEndpoint(dialog);
+  await dialog.getByLabel('Base URL').fill(STUB);
+  await dialog.getByLabel('Model').fill('stub-claude');
+  await dialog.getByRole('button', { name: 'Test key' }).click();
+  await expect(dialog.getByRole('status')).toContainText('stub-claude answered');
+});
+
+test('the Endpoint disclosure shows one chevron, not the native marker too @gate', async ({ page }) => {
+  const dialog = await openProviderDialog(page);
+  const summary = dialog.locator('details.ofk-connection-details > summary');
+  await expect(summary).toHaveCSS('list-style-type', 'none');
+  await expect(summary).toHaveCSS('display', 'flex');
+});
+
+test('the model field offers the provider’s own list, falls back on a bad key, and never shows another provider’s @gate', async ({ page }) => {
+  const dialog = await openProviderDialog(page);
+  const options = () => dialog.locator('datalist option').evaluateAll((list) => list.map((option) => (option as HTMLOptionElement).value));
+  // A wrong key: the fetch fails and the built-in suggestions stay.
+  await dialog.getByRole('button', { name: 'Use OpenAI' }).click();
+  await dialog.getByLabel('API key').fill('sk-bad');
+  await showEndpoint(dialog);
+  await dialog.getByLabel('Base URL').fill(`${STUB}/v1`);
+  await dialog.getByLabel('Model').focus();
+  await expect.poll(options).toContain('gpt-6.1-sol');
+  // A good key: the provider's list, chat models only.
+  await dialog.getByLabel('API key').fill('sk-ok');
+  await dialog.getByLabel('Model').focus();
+  await expect.poll(options).toEqual(['stub-chat']);
+  // Another provider (nothing listening on Ollama's port here) shows its own suggestions, not OpenAI's list.
+  await dialog.getByRole('button', { name: 'Use Ollama' }).click();
+  await dialog.getByLabel('Model').focus();
+  await expect.poll(options).not.toContain('stub-chat');
+  expect((await options()).length).toBeGreaterThan(0);
+});

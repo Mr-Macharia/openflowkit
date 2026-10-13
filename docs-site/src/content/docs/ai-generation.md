@@ -1,105 +1,109 @@
 ---
-draft: false
-title: AI Generation
-description: Generate and refine diagrams in Studio with Flowpilot, BYOK providers, code-to-architecture, and structured imports.
+title: AI generation
+description: Bring your own key — talk through a diagram, let the assistant draft changes, review them, apply as one undo step.
 ---
 
-OpenFlowKit includes AI-assisted diagram generation through the Studio rail. Flowpilot is best used for first drafts, structural revisions, and code-backed architecture exploration.
+OpenFlowKit's assistant turns a prompt into a diagram without a hosted service in between: your
+browser calls the provider you configured, directly, with your key. The provider's answer is
+compiled by the same DSL compiler as everything else, then shown for review.
 
-AI generation is most valuable when you need to go from ambiguity to structure quickly. It is not the only way to create diagrams in OpenFlowKit, and it is usually not the final step. Think of it as a draft accelerator.
+## Set up a provider
 
-## Access and setup
+Press `⌘J` for the assistant panel and open its provider dialog. Pick a provider and paste a
+key. The model field suggests that provider's current models and accepts any id; the base URL
+sits under **Endpoint**. **Test key** asks the provider for one short response.
 
-Flowpilot lives inside Studio. If an API key is not configured yet, OpenFlowKit prompts you to open the shared AI settings modal instead of keeping setup inline inside the panel.
+Each provider keeps its own key, marked with a dot on its tile, so switching providers never
+sends one vendor's key to another; **Clear all keys** removes every one. Keys are stored in this
+browser's `localStorage` and sent only to the provider they were entered for. There is no OpenFlowKit account and no relay: if the request fails, the error names the
+cause and the next step. See [Troubleshooting](#troubleshooting).
 
-That matters for two reasons:
+## Talk, review, or change
 
-- the same AI settings surface is used across the product
-- provider choice, model choice, and key storage behavior stay consistent whether you open AI from Home, Studio, or Settings
+The assistant is a conversation. Ask a question, ask for a critique, or describe a change — it
+answers in text when that is what you asked for, and only drafts diagram changes when you want
+them. Each message carries what is in scope:
 
-## Where AI lives in the product
+- **This page** — every diagram on the current page;
+- **Selection** — only the diagrams holding your selection (picked automatically when you have
+  one; the chip under the prompt switches back).
 
-AI is available in the Studio panel under **Flowpilot** and through the **Open Flowpilot** command in the Command Center. Common sub-flows include:
+The assistant can look things up before it acts: read a diagram in full, check a family's
+syntax, and search the icon packs for real icon ids. Each lookup shows as a step above the
+reply. Drafts are compiled as they are written; a draft that does not compile goes back to the
+model to fix before you ever see it. Providers or local models without tool support get the
+same assistant without the lookups.
 
-| Mode | What it does |
+Attach images with the photo button, by pasting, or by dropping them on the prompt — a
+whiteboard photo, a screenshot, a sketch to redraw. Up to four per message; they are
+downscaled before they are sent. The model you pick must accept images.
+
+**Think** asks the model to reason first. It is available for every provider except Ollama;
+the reasoning shows as a collapsible "Thought for …" line when the model shares it.
+
+## Review, then apply
+
+Changes arrive as a **proposal** under the reply: one row per diagram, each accepted or
+rejected on its own, with **Apply** landing everything accepted as a single undo step. Hover a
+row to find its diagram on the canvas. A proposal built against a document that changed while
+you were reviewing is marked stale — retry the message for a fresh one.
+
+## Chats
+
+Chats are kept in this browser, per document. **New chat** starts fresh and keeps the old one
+under **Chat history**, where you can reopen or delete it. Edit a sent message (or press ↑ in an
+empty prompt) to ask again; **Copy reply**, **Retry** and **Report on GitHub** sit under each reply.
+The report opens a prefilled issue with the prompt, reply and model — never your key.
+
+## What it cannot do
+
+- **No provider list here on purpose.** The catalogue lives in the panel; the providers,
+  endpoints and wire formats change independently of this page.
+- **No server-side AI.** No OpenFlowKit proxy, key escrow or usage metering.
+- **No direct edits.** Every change goes through the proposal; nothing lands until you apply it.
+- **No sync.** Chats stay in this browser; images in older chats may be dropped to fit its
+  storage.
+
+## Troubleshooting
+
+The error under a failed message names one cause. What to do for each:
+
+| Message starts with | Do this |
 | --- | --- |
-| **Flowpilot** | Chat-based generation and iteration |
-| **From Code** | Paste source code and generate an architecture diagram |
-| **Import** | Paste SQL, Terraform, K8s, or OpenAPI and generate a draft |
+| The provider rejected the key | Paste a fresh key from the provider's console; check it has credit. |
+| The provider did not find the model | Fix the model id, or clear it to use the default. For Ollama, `ollama pull <model>` first. |
+| Rate limiting | Wait a minute, or switch key or provider. |
+| Nothing answered at … | The service is not running or the base URL is wrong. Start it, check the address. |
+| … does not accept browser calls (CORS) | That provider blocks browsers. Use Gemini or OpenRouter, or your own endpoint as **Custom**. |
+| Our page's security policy blocked … | Endpoints must be `https://` or `localhost`. |
 
-Typical generation flow:
+### Ollama
 
-1. capture your prompt and optional image
-2. send it through the configured provider
-3. receive a structured graph representation
-4. compose nodes and edges
-5. apply layout
-6. replace or update the current graph
+Ollama runs on your machine, so the browser needs two things: Ollama running, and Ollama
+allowing this page's origin.
 
-## Provider model
+1. Install it from [ollama.com/download](https://ollama.com/download) and pull a model:
+   `ollama pull gemma4`.
+2. **Quit the Ollama menu-bar or tray app.** It owns port 11434 and ignores the variable below,
+   so a second `ollama serve` fails silently and the old, locked-down one keeps answering.
+3. Start it with the origin allowed — the exact origin is in the error message:
 
-The app supports multiple BYOK providers, including:
+   ```sh
+   OLLAMA_ORIGINS='https://your-openflowkit-origin' ollama serve
+   ```
 
-- Ollama
-- Gemini
-- OpenAI
-- Claude
-- Groq
-- NVIDIA
-- Cerebras
-- Mistral
-- OpenRouter
-- Custom OpenAI-compatible endpoint
+   `OLLAMA_ORIGINS='*'` works too, and lets any site you visit use your local models.
+   To keep the menu-bar app instead on macOS, run
+   `launchctl setenv OLLAMA_ORIGINS '*'`, then quit and reopen the app.
+4. If Chrome asks to let the page access devices on your local network, allow it. Brave's
+   shields and Safari may block `localhost` from an `https://` page — use Chrome, or run
+   OpenFlowKit locally.
+5. Press **Test key** in the provider dialog.
 
-This matters because you are not locked to one hosted AI vendor or one billing model. Ollama can run locally with no API key when its daemon and model are available.
+Check Ollama itself with `curl http://localhost:11434/api/version`; no answer means step 2 or 3
+did not take.
 
-API keys stay browser-local. Persistent keys can be stored for reuse on the current device, and session-only mode is available when you do not want the key to survive the browser session.
+## Where to go next
 
-## When AI is the right tool
-
-Use AI when:
-
-- you are starting from a plain-language idea
-- you want a fast first-pass architecture or workflow draft
-- you want to revise an existing diagram conceptually rather than move boxes one by one
-- you have source code and want a generated architecture view
-
-Avoid AI when:
-
-- you already have a precise text format such as Mermaid or OpenFlow DSL
-- you need deterministic output from infrastructure files
-- the diagram is small enough that manual editing is faster
-
-In those cases, prefer [OpenFlow DSL](/openflow-dsl/), [Mermaid Integration](/mermaid-integration/), or [Infrastructure Sync](/infra-sync/).
-
-## How to get better results
-
-Strong prompts usually include:
-
-- the intended audience
-- the systems or actors involved
-- important branches or failure paths
-- the preferred diagram direction
-- the level of detail you want
-
-Weak prompts ask for “a diagram” without constraints. Strong prompts explain the system.
-
-## Recommended workflow
-
-1. Generate a first draft with Flowpilot.
-2. Inspect the structure on the canvas.
-3. Use the [Properties Panel](/properties-panel/) to normalize labels, color, and routing.
-4. Run [Smart Layout](/smart-layout/) if the structure is right but spacing is poor.
-5. Save a snapshot before another major rewrite.
-
-## Practical caution
-
-AI output should be treated as a draft, not a certified system model. For documentation, architecture review, or infra communication, you should still check naming, boundaries, and missing branches before exporting or sharing.
-
-## Related pages
-
-- [Ask Flowpilot](/ask-flowpilot/)
-- [MCP Server](/mcp-server/)
-- [Studio Overview](/studio-overview/)
-- [Choose an Input Mode](/choose-input-mode/)
-- [Prompting AI Agents](/prompting-agents/)
+- [MCP Server](/mcp-server/) — the other agent path, driven by your own MCP client.
+- [OpenFlow DSL](/openflow-dsl/) — what the model is asked to write.

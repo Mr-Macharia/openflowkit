@@ -1,6 +1,10 @@
 import type { DomainLibraryCategory, DomainLibraryItem } from '@/services/domainLibrary';
+import { ICON_PACK_IDS } from '@/dsl/iconMatch';
+import { loadTablerIconUrl, TABLER_ICON_NAMES, TABLER_PACK_ID, TABLER_PROVIDER } from './tablerIcons';
+import { PROVIDER_ICON_LABELS, PROVIDER_ICON_MANIFEST } from './providerIconManifest';
+import { loadProviderIconUrl } from './providerIconUrls';
 
-export interface ProviderShapePreview {
+interface ProviderShapePreview {
   packId: string;
   shapeId: string;
   label: string;
@@ -17,20 +21,10 @@ interface SvgSource {
   previewLoader: () => Promise<string>;
 }
 
-const svgModules = import.meta.glob('../../../assets/third-party-icons/*/processed/**/*.svg', {
-  query: '?url',
-  import: 'default',
-}) as Record<string, () => Promise<string>>;
 const providerCatalogPromiseCache = new Map<string, Promise<DomainLibraryItem[]>>();
 const shapePreviewCache = new Map<string, ProviderShapePreview>();
 const shapePreviewPromiseCache = new Map<string, Promise<ProviderShapePreview | null>>();
-export const KNOWN_PROVIDER_PACK_IDS: Record<string, string> = {
-  aws: 'aws-official-starter-v1',
-  azure: 'azure-official-icons-v20',
-  gcp: 'gcp-official-icons-v1',
-  cncf: 'cncf-artwork-icons-v1',
-  developer: 'developer-icons-v1',
-};
+export const KNOWN_PROVIDER_PACK_IDS: Readonly<Record<string, string>> = ICON_PACK_IDS;
 
 function normalizeProviderPathSegment(value: string): string {
   return value.trim().toLowerCase();
@@ -50,6 +44,18 @@ function inferLabelFromId(id: string): string {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(' ');
+}
+
+/**
+ * A catalogue icon's own name, as its vendor writes it: `Databases/RDS_Multi-AZ`
+ * reads "RDS Multi-AZ", not "Databases Rds Multi Az". The folders above it are
+ * categories, not part of the product's name; lowercase packs are title-cased.
+ */
+function iconLabel(name: string): string {
+  return name.split(/[-_\s]+/).filter(Boolean)
+    .map((word) => (/[A-Z]/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(' ')
+    .replace(/\bMulti /g, 'Multi-');
 }
 
 function getPackIdForProvider(provider: string): string {
@@ -76,36 +82,45 @@ function getProviderColor(provider: string): string {
   return 'slate';
 }
 
-function parseSvgSource(
-  modulePath: string,
-  previewLoader: () => Promise<string>
-): SvgSource | null {
-  const normalized = modulePath.replaceAll('\\', '/');
-  const match = normalized.match(/assets\/third-party-icons\/([^/]+)\/processed\/(.+)\.svg$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const provider = normalizeProviderPathSegment(match[1]);
-  const relativePath = match[2];
-  const pathParts = relativePath.split('/');
+/** One bundled icon, from its manifest entry: `aws`, `Compute/Lambda`. Its URL loads with its pack, on first use. */
+function providerSource(folder: string, iconPath: string): SvgSource {
+  const provider = normalizeProviderPathSegment(folder);
+  const pathParts = iconPath.split('/');
   const category = pathParts.length > 1 ? inferLabelFromId(slugify(pathParts[0])) : 'Misc';
-  const shapeId = slugify(relativePath.replaceAll('/', '-'));
-
+  const shapeId = slugify(iconPath.replaceAll('/', '-'));
   return {
     provider,
     packId: getPackIdForProvider(provider),
     shapeId,
-    label: inferLabelFromId(shapeId),
+    label: PROVIDER_ICON_LABELS[folder]?.[iconPath] ?? iconLabel(pathParts[pathParts.length - 1]!),
     category,
-    previewLoader,
+    previewLoader: async () => (await loadProviderIconUrl(folder, iconPath)) ?? '',
   };
 }
 
-export const SVG_SOURCES: SvgSource[] = Object.entries(svgModules)
-  .map(([modulePath, previewLoader]) => parseSvgSource(modulePath, previewLoader))
-  .filter((value): value is SvgSource => value !== null);
+const tablerSources: SvgSource[] = TABLER_ICON_NAMES.map((name) => ({
+  provider: TABLER_PROVIDER,
+  packId: TABLER_PACK_ID,
+  shapeId: name,
+  label: inferLabelFromId(name),
+  category: 'Standard',
+  previewLoader: async () => (await loadTablerIconUrl(name)) ?? '',
+}));
+
+/** A name a provider files twice ("Shield" in Security and in Resource) says its category, so picks can be told apart. */
+function distinctLabels(sources: SvgSource[]): SvgSource[] {
+  const count = new Map<string, number>();
+  for (const source of sources) count.set(`${source.provider}:${source.label}`, (count.get(`${source.provider}:${source.label}`) ?? 0) + 1);
+  return sources.map((source) => (count.get(`${source.provider}:${source.label}`)! > 1
+    ? { ...source, label: `${source.label} (${source.category})` } : source));
+}
+
+// Standard icons first, so an unfiltered picker opens on the general set.
+export const SVG_SOURCES: SvgSource[] = tablerSources.concat(distinctLabels(
+  Object.entries(PROVIDER_ICON_MANIFEST).flatMap(([folder, categories]) =>
+    Object.entries(categories).flatMap(([category, names]) =>
+      names.map((name) => providerSource(folder, category ? `${category}/${name}` : name))))
+));
 
 function createProviderItem(provider: DomainLibraryCategory, source: SvgSource): DomainLibraryItem {
   return {
@@ -129,11 +144,6 @@ export function listProviderCatalogProviders(): string[] {
   );
 }
 
-export function getProviderCatalogCount(provider: DomainLibraryCategory): number {
-  const normalizedProvider = normalizeProviderPathSegment(provider);
-  return SVG_SOURCES.filter((source) => source.provider === normalizedProvider).length;
-}
-
 export async function loadProviderCatalog(
   provider: DomainLibraryCategory
 ): Promise<DomainLibraryItem[]> {
@@ -155,51 +165,6 @@ export async function loadProviderCatalog(
 
   providerCatalogPromiseCache.set(normalizedProvider, catalogPromise);
   return catalogPromise;
-}
-
-interface LoadProviderCatalogSuggestionsOptions {
-  category?: string;
-  excludeShapeId?: string;
-  limit?: number;
-  query?: string;
-}
-
-export async function loadProviderCatalogSuggestions(
-  provider: DomainLibraryCategory,
-  options: LoadProviderCatalogSuggestionsOptions = {}
-): Promise<DomainLibraryItem[]> {
-  const items = await loadProviderCatalog(provider);
-  const normalizedQuery = options.query?.trim().toLowerCase() ?? '';
-  const filtered = items.filter((item) => {
-    if (options.excludeShapeId && item.archIconShapeId === options.excludeShapeId) {
-      return false;
-    }
-    if (options.category && item.providerShapeCategory !== options.category) {
-      return false;
-    }
-    if (!normalizedQuery) {
-      return true;
-    }
-    return (
-      item.label.toLowerCase().includes(normalizedQuery) ||
-      item.description.toLowerCase().includes(normalizedQuery) ||
-      (item.providerShapeCategory || '').toLowerCase().includes(normalizedQuery)
-    );
-  });
-
-  const pool =
-    filtered.length > 0 || !options.category
-      ? filtered
-      : items.filter(
-          (item) =>
-            (!options.excludeShapeId || item.archIconShapeId !== options.excludeShapeId) &&
-            (!normalizedQuery ||
-              item.label.toLowerCase().includes(normalizedQuery) ||
-              item.description.toLowerCase().includes(normalizedQuery) ||
-              (item.providerShapeCategory || '').toLowerCase().includes(normalizedQuery))
-        );
-
-  return pool.slice(0, options.limit ?? 8);
 }
 
 export async function loadProviderShapePreview(

@@ -1,0 +1,167 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`mapScene > draws the C4 starter at overview: closed boxes as the family draws them, arrows with counts 1`] = `
+[
+  [
+    "customer",
+    "process",
+    null,
+    {
+      "height": 80,
+      "width": 170,
+    },
+    {
+      "x": 352,
+      "y": 20,
+    },
+  ],
+  [
+    "shop",
+    "frame",
+    null,
+    {
+      "height": 172,
+      "width": 834,
+    },
+    {
+      "x": 20,
+      "y": 228,
+    },
+  ],
+  [
+    "shop.web",
+    "process",
+    "shop",
+    {
+      "height": 80,
+      "width": 147,
+    },
+    {
+      "x": 16,
+      "y": 56,
+    },
+  ],
+  [
+    "shop.api",
+    "process",
+    "shop",
+    {
+      "height": 80,
+      "width": 126,
+    },
+    {
+      "x": 347,
+      "y": 56,
+    },
+  ],
+  [
+    "shop.database",
+    "process",
+    "shop",
+    {
+      "height": 88,
+      "width": 179,
+    },
+    {
+      "x": 639,
+      "y": 52,
+    },
+  ],
+  [
+    "payments",
+    "process",
+    null,
+    {
+      "height": 80,
+      "width": 169,
+    },
+    {
+      "x": 352.5,
+      "y": 528,
+    },
+  ],
+]
+`;
+
+exports[`mapScene > draws the C4 starter at overview: closed boxes as the family draws them, arrows with counts 2`] = `
+[
+  [
+    "customer>shop:call",
+    "customer",
+    "shop",
+    [
+      "shops [HTTPS]",
+    ],
+    {
+      "dashPattern": "dashed",
+      "markerEnd": "arrow",
+    },
+    {
+      "both": false,
+      "count": 1,
+      "minor": false,
+      "relations": [
+        "rel:customer->shop.web",
+      ],
+    },
+  ],
+  [
+    "payments>shop:call",
+    "shop",
+    "payments",
+    [
+      "charges [HTTPS]",
+    ],
+    {
+      "dashPattern": "dashed",
+      "markerEnd": "arrow",
+    },
+    {
+      "both": false,
+      "count": 1,
+      "minor": false,
+      "relations": [
+        "rel:shop.api->payments",
+      ],
+    },
+  ],
+  [
+    "shop.api>shop.database:call",
+    "shop.api",
+    "shop.database",
+    [
+      "stores orders [SQL]",
+    ],
+    {
+      "markerEnd": "arrow",
+    },
+    {
+      "both": false,
+      "count": 1,
+      "minor": false,
+      "relations": [
+        "rel:shop.api->shop.database",
+      ],
+    },
+  ],
+  [
+    "shop.api>shop.web:call",
+    "shop.web",
+    "shop.api",
+    [
+      "submits orders [HTTPS]",
+    ],
+    {
+      "markerEnd": "arrow",
+    },
+    {
+      "both": false,
+      "count": 1,
+      "minor": false,
+      "relations": [
+        "rel:shop.web->shop.api",
+      ],
+    },
+  ],
+]
+`;

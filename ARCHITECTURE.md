@@ -1,313 +1,132 @@
-# OpenFlowKit Architecture Guide
+# Architecture
 
-This document is a current high-level map of the codebase. It is intentionally narrower than a full design spec and should stay aligned with the implementation in `src/`.
+How OpenFlowKit turns text into a canvas and back, and where each piece lives. Read this before
+your first PR. The code rules are in [AGENTS.md](AGENTS.md#code-rules); setup is in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
----
+## The pipeline
 
-## Overview
-
-OpenFlowKit is a local-first diagram editor built with:
-
-- React 19
-- TypeScript 5
-- React Flow / XYFlow
-- Zustand
-- ELK.js
-
-The main application lives in `src/`. Additional repo surfaces include:
-
-- `docs-site/` for canonical public docs content and site generation
-- `docs/` for repo-only notes and operational markdown
-- `web/` for the marketing site
-
-Main app shape:
-
-```text
-src/
-  app/                Route state helpers
-  components/         UI surfaces and editor shells
-  config/             Rollout flags and provider config
-  context/            React context providers
-  diagram-types/      Diagram family plugins and property panel registration
-  hooks/              Feature and editor hooks
-  i18n/               Localization
-  lib/                Shared types, parsers, compat helpers, utilities
-  services/           Domain services
-  store/              Zustand state, actions, defaults, persistence
+```
+ text (OpenFlow DSL, or Mermaid / Structurizr / D2 converted first)
+   │  src/dsl/document.ts       parseDocument: header, family, title, directives, segments
+   │  src/dsl/compile.ts        lifts the animate block (animate.ts) before the family runs
+   ▼
+ family                         src/dsl/families/<name>  (statements → scene records)
+   │  src/dsl/layout.ts         LayoutPort; ELK in a worker in the app, headless ELK in the CLI
+   ▼
+ CompileResult                  src/dsl/compile.ts: one frame + nodes, groups, connectors, diagnostics
+   │  src/opencanvas/application/dsl/dslPageCommand.ts   → one reversible DocumentCommand
+   ▼
+ SceneDocumentV1                src/opencanvas/domain/document/types.ts  (pages, nodes, connectors)
+   │  session + history         src/opencanvas/application/session, …/history  (one undo per command)
+   ├──► Pixi canvas             src/opencanvas/infrastructure/pixi/PixiRendererHost.ts
+   ├──► export                  src/opencanvas/infrastructure/export/canonicalSvg.ts, raster.ts, animatedSvg.ts, motion.worker.ts
+   └──► IndexedDB               src/services/storage/v2/v2Repository.ts
 ```
 
-Route composition is currently centered in `src/App.tsx`, not in a dedicated `pages/` directory.
-
----
-
-## Runtime Surfaces
-
-The repository contains three main product/runtime surfaces:
-
-### 1. Main App
-
-The browser editor and related in-app experiences.
-
-Key areas:
-
-- `src/App.tsx`
-- `src/components/FlowEditor.tsx`
-- `src/components/home/*`
-
-### 2. Docs Site
-
-The public docs site built with Astro/Starlight.
-
-Key area:
-
-- `docs-site/`
-
-### 3. Marketing Site
-
-The public landing/marketing site.
-
-Key area:
-
-- `web/`
-
----
-
-## State Management
-
-The app uses a single public Zustand store exported from `src/store.ts`.
-
-The runtime store is now bootstrapped through:
-
-- `src/store/createFlowStore.ts`
-- `src/store/createFlowStoreState.ts`
-- `src/store/createFlowStorePersistOptions.ts`
-
-This keeps the public entry stable while moving composition, persistence, and hydration concerns behind explicit seams.
-
-The store is still monolithic at runtime, but it is now partitioned more clearly through slice-typed hooks, selectors, and internal slice factories in `src/store/`.
-
-Current store-facing hook files include:
-
-- `canvasHooks.ts`
-- `tabHooks.ts`
-- `historyHooks.ts`
-- `designSystemHooks.ts`
-- `viewHooks.ts`
-- `selectionHooks.ts`
-
-Supporting files:
-
-- `defaults.ts`
-- `types.ts`
-- `selectors.ts`
-- `slices/createCanvasEditorSlice.ts`
-- `slices/createExperienceSlice.ts`
-- `slices/createWorkspaceSlice.ts`
-- `persistence.ts`
-- `aiSettings.ts`
-
-There is no current top-level `brandHooks.ts` slice in `src/store/`.
-
----
-
-## Persistence
-
-Persistence is coordinated through:
-
-- `src/store/persistence.ts`
-- `src/services/storage/flowPersistStorage.ts`
-- `src/services/storage/storageRuntime.ts`
-- `src/services/storage/indexedDbStateStorage.ts`
-
-Current behavior at a high level:
-
-- document/tab state is persisted through Zustand persistence
-- IndexedDB-backed storage is used where available
-- localStorage remains part of the compatibility and fallback story
-- persisted nodes/edges are sanitized before storage
-- ephemeral UI fields are excluded from persisted state
-- browser storage detection and IndexedDB schema readiness are now funneled through a shared storage runtime helper instead of each storage surface bootstrapping itself independently
-- IndexedDB store and index definitions are now declared in one schema manifest in `src/services/storage/indexedDbSchema.ts`
-- schema migration markers now live in a dedicated IndexedDB schema metadata store instead of sharing the persisted Zustand state store
-- local-first chat persistence now uses document-scoped IndexedDB indexes instead of full chat-message store scans
-- user images/icons can be stored by content-hash ref in the IndexedDB `assets` store (`assetStoreV1` rollout flag) instead of embedding multi-MB data URLs into every document/history/snapshot copy; nodes hold `imageAssetId` / `iconAssetId` and resolve display URLs at render time
-
-Important constraint:
-
-- persisted storage keys should not be renamed without a migration path
-
----
-
-## Editor Composition
-
-The editor now follows a clearer four-layer composition path:
-
-1. `src/components/FlowEditor.tsx`
-   render shell only
-2. `src/components/flow-editor/useFlowEditorScreenModel.ts`
-   screen-level composition of store state, domain hooks, and refs
-3. `src/components/flow-editor/buildFlowEditorScreenControllerParams.ts`
-   pure assembly of controller config from screen-model state
-4. `src/components/flow-editor/useFlowEditorController.ts`
-   adaptation into shell, studio, panel, and chrome controller surfaces
-
-Key editor concerns composed through that path include:
-
-- tabs and active document selection
-- node and edge operations
-- history and snapshots
-- AI generation
-- export/import
-- playback
-- collaboration
-- command bar and studio mode surfaces
-- selection and keyboard bindings
-
-This is still the main integration hotspot in the architecture, but it is now bounded more explicitly:
-
-- `FlowEditor.tsx` should stay render-only
-- `useFlowEditorScreenModel.ts` should gather state and domain hooks, not render UI
-- `buildFlowEditorScreenControllerParams.ts` should stay pure and only map grouped screen state into controller input
-- `useFlowEditorController.ts` should adapt grouped inputs into UI-facing shell/panel/chrome props
-
-If future work bypasses those boundaries, editor maintainability will regress quickly.
-
----
-
-## Domain Hooks
-
-The app uses hooks to compose store state and service logic into editor-facing behaviors.
-
-Examples:
-
-- `useFlowHistory`
-- `useFlowOperations`
-- `useAIGeneration`
-- `useFlowExport`
-- `usePlayback`
-- `useFlowEditorCollaboration`
-- `useFlowEditorActions`
-- `useFlowEditorCallbacks`
-
-The architecture intent is:
-
-- services own domain logic
-- hooks compose state and side effects
-- components render and delegate
-
----
-
-## Services
-
-`src/services/` contains most of the domain-heavy logic.
-
-Notable service areas:
-
-- `ai/`
-- `architectureLint/`
-- `collaboration/`
-- `diagramDiff/`
-- `export/`
-- `figma/`
-- `infraSync/`
-- `mermaid/`
-- `playback/`
-- `shapeLibrary/`
-- `storage/`
-- `templateLibrary/`
-
-This is one of the stronger structural parts of the codebase: a significant amount of non-UI logic lives outside React components.
-
----
-
-## Diagram Families
-
-Built-in diagram families and property panel registration live under:
-
-- `src/diagram-types/`
-
-Examples include:
-
-- architecture
-- class diagram
-- ER diagram
-- journey
-- mindmap
-- state diagram
-
-These plugins and registrations allow the app to support multiple structured diagram behaviors without collapsing all logic into the base canvas layer.
-
-Built-in diagram capabilities are now bootstrapped through a shared runtime initialization path instead of scattered one-off registration calls:
-
-- `src/diagram-types/bootstrap.ts`
-- `src/diagram-types/builtInPlugins.ts`
-- `src/diagram-types/builtInPropertyPanels.ts`
-
----
-
-## Docs Surfaces
-
-The repo currently has two documentation buckets:
-
-### Public docs
-
-- canonical content and runtime in `docs-site/`
-
-### Repo-only notes
-
-- operational and setup markdown in `docs/`
-
----
-
-## Collaboration
-
-Collaboration currently lives under:
-
-- `src/hooks/useFlowEditorCollaboration.ts`
-- `src/services/collaboration/*`
-
-Current implementation notes:
-
-- collaboration runtime construction now flows through `src/services/collaboration/bootstrap.ts`
-- realtime transport is built around peer-oriented collaboration
-- the current stack includes WebRTC-style transport concerns and signaling configuration
-- fallback behavior exists for unsupported environments
-
-This area is functional but still evolving and should be treated as active infrastructure rather than fully settled architecture.
-
----
-
-## Export Pipeline
-
-Export logic is primarily coordinated through:
-
-- `src/hooks/useFlowExport.ts`
-- `src/services/export/*`
-
-Current formats and related capabilities include:
-
-- raster image export
-- SVG export
-- JSON export
-- Mermaid export
-- OpenFlow DSL export
-- animated export / playback-related export
-
----
-
-## Testing
-
-Testing is split across:
-
-- Vitest unit and component tests in `src/`
-- Playwright end-to-end tests in `e2e/`
-
-Useful commands:
-
-```bash
-npm run lint
-npm test -- --run
-npm run e2e:ci
-```
-
-For current repo-health status and phased remediation, see `AUDIT_FIX_LOG.md`.
+And back: `src/dsl/serialize.ts` writes a frame's scene as canonical text, and
+`src/dsl/losses.ts` lists what the language cannot say (a fill with no grammar word, for
+example). Positions are not losses, because layout regenerates them. `format(format(x))`
+equals `format(x)`, and `src/dsl/roundTrip.test.ts` holds that line.
+
+Every diagram from text is a **frame** whose `metadata.dsl` keeps its source, a hash and the
+family. The code panel (`src/opencanvas/presentation/v2/useV2CodeWorkspace.ts`) re-binds to a
+frame by that metadata; `src/dsl/frameScene.ts` compares the hash to tell a hand-edited frame
+from a generated one.
+
+## Layers
+
+| Layer | Path | Rule |
+|---|---|---|
+| Language | `src/dsl/` | Pure TypeScript. Tokenizer (`tokenize.ts`), families, compile, serialize, discovery, map model. |
+| Domain | `src/opencanvas/domain/` | Pure. The document model, geometry, connectors, node styles, and **commands**: immutable edits that return their exact inverse (`commands/execute.ts`). |
+| Application | `src/opencanvas/application/` | Use cases over the domain: session and history, DSL → command, selection, the AI assistant, Map navigation. |
+| Infrastructure | `src/opencanvas/infrastructure/` | Pixi renderers and overlays (`pixi/`), exporters (`export/`). |
+| Presentation | `src/opencanvas/presentation/` | React. `v2/` is the editor and home, `design-system/` the shared components and tokens. |
+| Services | `src/services/` | I/O: IndexedDB storage (`openflowkit-persistence`), AI providers (Anthropic, OpenAI, Google, Ollama wire formats), GitHub reads, share links, feedback, importers, ELK runtime. |
+
+Domain and language code import no React, Pixi or DOM. That is what lets the same compiler run
+in the browser, in the MCP server and in the CLI. The editor page
+(`src/opencanvas/presentation/v2/V2EditorPage.tsx`) wires the hooks together. Most behaviour
+lives in the `useV2*` hooks beside it.
+
+Heavy work stays off the main thread: ELK layout (`src/services/elk-layout/runtime.ts`; main thread
+only in unit tests), repo-map
+loading (`src/services/map/map.worker.ts`) and GIF/MP4/WebM encoding
+(`src/opencanvas/infrastructure/export/motion.worker.ts`).
+
+## Importers and exporters
+
+- In: `src/services/dsl/mermaidToDsl.ts`, `structurizrToDsl.ts`, `d2ToDsl.ts`. Each converts to
+  DSL text and reports losses, then the normal pipeline runs.
+- Out: `src/dsl/mermaid/toMermaid.ts` (Copy as Mermaid), the exporters listed above, and
+  `src/opencanvas/infrastructure/export/canonicalJson.ts` for `.openflow.json`.
+
+## Agents
+
+One op registry serves every surface: `src/agent/ops/index.ts` (`AGENT_OPS`). An op validates
+its input with zod and returns **one reversible command** plus a JSON-safe result
+(`src/agent/runAction.ts`). The surfaces:
+
+- **MCP server** (`mcp-server/`). `npm run build:agent` bundles `src/agent/index.ts` into
+  `mcp-server/src/generated/`, and `mcp-server/src/tools/ops.ts` turns each op into an MCP
+  tool. Repo tools (discovery, drift, templates) sit beside it in `mcp-server/src/tools/`.
+- **Live bridge.** `mcp-server/src/lib/bridge.ts` listens on `127.0.0.1:43119` and checks Host,
+  Origin and an optional token. The editor long-polls it from
+  `src/opencanvas/presentation/v2/useV2AgentBridge.ts`, runs each op against the open session and
+  posts the result back. The wire types are in `src/agent/bridge/protocol.ts`. An agent edit
+  commits through the same session as a mouse edit, so it is one undo step.
+- **File mode.** With no editor paired, `src/agent/host.ts` gives the ops a headless host:
+  headless ELK, canonical SVG, no raster.
+- **CLI.** `mcp-server/src/cli.ts` and `cliCommands.ts`: `render`, `convert`, `validate`, `op` and
+  `ops` over the same registry, plus `discover`, `drift`, `build`, `map`, and `mcp` (starts the
+  server). Bare `openflowkit` at a terminal prints a welcome (`mcp-server/src/lib/welcome.ts`).
+- **Remote MCP Apps.** `mcp-server/src/http.ts` (`npm run start:http`) serves `render_diagram` with
+  an inline viewer from `mcp-server/src/remote/`; it stores nothing.
+- **In the browser (WebMCP).** `src/agent/webMcp.ts` registers the ops with a browser agent that
+  supports WebMCP; `webMcpTools.ts` loads lazily.
+- **In-app assistant** (bring your own key). `src/opencanvas/application/ai/` builds the prompt
+  and runs the same ops on a draft. The result is a proposal the user applies or dismisses.
+  Provider wiring is in `src/services/ai/providers.ts`.
+- **PR Action.** `action/` runs the CLI on a pull request's changed diagrams and posts one comment.
+
+`src/agent/manifest.ts` lists every op, and `manifest.test.ts` fails when an op and the
+manifest disagree.
+
+## Map and discovery
+
+- **Discovery** (`src/dsl/discovery/discovery.ts`) is pure. It takes files that were already
+  read and proposes a C4 model from compose, Dockerfiles, Kubernetes, Terraform, package
+  manifests and known client libraries. Every claim carries `file:line` evidence.
+  `imports/` resolves source imports for TypeScript, Python and Go.
+- **Map model** (`src/dsl/map/`). Facts become a tree of boxes (`build.ts`, `fold.ts`) and then
+  a scene (`scene.ts`). `fromArch.ts` maps a hand-written architecture model the same way.
+- **Repo maps in the browser.** `#/map/github/<owner>/<repo>` →
+  `src/services/map/loadRepoMap.ts` starts the worker. `pipeline.ts` lists the tree and fetches
+  only the files it needs through `src/services/discovery/githubRepo.ts`, streams snapshots, and
+  caches the facts. Nothing is cloned.
+- **Map mode in the editor**: `src/opencanvas/presentation/v2/map/useV2MapMode.ts`, with
+  navigation, focus and motion in `src/opencanvas/application/map/`, drawn by the same Pixi host.
+- **Offline map page.** `openflowkit map . --html` inlines the model into the DOM viewer in
+  `src/viewer/map/` (built by `vite.map-viewer.config.ts` into `mcp-server/src/generated-viewer/`).
+
+## Outside the app
+
+| Path | What |
+|---|---|
+| `worker/` | Cloudflare Worker for share links (`share.openflowkit.com`, R2 plus a Quota Durable Object). It stores ciphertext only; the key stays in the link's `#` fragment. |
+| `mcp-server/`, `cli/` | npm packages. `@openflowkit/openflowkit-mcp` is the engine (bins `openflowkit`, `openflowkit-mcp`); `openflowkit` is the public name and pins the engine at the same version. The root package is private. |
+| `Dockerfile`, `nginx/` | Self-hosting: build the app, serve `dist` with nginx on port 3045. `docker-publish.yml` pushes the image to GHCR. |
+| `docs-site/` | Astro Starlight docs. The DSL reference is generated from `src/dsl/grammar.md`. |
+| `skills/`, `plugin/`, `.claude-plugin/` | The agent skill and the Claude Code / Codex plugin packaging. |
+| `e2e/` | Playwright. Specs tagged `@gate` are the merge gate; `@local` needs a real GPU. |
+| `architecture.ofk` | This repo's own C4 model, rendered to `architecture.svg`. Check it with `openflowkit drift .`. |
+
+## Where to start reading
+
+1. `src/dsl/compile.ts`: text → scene in about 230 lines.
+2. `src/dsl/families/state.ts`: a small, complete family.
+3. `src/opencanvas/domain/commands/execute.ts`: how every edit applies and inverts.
+4. `src/opencanvas/presentation/v2/useV2CodeWorkspace.ts`: the code panel's Generate, end to end.
+5. `src/agent/ops/dslOps.ts`: `create_diagram` and `update_diagram`, the same path an agent takes.
+6. `src/dsl/grammar.md`: the language, as agents and the docs see it.

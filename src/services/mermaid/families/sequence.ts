@@ -1,0 +1,435 @@
+import type { FlowEdge, FlowNode } from '@/lib/types';
+import { labelText } from '@/lib/mermaidParserHelpers';
+import type { DiagramPlugin } from './plugin';
+
+interface ParsedParticipant {
+  id: string;
+  label: string;
+  kind: 'participant' | 'actor';
+  alias?: string;
+  /** `participant DB@{ "type": "database" }`. */
+  stereotype?: 'db' | 'queue';
+  /** `boundary` / `control` / `entity`: Mermaid icons the DSL has no kind for. */
+  mermaidType?: string;
+}
+
+const PARTICIPANT_TYPES: Readonly<Record<string, ParsedParticipant['stereotype']>> = { database: 'db', collections: 'db', queue: 'queue' };
+const UNMAPPED_TYPES = new Set(['boundary', 'control', 'entity']);
+
+interface ParsedMessage {
+  from: string;
+  to: string;
+  label: string;
+  kind: 'sync' | 'async' | 'return' | 'self' | 'create';
+  /** `-x` and `--x` end in a cross: a solid and a dotted line. */
+  head?: 'cross';
+}
+
+interface ParsedFragment {
+  id: string;
+  type: 'alt' | 'loop' | 'opt' | 'par' | 'break' | 'critical';
+  condition: string;
+  branchKind: 'start' | 'else' | 'and' | 'option';
+  startOrder: number;
+  endOrder: number;
+}
+
+interface ParsedActivation {
+  participant: string;
+  activate: boolean;
+  order: number;
+}
+
+interface ParsedNote {
+  text: string;
+  target: string;
+  targetIds: string[];
+  position: 'over' | 'left' | 'right';
+  order: number;
+  fragment?: {
+    type: ParsedFragment['type'];
+    condition: string;
+    branchKind: ParsedFragment['branchKind'];
+  };
+}
+
+function getSequenceFragmentColor(fragmentType: ParsedFragment['type']): string {
+  switch (fragmentType) {
+    case 'loop':
+      return 'blue';
+    case 'opt':
+      return 'amber';
+    case 'critical':
+      return 'red';
+    default:
+      return 'violet';
+  }
+}
+
+function getParticipantLaneIndex(participants: ParsedParticipant[], participantId: string): number {
+  const laneIndex = participants.findIndex((participant) => participant.id === participantId);
+  return Math.max(0, laneIndex);
+}
+
+function resolveMessageKind(arrow: string): ParsedMessage['kind'] {
+  if (arrow === '-->' || arrow === '-->>' || arrow === '-->>>' || arrow === '--x') return 'return';
+  if (arrow === '-)' || arrow === '--)') return 'async';
+  return 'sync';
+}
+
+function parseSequence(input: string): {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  error?: string;
+  diagnostics?: string[];
+} {
+  const lines = input.replace(/\r\n/g, '\n').split('\n');
+  const participants: ParsedParticipant[] = [];
+  const messages: ParsedMessage[] = [];
+  const fragments: ParsedFragment[] = [];
+  const activations: ParsedActivation[] = [];
+  const notes: ParsedNote[] = [];
+  const knownIds = new Set<string>();
+  const diagnostics: string[] = [];
+  let hasHeader = false;
+  let messageOrder = 0;
+  const fragmentStack: Array<{
+    id: string;
+    type: ParsedFragment['type'];
+    condition: string;
+    branchKind: ParsedFragment['branchKind'];
+    startOrder: number;
+  }> = [];
+  // Every block an `end` can close: fragments, and the `rect` / `box` wrappers that draw nothing here.
+  const blocks: Array<'fragment' | 'wrapper'> = [];
+
+  function pushCompletedFragmentBranch(
+    fragment: {
+      id: string;
+      type: ParsedFragment['type'];
+      condition: string;
+      branchKind: ParsedFragment['branchKind'];
+      startOrder: number;
+    }
+  ): void {
+    fragments.push({
+      id: `${fragment.id}-branch-${fragments.length + 1}`,
+      type: fragment.type,
+      condition: fragment.condition,
+      branchKind: fragment.branchKind,
+      startOrder: fragment.startOrder,
+      endOrder: messageOrder,
+    });
+  }
+
+  function switchFragmentBranch(
+    line: string,
+    params: {
+      keyword: 'else' | 'and' | 'option';
+      allowedType: 'alt' | 'par' | 'critical';
+      branchKind: 'else' | 'and' | 'option';
+    }
+  ): boolean {
+    const match = line.match(new RegExp(`^${params.keyword}\\s+(.+)$`, 'i'));
+    if (!match || fragmentStack.length === 0) {
+      return false;
+    }
+
+    const top = fragmentStack[fragmentStack.length - 1];
+    if (top.type !== params.allowedType) {
+      return true;
+    }
+
+    pushCompletedFragmentBranch(top);
+    top.condition = match[1].trim();
+    top.branchKind = params.branchKind;
+    top.startOrder = messageOrder;
+    return true;
+  }
+
+  function ensureParticipant(name: string): void {
+    if (knownIds.has(name)) return;
+    participants.push({ id: name, label: name, kind: 'participant' });
+    knownIds.add(name);
+  }
+
+  for (const [index, rawLine] of lines.entries()) {
+    const lineNumber = index + 1;
+    const line = rawLine.trim();
+    if (!line || line.startsWith('%%')) continue;
+
+    if (/^sequenceDiagram\b/i.test(line)) {
+      hasHeader = true;
+      continue;
+    }
+    if (!hasHeader) continue;
+
+    if (/^title\b/i.test(line)) continue;
+    if (/^autonumber\b/i.test(line)) continue;
+    if (/^destroy\s/i.test(line)) continue;
+
+    const participantMatch = line.match(/^(?:create\s+)?(participant|actor|database|collections|queue|boundary|control|entity)\s+(.+?)(?:\s+as\s+(.+))?$/i);
+    if (participantMatch) {
+      const annotated = participantMatch[2].trim().match(/^(.+?)@\{(.*)\}$/);
+      const rawId = annotated ? annotated[1].trim() : participantMatch[2].trim();
+      const keyword = participantMatch[1].toLowerCase();
+      const type = annotated?.[2].match(/"?type"?\s*:\s*"?(\w+)/)?.[1]?.toLowerCase() ?? (keyword === 'participant' || keyword === 'actor' ? undefined : keyword);
+      const kind = type === 'actor' || keyword === 'actor' ? 'actor' : 'participant';
+      const stereotype = type ? PARTICIPANT_TYPES[type] : undefined;
+      const mermaidType = type && UNMAPPED_TYPES.has(type) ? type : undefined;
+      const alias = participantMatch[3]?.trim();
+      if (!knownIds.has(rawId)) {
+        participants.push({ id: rawId, label: alias || rawId, kind, alias, ...(stereotype ? { stereotype } : {}), ...(mermaidType ? { mermaidType } : {}) });
+        knownIds.add(rawId);
+      }
+      continue;
+    }
+
+    if (/^(rect|box)\b/i.test(line)) {
+      blocks.push('wrapper');
+      continue;
+    }
+
+    const activateMatch = line.match(/^(activate|deactivate)\s+(\S+)/i);
+    if (activateMatch) {
+      const isActivate = activateMatch[1].toLowerCase() === 'activate';
+      const participant = activateMatch[2];
+      ensureParticipant(participant);
+      activations.push({ participant, activate: isActivate, order: messageOrder });
+      continue;
+    }
+
+    const fragmentMatch = line.match(/^(alt|loop|opt|par|break|critical)\s+(.+)$/i);
+    if (fragmentMatch) {
+      blocks.push('fragment');
+      fragmentStack.push({
+        id: `seq-fragment-${fragmentStack.length + fragments.length + 1}`,
+        type: fragmentMatch[1].toLowerCase() as ParsedFragment['type'],
+        condition: fragmentMatch[2].trim(),
+        branchKind: 'start',
+        startOrder: messageOrder,
+      });
+      continue;
+    }
+
+    if (
+      switchFragmentBranch(line, {
+        keyword: 'else',
+        allowedType: 'alt',
+        branchKind: 'else',
+      })
+    ) {
+      continue;
+    }
+
+    if (
+      switchFragmentBranch(line, {
+        keyword: 'and',
+        allowedType: 'par',
+        branchKind: 'and',
+      })
+    ) {
+      continue;
+    }
+
+    if (
+      switchFragmentBranch(line, {
+        keyword: 'option',
+        allowedType: 'critical',
+        branchKind: 'option',
+      })
+    ) {
+      continue;
+    }
+
+    if (/^end\b/i.test(line)) {
+      if (blocks.pop() === 'fragment' && fragmentStack.length > 0) {
+        const top = fragmentStack.pop()!;
+        pushCompletedFragmentBranch(top);
+      }
+      continue;
+    }
+
+    const noteMatch = line.match(
+      /^note\s+(left of|right of|over)\s+(\S+?)(?:\s*,\s*(\S+))?\s*:\s*(.+)$/i
+    );
+    if (noteMatch) {
+      const position = noteMatch[1].toLowerCase().split(' ')[0] as 'left' | 'right' | 'over';
+      const target1 = noteMatch[2];
+      const target2 = noteMatch[3];
+      const text = labelText(noteMatch[4].trim());
+      ensureParticipant(target1);
+      if (target2) ensureParticipant(target2);
+      notes.push({
+        text,
+        target: target1,
+        targetIds: target2 ? [target1, target2] : [target1],
+        position,
+        order: messageOrder,
+        fragment: fragmentStack.length > 0
+          ? {
+              type: fragmentStack[fragmentStack.length - 1].type,
+              condition: fragmentStack[fragmentStack.length - 1].condition,
+              branchKind: fragmentStack[fragmentStack.length - 1].branchKind,
+            }
+          : undefined,
+      });
+      continue;
+    }
+
+    const arrowPatterns = ['-->>>', '-->>', '-->', '--x', '--)', '->>>', '->>', '->', '-x', '-)'];
+    let matched = false;
+    for (const arrow of arrowPatterns) {
+      const arrowIndex = line.indexOf(arrow);
+      if (arrowIndex <= 0) continue;
+      const from = line.slice(0, arrowIndex).trim();
+      const rest = line.slice(arrowIndex + arrow.length).trim();
+      const colonIndex = rest.indexOf(':');
+      const target = colonIndex >= 0 ? rest.slice(0, colonIndex).trim() : rest.trim();
+      const label = labelText(colonIndex >= 0 ? rest.slice(colonIndex + 1).trim() : '');
+      // `A->>+B` activates B with this message; `B-->>-A` deactivates B, the sender, after it.
+      const mark = target.match(/^([+-])\s*(.+)$/);
+      const to = mark ? mark[2] : target;
+
+      if (!from || !to) {
+        diagnostics.push(`Invalid message at line ${lineNumber}: "${line}"`);
+        matched = true;
+        break;
+      }
+
+      ensureParticipant(from);
+      ensureParticipant(to);
+
+      const isSelf = from === to;
+      const kind = isSelf ? 'self' : resolveMessageKind(arrow);
+      if (mark?.[1] === '+') activations.push({ participant: to, activate: true, order: messageOrder });
+      messages.push({ from, to, label, kind, ...(arrow === '-x' || arrow === '--x' ? { head: 'cross' as const } : {}) });
+      messageOrder++;
+      if (mark?.[1] === '-') activations.push({ participant: from, activate: false, order: messageOrder });
+      matched = true;
+      break;
+    }
+
+    if (!matched && /(->|-->|->>|-->>|-x|--x)/.test(line)) {
+      diagnostics.push(`Unrecognized message syntax at line ${lineNumber}: "${line}"`);
+    }
+  }
+
+  if (!hasHeader) {
+    return { nodes: [], edges: [], error: 'Missing sequenceDiagram header.' };
+  }
+
+  if (participants.length === 0) {
+    return { nodes: [], edges: [], error: 'No participants found.' };
+  }
+
+  const LANE_WIDTH = 220;
+  const participantKindMap = new Map(participants.map((p) => [p.id, p.kind]));
+
+  const activationByParticipant = new Map<string, Array<{ order: number; activate: boolean }>>();
+  for (const act of activations) {
+    if (!activationByParticipant.has(act.participant))
+      activationByParticipant.set(act.participant, []);
+    activationByParticipant.get(act.participant)!.push({
+      order: act.order,
+      activate: act.activate,
+    });
+  }
+
+  const nodes: FlowNode[] = participants.map((p, i) => ({
+    id: p.id,
+    type: 'sequence_participant',
+    position: { x: i * LANE_WIDTH, y: 0 },
+    data: {
+      label: p.label,
+      seqParticipantKind: p.kind,
+      seqParticipantAlias: p.alias,
+      ...(p.stereotype ? { seqParticipantStereotype: p.stereotype } : {}),
+      ...(p.mermaidType ? { seqParticipantMermaidType: p.mermaidType } : {}),
+      seqActivations: activationByParticipant.get(p.id),
+    },
+  }));
+
+  const edges: FlowEdge[] = messages.map((msg, i) => {
+    // `endOrder` is the next message's index when the block closed: exclusive.
+    const frag = [...fragments].reverse().find((f) => i >= f.startOrder && i < f.endOrder);
+
+    return {
+      id: `e-seq-${i + 1}`,
+      source: msg.from,
+      target: msg.to,
+      sourceHandle: 'top',
+      targetHandle: 'top',
+      label: msg.label || undefined,
+      type: 'sequence_message',
+      data: {
+        seqMessageKind: msg.kind,
+        ...(msg.head ? { head: msg.head } : {}),
+        seqMessageOrder: i,
+        sourceIsActor: participantKindMap.get(msg.from) === 'actor',
+        targetIsActor: participantKindMap.get(msg.to) === 'actor',
+        seqFragment: frag
+          ? {
+              type: frag.type,
+              condition: frag.condition,
+              branchKind: frag.branchKind,
+              edgeIds: [],
+            }
+          : undefined,
+      },
+    };
+  });
+
+  const noteNodes: FlowNode[] = notes.map((note, i) => ({
+    id: `seq-note-${i + 1}`,
+    type: 'sequence_note',
+    position: {
+      x: getParticipantLaneIndex(participants, note.target) * LANE_WIDTH
+        + (note.position === 'left' ? -160 : note.position === 'right' ? 160 : 0),
+      y: 110 + note.order * 110,
+    },
+    data: {
+      label: note.text,
+      seqNoteTarget: note.target,
+      seqNoteTargets: note.targetIds,
+      seqNotePosition: note.position,
+      seqMessageOrder: note.order,
+      seqFragment: note.fragment
+        ? {
+            type: note.fragment.type,
+            condition: note.fragment.condition,
+            branchKind: note.fragment.branchKind,
+            edgeIds: [],
+          }
+        : undefined,
+    },
+  }));
+
+  const fragmentNodes: FlowNode[] = fragments.map((fragment, index) => ({
+    id: fragment.id,
+    type: 'annotation',
+    position: {
+      x: -260,
+      y: 80 + fragment.startOrder * 110 + index * 12,
+    },
+    data: {
+      label: fragment.type.toUpperCase(),
+      subLabel: fragment.condition,
+      color: getSequenceFragmentColor(fragment.type),
+      seqFragmentId: fragment.id,
+      seqMessageOrder: fragment.startOrder,
+    },
+  }));
+
+  return {
+    nodes: [...nodes, ...noteNodes, ...fragmentNodes],
+    edges,
+    ...(diagnostics.length > 0 ? { diagnostics } : {}),
+  };
+}
+
+export const SEQUENCE_PLUGIN: DiagramPlugin = {
+  id: 'sequence',
+  displayName: 'Sequence Diagram',
+  parseMermaid: parseSequence,
+};

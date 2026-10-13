@@ -1,0 +1,1508 @@
+# OFK grammar — version 1
+
+Status: grammar version 1 (`%% ofk 1`), implemented; the §8.11 later families are reserved, not rendered yet.
+This file is the language: the parser, the MCP `get_syntax` tool, the docs-site reference and
+the BYOK prompt all read this file (or a build-time copy of it), so there is exactly one
+grammar.
+
+Contents: §1 goals and where we lose · §2 lexical rules · §3 header and
+directives · §4 core statements · §5 attributes · §6 ids, ordering, canonical form,
+round-trip · §7 layout hints · §8 families · §9 model layer ·
+§10 error model · §11 import loss tables · §12 versioning · §13 agent contract ·
+§14 worked examples (golden tests) · Appendix A `get_syntax` cheat-sheet.
+
+---
+
+## 1. Goals and honest losses
+
+Goals, in priority order: (a) forgiveness — any text yields the best diagram it can plus
+diagnostics; (b) round-trip — two laws (§6.6) hold for every fixture; (c) agent
+emit-ability — every construct fits Appendix A; (d) C4 model reuse — one element, many
+views, without a second grammar.
+
+Where we are consciously worse:
+- **Terser than the tersest DSLs? No.** Every edge is a full `A -> B` line in canonical form; chains
+  and fans are accepted but expanded. Cost: longer canonical text. Gain: line = statement,
+  so patches, diffs and diagnostics are one-to-one.
+- **Fewer shapes than some rival DSLs (45+).** ofk 1 has 16 shape words (§5.1). Cost: some Mermaid
+  `@{shape}` names degrade to `rect` with a warning. Gain: every shape has a Pixi renderer
+  before the word exists in the grammar.
+- **No user-defined element kinds (no `specification` block).** Cost: bespoke taxonomies use
+  `[kind: x]` and get plain styling. Gain: agents never need to read a spec block first.
+- **No Markdown in labels, no `!include`, no multi-board composition in ofk 1.** Cost: D2
+  layers/scenarios and Structurizr `!include` import as flattened text with a warning.
+- **Keywords are case-sensitive lowercase.** `Group -> X` is a node named "Group". Cost:
+  an LLM that capitalises `Flowchart` gets a node instead of a family (with warning W110
+  "did you mean the family header?"). Gain: no ambiguity, no heuristic retry pass.
+
+---
+
+## 2. Lexical rules
+
+### 2.1 Lines
+- Input is UTF-8 text, split on `\n` (`\r\n` accepted; canonical is `\n`, trailing newline).
+- One statement per line. `;` separates statements on one line (accepted; canonical never
+  emits `;`). A `{` at end of a line opens a block that closes at a line containing only
+  `}`. A block may also open and close on one line: `users { id uuid pk; email text }`.
+  Blocks nest. An unclosed block at EOF closes
+  with warning W103 at the opening line.
+- Blank lines and whitespace-only lines are ignored. Leading whitespace is insignificant
+  except in `mindmap` (§8.8) where indentation is the structure.
+- Hard limit 20 000 lines; beyond it parsing stops with one error E002 and the diagram so
+  far is used.
+
+### 2.2 Comments
+- `//` to end of line is a comment, unless inside a quoted string or glued to a word:
+  a comment needs a whitespace boundary (or line start) before it, so `[link: https://…]`
+  and `https://…` in a label stay one token. Full-line comments are
+  preserved by `format()` and by `serialize()` only when they were parsed
+  (`metadata.dsl.comments` keyed by the following statement's line); a comment with no
+  following statement is kept at end. Trailing comments are dropped with info I001 —
+  tradeoff: keeping them would need a per-statement slot; nobody has asked.
+- `%%` is *not* a comment. It is only valid as the version pragma (§3.1). Any other line
+  starting with `%%` is dropped with warning W101 and the hint "Mermaid comment? Paste as
+  Mermaid to convert."
+
+### 2.3 Tokens
+Reserved punctuation: `->` `-->` `<->` `<-->` `<-` `<--` `--` `->>` `-->>` `--|>` `..|>`
+`*--` `o--` `..>` `||` `|o` `o|` `}|` `|{` `}o` `o{` `..` `:` `=` `,` `[` `]` `{` `}` `//`
+`;` `@` `"`. Which arrows are live depends on the family (§8); a family that does not know
+an arrow treats it as text and warns W111.
+
+### 2.4 Names and quoting
+- A **name** is any run of characters that contains none of the reserved punctuation
+  above, trimmed. Spaces and Unicode are fine: `API Gateway`, `Zahlungs-Service` (a single
+  `-` is fine; only `--`, `->` … are reserved).
+- Quote with `"…"` when a name contains reserved punctuation or **starts with a reserved
+  keyword** (§2.5): `"Cache: L2"`, `"group"`, `"state machine"`. Inside quotes `\"` is a
+  quote and `\\` a backslash; `\n` is a line break in the label. Nothing else is escaped.
+- Bare names are trimmed and internal whitespace collapsed to one space; a quoted name keeps
+  its spacing exactly. The serializer quotes every label that would not lex back to itself as
+  plain single-spaced words (reserved punctuation, `"`, doubled, leading or trailing
+  whitespace, tabs, a keyword as its first word).
+- The **escape rule for reserved words**: a keyword is only a keyword as the first token of a
+  statement (after optional `-` bullet in mindmap). Anywhere else it is a name. `A -> group`
+  is an edge to a node named "group". At statement start, `group` is the keyword; write
+  `"group"` for the node. The serializer always quotes a label whose exact text is a
+  keyword, wherever it appears — so canonical text is unambiguous regardless of position.
+
+### 2.5 Reserved keywords (all lowercase, statement position only)
+- Header/family: `flowchart architecture sequence state erd class mindmap gitgraph bpmn org
+  gantt wireframe chart sankey journey timeline`.
+- Directives: `title direction autonumber legend align`.
+- Motion: `animate` (§6.8); `step` and `hold` are keywords only inside its block.
+- Structure: `group note`.
+- Sequence: `participant activate deactivate loop alt else opt par and break`.
+- State: `state fork join choice`.
+- Gitgraph: `commit branch checkout switch merge cherry-pick`.
+- Mindmap: `central`.
+- **Model layer (§9; plain nodes/groups outside a `model` block, kind preserved):** `model
+  views view person system container component store queue external deployment node
+  instance flow step goto include exclude extends rank pin`.
+
+Keyword arguments (e.g. `view context of X`) are parsed only inside their statement.
+
+### 2.6 Explicit ids
+`id = Label`. An explicit id matches `[A-Za-z_][A-Za-z0-9_-]*`. `.` is reserved for model
+paths (§9.2); in a non-model statement `a.b = X` → warning W120 and the id is slugified
+(`a-b`). Ids are case-sensitive; slugs are lowercase.
+
+---
+
+## 3. Header and directives
+
+### 3.1 Version pragma
+```
+%% ofk 1
+```
+Optional on input, first non-blank line when present. Always emitted first by the
+serializer. Missing → assumed current version, info I002. Higher than current → warning
+W001, parsed as current. See §12.
+
+### 3.2 Family line
+```
+<family> [<direction>]
+flowchart right
+sequence
+```
+Optional; first non-blank line after the pragma. Missing → `architecture`, info I003.
+Unknown word in that position is a node (a diagram can legitimately start with a node), so
+the parser also emits W110 when the first statement is a single bare word that
+case-insensitively equals a family name, or wraps one (`family architecture down`, `type: flowchart`). Directions: `down` (default for flowchart, state,
+gitgraph=`right`, mindmap radial), `right`, `left`, `up`. Aliases accepted, not canonical:
+`TB TD LR RL BT`, `top-down`, `left-right`.
+
+### 3.3 Directives
+```
+title: Image upload service
+direction: right            // same as on the family line; family line wins if both
+appearance: paper           // diagram palette: pastel | paper | builder | mono
+icons: auto                 // icons from labels: auto | off (default: the host's setting)
+autonumber                  // sequence only
+legend { key: meaning }     // reserved, parsed and re-emitted, not rendered yet
+```
+Canonical: `title:` is the third line (after pragma and family), `appearance:` the
+fourth. `direction` is folded into the family line. Directives elsewhere in the file
+are hoisted, warning W104 if a directive repeats (first wins); an unknown `appearance`
+value is W102 and the default palette applies.
+
+`icons:` turns icons from labels on or off for this diagram. With `auto`, a box-like node
+(`rect rounded cylinder queue component hexagon cloud`) with no `icon` whose label (or
+`tech:`) names a known technology or concept becomes an icon card: `Postgres`, `React app`,
+`Orders DB`, `S3 bucket`. Decisions, terminals, people and notes keep their shape. The
+inferred icon is never written back to text, and `icon: none` opts one node out. Absent,
+the host decides (the editor's "Icons from labels" setting, on by default); `icons` without
+a colon is a node, not the directive. Flowchart, architecture and C4 elements only.
+
+`appearance:` picks the palette colours are resolved from at compile time — the
+language keeps using colour words, the palette decides their hex. `pastel` is the
+default and is never emitted; a non-default palette is recorded on the frame and on
+every node it compiled, so the renderer and the serializer can resolve the same way
+without knowing the document. Palettes: `paper` (warm stock, dark ink), `builder`
+(neutral cards, brand orange accent), `mono` (greyscale, for print).
+
+---
+
+## 4. Core statements (all graph families: flowchart, architecture, state, erd, class,
+   plus model blocks)
+
+```
+Name                                 // declare node
+Name [attr, attr, key: value]        // declare with attributes
+id = Name [attrs]                    // explicit id
+A -> B                               // edge; A and B auto-declared
+A -> B : label                       // label runs to end of line or to trailing [attrs]
+A -> B : label [dashed, red]         // edge attributes
+A -> B -> C                          // chain (input only)
+A -> B, C                            // fan out; A, B -> C fan in (input only)
+group Name [attrs] {                 // container; nodes first seen inside are members
+  Member [attrs]
+  Other
+}
+group id = Name [attrs] { … }        // explicit group id
+Client -> Name                       // an edge end that names a group ends on its frame
+Start [ellipse] -> Check [diamond] : ok [thick]   // inline node attrs (see below)
+Name {                               // group shorthand (graph families), canonical = group
+  Member
+}
+note Name : text                     // sticky attached to a node (all families)
+```
+
+Edge arrows in graph families:
+
+| arrow | canonical | meaning |
+|---|---|---|
+| `->` | yes | solid, arrow at target |
+| `-->` | yes | dashed, arrow at target |
+| `<->` | yes | solid, both ends |
+| `<-->` | yes | dashed, both ends |
+| `--` | yes | solid line, no heads |
+| `<-` `<--` | no | reversed; canonical swaps endpoints and emits `->` / `-->` |
+
+Inline attrs on an edge line: a `[…]` that is followed by an arrow or by `:` belongs to
+the node it follows; a `[…]` after the label belongs to the edge. A `[…]` at end of line
+with no label is split by vocabulary: edge flags (`dashed`, `thick`, `invisible`, `flow`)
+and edge keys (`head:`, `tail:`, `from:`, `to:`, `label:`) stay on the edge, everything
+else (shape, colour, fill, `shadow`, icon, `tech:`…) lands on the target node — so
+`A -> B [dashed, red]` is a dashed edge to a red B and `A -> B [from: right]` exits B's
+left. Canonical never emits node attrs inline — the node gets its own declaration line.
+
+Edges to groups: an edge end that names a group ends on the group's frame — by its label or
+explicit id wherever the group opens, by its derived id (`payments`) once it has opened and no
+node holds that id. A node statement with that name wins (`Payments [red]` next to
+`group Payments { … }` keeps edges on the node); an edge alone never implies a box that
+shadows a group. The serializer declares such a node and names the group by `id = Name`, so
+the rule re-reads the same. (Added 2026-10-03, before v2 shipped; it
+was a stand-in box, so no version bump.)
+
+Node membership: a node belongs to the innermost group in which it is **first declared or
+first mentioned**. Mentioning an already-declared node inside another group does not move
+it (warning W121 "already in group X"). A node with no group is top-level.
+
+Repeated edges between the same pair create parallel edges (D2 rule), each with its own
+line; the serializer orders them by line.
+
+---
+
+## 5. Attributes
+
+`[` comma-separated list `]`. Each item is a bare **word** or `key: value`. Words are typed
+by vocabulary; the same word means the same thing everywhere. Two words of the same type
+→ last wins, warning W130. Unknown word → warning W131, kept verbatim in
+`metadata.dsl.unknownAttrs` and re-emitted last (round-trip safe).
+
+### 5.1 Vocabulary (ofk 1)
+- **shape** (nodes): `rect` (default), `rounded`, `circle`, `ellipse`, `diamond`,
+  `cylinder`, `hexagon`, `cloud`, `doc`, `note`, `parallelogram`, `person`, `queue`,
+  `component`, `browser`, `mobile`. Aliases (not canonical): `box`→`rect`, `oval`→`ellipse`,
+  `decision`→`diamond`, `database`/`db`/`storage`→`cylinder`, `document`→`doc`,
+  `actor`/`user`→`person`, `io`/`data`→`parallelogram`, `start`/`end`/`terminator`→`ellipse`.
+- **colour**: `blue green red orange violet teal pink yellow gray` or `#rgb`/`#rrggbb`.
+  Aliases `grey`/`slate`→`gray`, `purple`→`violet`, `emerald`→`green`, `amber`→`orange`,
+  `cyan`→`teal`. Hex kept verbatim (lowercase canonical).
+- **fill**: `pastel` (default, not emitted), `bold`, `outline`.
+- **style flags**: nodes `shadow`; edges `dashed` (same as `-->`; canonical uses the arrow),
+  `thick`, `invisible`, `flow` (animated). Text: `italic`, `bold-text` — reserved, W131 in ofk 1.
+- **icon**: `set/name` (`aws/lambda`, `gcp/pubsub`, `tech/react`) resolved against
+  `src/services/shapeLibrary` packs; a bare word that is a known icon name (`server`,
+  `database` — note `database` is a shape alias first; use `icon: database` to force).
+  Unknown → W132, plain node. `icon: none` = no icon, not even an inferred one (§3.3).
+- **iconpos**: `iconpos: left` makes an icon card a row card: the icon at its left, the name
+  and `desc:` beside it (a GCP-style card). `top` — the icon above its caption — is the
+  default; it is accepted and never written. Anything else → W131, `top` used, the text kept.
+  It applies to icon cards on graph and architecture nodes only: on a node with no icon, or on a
+  model element, it warns W131 and has no effect.
+- **edge heads**: `head: arrow|circle|cross|none`, `tail: none|arrow|circle|cross`,
+  `from: top|right|bottom|left`, `to: …` (port side hints, §7).
+- **keys**: `label:` (override display label; needed when the id is the name), `link:`,
+  `tech:`, `desc:`, `kind:`, `tags:` (comma list; `@tag` is sugar, §9), `pin:` (`x,y`),
+  `rank:` (int), `width:`/`height:` (px), `icon:`, `iconpos:`, `color:`, `shape:`, `fill:`.
+  Key values containing `,` or `]` must be quoted.
+
+### 5.2 Canonical attribute order
+`shape, colour, fill, flags (shadow, thick, invisible, flow), icon, iconpos, head/tail, from/to,
+label, tech, desc, kind, tags, link, pin, rank, width, height, unknown…`. Within a class,
+canonical spelling from the tables above. Defaults are never emitted (`rect`, `pastel`,
+`head: arrow`). An empty list is not emitted. `pin:` is written `pin: "x,y"` (a comma
+inside a value is quoted); `pin: 240,80` is accepted on input.
+
+Rendering notes: every shape word above maps onto a renderer primitive — `rect`/
+`rounded`/`component` are boxes (component keeps its word for round-trip), `person` is
+the actor glyph with its label below, `note` is a sticky, `browser`/`mobile` are wireframe
+frames, and a node with a resolved `icon` renders as an icon card: a tile with the label beneath
+(it takes the height of its caption), or with `iconpos: left` a row card with the text beside the icon.
+The nine palette words map onto the app palette: `green`→emerald, `orange`→amber,
+`gray`→slate, `teal`→cyan.
+
+---
+
+## 6. Ids, ordering, canonical form, round-trip
+
+### 6.1 Id derivation (deterministic)
+`slug(label)`: NFKD-normalise, strip combining marks, lowercase, replace every run of
+non-`[a-z0-9]` with `-`, trim `-`; empty → `n`. Duplicates in **line order** get `-2`, `-3`
+… (`API` twice → `api`, `api-2`). Explicit `id = Label` overrides; if that id was already
+taken by a slug, the slug holder is renumbered (declared ids win over derived ones) and
+info I010 explains it. Ids are stable across re-parses of the same text — required for
+`metadata.dsl.id` to match scene node ids between generates so the frame keeps positions
+of unchanged nodes.
+
+### 6.2 When the serializer emits `id = Label`
+Only when `slug(label) != id`: explicit ids that differ from the slug, or duplicate labels
+(`api-2 = API`). Otherwise the name alone.
+
+### 6.3 Declaration necessity
+A node line is emitted only if the node (a) has attributes, (b) has an explicit id, (c)
+belongs to a group, (d) has no edges, or (e) shares its name with a group (§4). Everything else is auto-declared by its edges.
+
+### 6.4 Canonical form
+`format(text) = serialize(parse(text))`. Canonical text is exactly:
+1. `%% ofk 1`
+2. family line with direction only if not the family default
+3. `title: …` if present
+4. one blank line if 5–7 is non-empty
+5. top-level node declarations needing emission (§6.3), in order (§6.5)
+6. groups as blocks, in order; inside: member declarations, nested groups, then edges whose
+   both endpoints are inside this group (deepest common group), 2-space indent per level
+7. remaining edges, one per line, in order
+8. `align` lines, then `note` lines, then `legend`, then trailing comments
+- One statement per line; no `;`; single spaces around `->`, `:`, `=`; attrs `[a, b]`;
+  labels unquoted unless required (§2.4); reversed arrows normalised; chains/fans expanded;
+  aliases replaced by canonical words; keys lowercase; `#hex` lowercase; trailing newline.
+- Family-specific statement order is defined in §8 (e.g. sequence keeps strict line order
+  because order *is* meaning).
+
+### 6.5 Ordering rule
+Every parsed record carries `metadata.dsl.line`. Within each §6.4 section, serialize sorts
+by `line`, ties by
+`(kind: node < group < edge, id)`. Records without `line` (created on the canvas by hand,
+or imported) sort after all lined records by `(floor(y/16), x, id)` for nodes and by
+`(sourceOrder, targetOrder)` for edges. Once serialized and re-parsed, they have lines.
+
+### 6.6 Round-trip laws
+1. `serialize(parse(text)) == format(text)` for every text; and `format(c) == c` for
+   canonical `c` (idempotent).
+2. `normalize(parse(serialize(frame))) deepEquals normalize(frame)` where `normalize` drops
+   `transform`, `size`, `zIndex`, `layerId`, ports, `metadata.dsl.line/hash/source`,
+   waypoints, and any appearance value equal to its default. Layout is *not* part of the
+   law — only structure and attributes. Pins (§7) *are* part of it.
+Golden fixtures in §14 are the first test corpus.
+
+### 6.7 What the canvas does and does not write back
+Manual moves, resizes, recolours on the canvas never touch `metadata.dsl.source` (README
+§2). "Edit as code" shows `source` if `hash(scene) == metadata.dsl.hash`, else
+`serialize(frame)` with the banner "canvas edited — regenerate will overwrite". Generate
+replaces the frame contents as one undo step and lays them out afresh: manual moves,
+resizes and recolours inside the frame are not kept. A position survives a generate only
+as a pin (§7) in the text. Tradeoff: text-only users lose nothing; canvas-first users pin,
+or carry the edit into the text first — agents get exactly that text from `get_diagram`
+(`canvasEdits[].carry`), and `update_diagram` lists what it dropped (`discarded`).
+Exception: chart *data* is content, not layout — the chart data panel writes the source, so
+a cell edit regenerates the same chart with the new value (§8.9).
+
+---
+
+### 6.8 The `animate` block (motion)
+
+Motion is a projection of the text like everything else: a short block names the steps an
+export plays, and an agent can write it. Omitted block = the compiler's `autoSequence`
+(topological order over the connector graph, one step per node).
+
+```
+animate build 10s loop {
+  step a, b            // reveal these nodes together
+  step a -> c : POST   // a step about the edge a -> c; both endpoints show too
+  step c hold 2s       // hold longer than the default beat
+}
+```
+
+- **Header**: `animate <preset> [<duration>] [loop]`. Presets: `build` (cumulative
+  reveal), `walkthrough` (spotlight one step at a time, camera glides), `pulse`
+  (everything shown, connectors carry a travelling light). `<duration>` is `10s` or
+  `8500ms`; the step timings scale to it. Unknown preset → W190, `build` assumed;
+  unreadable duration → W190, natural length used.
+- **Steps**: one per line inside the block. `step <refs…>` reveals nodes (comma-separated
+  refs, the ids as written in the diagram). `step <a> -> <c>` is about that edge and
+  shows both endpoints. `hold <duration>` overrides the step's beat. A label after `:` is
+  the step's note and reads longer by default.
+- **Canonical form**: the header, then one `step` line per step in order, then `}`. Refs
+  joined by `, `; labels quoted only when required (§2.4). The block is emitted after the
+  family body and before trailing comments, for every family. The serializer never
+  invents a block; canvas scrubbing never writes one.
+- **Resolution**: refs are node ids; an edge step resolves to the connectors between the
+  two nodes. An unknown node warns W122 and the step reveals nothing — the text is kept,
+  so round-trip is unaffected.
+- **Diagnostics**: W190 (animate header or step not understood), W103 (unclosed block).
+
+## 7. Layout hints (survive round-trip, never written by drags)
+
+| hint | where | effect |
+|---|---|---|
+| `flowchart right` | family line | ELK direction for the whole frame |
+| `group X [right]` | group attrs | direction inside the group (ELK hierarchy handling) |
+| `[rank: n]` | node | ELK layer constraint; nodes with the same `n` share a layer |
+| `align row A, B, C` / `align column A, B` | statement | same layer / same position constraint (Mermaid `align`) |
+| `[pin: 240,80]` | node | fixed position (frame-relative px); ELK treats as fixed; canvas drag of a pinned node shows a pin badge and does not move the pin in text |
+| `[width: 200, height: 80]` | node | fixed size |
+| `[from: right, to: left]` | edge | preferred port sides; ELK port constraints `FIXED_SIDE` |
+| `[order: n]` | sequence participants, gitgraph branches | explicit lane order |
+
+Hints are attributes, so they follow all attribute rules (unknown → kept). They are
+emitted only when present in the parsed text or in `metadata.dsl.hints` (set by explicit
+"Pin in code" / "Align in code" commands, which are edits to the text, not drags).
+
+---
+
+## 8. Families
+
+Family = header word. Shared: lexical rules, attrs, `title`, `group`, `note`, diagnostics.
+Each family adds statements and defines its canonical order. Everything not listed falls
+back to §4.
+
+### 8.1 flowchart (default direction `down`)
+Statements: §4. Shape role aliases: `process`→`rect`, `decision`→`diamond`,
+`start|end|terminator`→`ellipse`, `io|data`→`parallelogram`, `prep`→`hexagon`,
+`subroutine`→`component`, `doc`. Decision branches are labelled edges (`Ok? -> Ship : yes`).
+
+### 8.2 architecture (default direction `right`)
+Statements: §4. Default node kind = icon card (icon above label) when an icon attr is set,
+`rect` otherwise. Icons: `[aws/lambda]`. Group = boundary box. Inside a `model` block (§9) `system`,
+`container` … are C4 elements; outside one they are groups/nodes with `metadata.dsl.kind`.
+
+### 8.3 sequence (no direction)
+```
+participant Name [actor|person|db|queue|icon]   // optional; order = first appearance
+alias = Long Participant Name
+A -> B : message              solid, arrow
+A --> B : reply               dashed
+A ->> B : async               open head
+A -->> B : async reply
+A -> B : lost [head: cross]   ends in a cross (UML lost message); `-->` with it is dashed
+A -> A : self call
+activate A / deactivate A
+loop every 5s {  … }
+alt ok { … } else fail { … }
+opt cached { … }
+par { … } and { … }
+break timeout { … }
+note over A, B : text  |  note left of A : text  |  note right of A : text
+autonumber
+```
+Canonical order: strict line order (order is meaning). Chains/fans not allowed (W112).
+`alt`/`par` branches continue the same block (`} else fail {`, `} and {`); a participant's
+`id = Label` form is canonical when the label does not slug to the id. Blocks render as
+fragment frames (`annotation` nodes) that enclose their messages; participants are
+`sequence_participant` nodes with lifelines sized to the last message.
+
+### 8.4 state (default `down`)
+```
+[*] -> Idle                   start; Idle -> [*] end
+Idle -> Running : start
+state Running { … }           composite; `--` line inside = concurrent region divider
+F [fork] ; J [join] ; C [choice]      pseudo-states via shape words
+note Idle : text              a sticky beside a state or a composite; "a\nb" keeps its line break
+```
+`[*]` is a token, never a name; before an arrow it is the initial state, after one the
+final state (two distinct nodes). Canonical: composites as `state Name { … }` blocks,
+then transitions in §6.4 order. `fork`/`join` render as filled bars and `choice` as a
+diamond (the name stays addressable but fork/join bars draw no text).
+
+### 8.5 erd (default `right`)
+```
+users [blue] {
+  id uuid pk
+  email text unique
+  org_id uuid fk
+  "full name" text
+}
+users ||--o{ orders : places        // crow's foot: || |o o| }| |{ }o o{ ; -- identifying, .. non-identifying
+users -> orders : has               // unspecified cardinality
+```
+Row = `name [type] [pk|fk|unique|null|not-null]*` in that canonical flag order; a name with
+spaces is quoted. Cardinality words (`1:N`, `one or many`) are accepted and canonicalised to
+glyphs; a plain arrow (`->`, `-->`) means an uncarded relation and canonicalises to `--`.
+Entities render as `er_entity` tables (44px header, 18px rows); relations carry
+`semantics.erRelation`.
+
+### 8.6 class (default `down`)
+```
+Order [interface|abstract|enum] {
+  +id: int
+  -items: Item[]
+  ---
+  +total(): Money
+  +save()$              // $ static, * abstract
+}
+Order --|> Base : extends      inheritance   |  Order ..|> Serializable   realization
+Order *-- Item                 composition   |  Order o-- Tag             aggregation
+Order ..> Money                dependency    |  Order --> Customer        association
+Order "1" --> "*" Item : has   multiplicity in quotes beside the arrow
+```
+Members are lines; `(` in a member makes it a method. `---` is accepted on input and
+emitted only when a class has both attributes and methods. Member text canonicalises
+spacing (`+id: int`, `+go(): void`); `[interface|abstract|enum]` sets the stereotype.
+Reversed relations normalise by swapping endpoints (`Order <|-- Base` → `Base --|> Order`);
+multiplicity is quoted beside the arrow (`Order "1" --> "*" Item`) and stays with its end when
+the relation is reversed. A quoted token is a multiplicity only when it has that shape (`1`, `*`,
+`0..1`, `1..*`, `n`, `many`) and a name remains on its side: `"store" --> B` relates the
+entity named store. One relation per line in erd and class: `A, B --> C` and `A --> B --> C`
+are W112 and dropped. A relation names an entity by its name, or by its id when the id is not
+the name's slug.
+`group Zoo { … }` boxes the classes declared inside it (groups nest; erd takes it too), like a
+Mermaid `namespace`. Canonical: classes and groups in line order as blocks, relations after.
+Nodes are `class` tables with attribute/method compartments sized so every member is visible.
+
+### 8.7 mindmap (radial)
+```
+mindmap
+central: Product            // or root:, or first bare line
+- Growth [green]
+  - SEO
+  - Referrals [icon: users]
+- Retention
+```
+Indentation is structure: each line parents to the nearest previous line with a smaller
+indent (2 or 4 spaces per level, tabs = 4). `-` or `*` bullet optional on input; canonical
+is `- ` with two spaces per level *below the first*, so depth-1 bullets sit at column 0.
+Max depth 6, deeper flattens (W140). Colour on a branch cascades to its descendants and is
+only re-emitted where it changes. Shape attrs map onto mindmap wrappers (`circle` →
+double-circle, `ellipse` → stadium, `rect` → square, `component` → subroutine, `hexagon`);
+`[icon:]` is kept in text but not drawn yet. No edges; `->` lines are W111. The root is
+`central: Label` (or `root:`, or the first bare line).
+
+### 8.8 gitgraph (default `right`)
+```
+commit Initial [tag: v1.0, highlight|revert]
+branch feature
+checkout main            // switch = alias
+merge feature [tag: v1.1, label: …]
+cherry-pick initial      // by commit slug
+```
+Imperative; canonical = line order. `main` exists implicitly and `branch X` creates *and*
+switches to X (Mermaid behaviour); `checkout`/`switch` move the cursor without committing.
+Unknown branch or commit → W150. Each branch is a lane, each commit a column; commits are
+circles with the label beneath, `merge` draws a curve from the merged branch's tip, and
+`cherry-pick` a dashed curve from the picked commit.
+
+### 8.9 chart
+```
+chart bar                     // bar | line | area | scatter | pie | donut | radar | heatmap | table | quadrant
+title: Monthly revenue
+Revenue: Jan 12, Feb 19, Mar 9, Apr 22, May 17     // series: category value pairs, one series per line
+Costs: Jan 8, Feb 9, Mar 7, Apr 11, May 12
+
+chart quadrant
+x: Low Effort, High Effort
+y: Low Impact, High Impact
+quadrants: Quick wins, Big bets, Deprioritise, Time sinks
+Feature A [0.32, 0.78]        // point: label [x, y] with x, y in 0–1
+```
+Canonical: the family line keeps the kind (`chart bar`), then `title:`, then one series
+line per series in declaration order (the first line's categories define the axis), or the
+quadrant directives and points. A series line is `Name: Category value, …`; a category with
+spaces is quoted. Chart *data* is the one place where a canvas edit writes text back: the
+chart data panel serializes through `Edit as code` (grammar §6.7), because moving a bar is
+a data edit, not a layout edit. Unknown kinds warn W131 and fall back to `bar`.
+
+### 8.10 wireframe
+Screens of controls, one per line, laid out down each screen's column.
+```
+wireframe
+title: Onboarding
+screen Login [phone] {        // phone (default) | tablet | browser | window | frame
+  heading: Welcome back
+  input: Email [half]         // widths: full (default) | half | third | two-thirds (1/2, 1/3, 2/3)
+  input: Phone [half]         // consecutive controls share a row while their fractions fit
+  toggle: Dark mode [on]      // on / checked, off
+  slider [60%]                // 60% or 0.6: slider, progress, rating
+  tabs: Overview | Reports [active: 1]     // items are `A | B | C`; active: N selects one
+  alert: Storage almost full [warning]     // info | success | warning | error; buttons take primary
+  tabbar: Home | Search | Me [active: 0]   // pins to the screen bottom; fab floats above it
+}
+```
+Controls: button input search checkbox radio toggle dropdown slider navbar tabs image
+avatar heading paragraph divider link textarea stepper badge progress breadcrumbs
+pagination rating card list alert menu tooltip accordion datepicker sidebar
+segmented tabbar statusbar fab. A screen is a preset frame named above its
+edge; controls stack down its column (16 px padding, 12 px gaps) and the screen grows to
+fit. Screens sit side by side. Canonical: `screen Name [frame] {`, one control per line in
+top-to-bottom, left-to-right order, attributes in the order width, state, value, active,
+variant. Unknown controls warn W141, unknown attributes W142, unknown frames W143 (phone
+used). Controls outside a screen collect into one phone.
+
+### 8.11 Later families (header reserved, parsed as flowchart with W105 "family not yet
+rendered"): `bpmn` (lanes = groups, `[event|task|gateway]` shapes), `org` (edges = reports-to),
+`gantt` (`section`, `Task : 2026-01-01, 5d [done|active|crit|milestone]`),
+`sankey` (`A -> B : 12`), `journey` (`section`, `Task : 4 : Actor`), `timeline`.
+
+---
+
+## 9. Model layer (C4)
+
+### 9.1 Blocks
+```
+model {
+  person Customer [desc: "Buys things"]
+  system Shop [tech: …] {
+    container Web [tech: React] {
+      component Cart
+    }
+    container API [tech: Go] @core
+    store DB [cylinder, tech: Postgres]
+    queue Events
+  }
+  external Stripe
+  Customer -> Web : browses
+  Web -> API : calls [tech: HTTPS/JSON]
+  API -> DB : reads/writes
+}
+deployment Prod {
+  node AWS [aws/cloud] {
+    node ECS { instance Shop.API }
+    node RDS { instance Shop.DB }
+  }
+}
+views {
+  view landscape
+  view context of Shop
+  view container of Shop { exclude Events }
+  view component of Shop.Web
+  view deployment of Shop in Prod
+  view custom "Data paths" [right] { include Shop.** where kind is store; include -> DB }
+}
+flow "Checkout" {
+  step Customer -> Web : opens cart
+  alt "paid" { step Web -> API : POST /orders } else { step Web -> Customer : show error }
+  par { step API -> DB : write } and { step API -> Events : publish }
+  goto "Fulfilment"
+  note "Idempotent by order id"
+}
+```
+Implementation (`src/dsl/model/` + `families/architecture/`): the architecture
+family detects a `model|views|flow|deployment` block and switches to C4 semantics; plain
+graph lines in the same family keep the §4 contract. The model is compiled into one frame
+per view (`compileWorkspace`), each frame carries `metadata.dsl.arch = { model, view }`,
+and placed nodes carry `metadata.model.elementId`. Pages are matched to views by stable
+view id (`view:container:shop`, `view:custom:<slug>`), so Generate updates the same pages
+instead of duplicating them. The serializer re-emits the whole workspace from any view
+frame, so "Edit as code" anywhere gives the same text.
+
+Editing rules (the product contract for the model layer): a label edit on a placed node
+renames the element in every view (one undo step); Delete unplaces from the current view
+only (`⌘⇧⌫` or the context menu removes it from the model everywhere); a connector drawn
+between two placed nodes records the matching relation; tags drive perspectives; snapping
+`views/*.snap` positions overrides ELK per element.
+
+Flow step keywords (`flow "Name" { … }`): `intro "text"`, `step A -> B : label`
+(message), `process "text"`, `alt "x" { } else { }`, `par { } and { }`,
+`goto "Flow name"`, `note "text"`, `conclusion "text"`. Exports:
+sequence-family DSL, Mermaid `sequenceDiagram`, PlantUML (`flowTo*` in `src/dsl/model/flowExport.ts`).
+
+### 9.2 Paths and ids
+Element ids inside `model` are dotted paths of their explicit ids or slugs
+(`shop.web.cart`). References may be relative inside the nearest enclosing element
+(`Web -> API` inside `Shop`) or absolute (`Shop.API`). Path lookup is case-insensitive on
+slugs, exact on explicit ids. Outside `model`, `.` in an id is W120 (§2.6).
+
+### 9.3 Implied relations (Structurizr strategy)
+`a.x -> b.y` implies `a -> b` on any view where `a` and `b` are shown but `x`/`y` are
+not, **unless any explicit relation `a -> b` exists**. Implied relations are derived, never
+serialized; they carry `metadata.model.implied = true`.
+
+Deployment blocks also accept relationships between separate nodes in the same environment;
+endpoint references resolve within that environment. Cross-environment references produce W122.
+
+### 9.4 View predicates (subset) — implemented
+
+A typed view starts from its scope's default element set and `include`/`exclude` refine it
+(Structurizr semantics); a `view custom` starts empty so it can be a real subset.
+Relations project onto the nearest shown ancestor, which is exactly the ancestor pair the
+plan spells out as an implied relationship; `deriveImpliedRelations` remains the model-level
+helper (agent reports, `explain`) and is never serialized.
+
+`include X`, `include X.*` (children), `include X.**` (descendants), `include *`, `include
+X -> Y`, `include -> X`, `include X ->`, `exclude …` same forms, `where kind is
+container`, `where kind is not container`, `where tag is @core`, `where tag is not @deprecated`,
+`and`/`or` (AND binds before OR; quote tag values containing those words). Order matters
+(later overrides). An unsupported `where` clause or view statement → W160 "skipped and kept
+verbatim"; a subject that names no element matches nothing, with no diagnostic.
+A landscape starts with top-level people, systems and external systems; explicit descendant rules
+can add detail. Parallel authored relationships keep separate connectors and protocols.
+
+### 9.5 Tags
+`@core` after a name = `[tags: core]`; several allowed. Canonical: `[tags: a, b]` inside the
+attr list, `@` sugar accepted. Tags never affect ids.
+
+---
+
+## 10. Error model
+
+Shape returned by `parse`, `compile`, importers, the code panel and MCP (`validate`,
+`create_diagram`, `update_diagram`):
+```ts
+interface Diagnostic {
+  code: `I${number}` | `W${number}` | `E${number}`;   // stable, documented below
+  severity: 'info' | 'warning' | 'error';
+  line: number;            // 1-based, in the text as submitted
+  col: number;             // 1-based; 1 when the whole line is meant
+  endCol?: number;
+  message: string;         // one sentence, no trailing period
+  hint?: string;           // what to type instead, when known
+  source: 'parse' | 'compile' | 'import';
+}
+```
+Severity meaning: `info` = nothing lost; `warning` = the line was dropped or something in
+it was ignored, diagram still renders; `error` = document-level limit or invalid import
+header — still renders whatever parsed. **Nothing is fatal; `parse` never throws** (fuzz
+test: random bytes → diagnostics only).
+
+| code | when | hint |
+|---|---|---|
+| I001 | trailing comment dropped | move comment to its own line |
+| I002 | no version pragma | `%% ofk 1` added on save |
+| I003 | no family line | `architecture` assumed |
+| I010 | slug renumbered because an explicit id took it | — |
+| W001 | pragma version newer than parser | parsed as version 1 |
+| W101 | line could not be parsed, dropped | shows the first offending token |
+| W102 | unterminated quote, line dropped | close the quote |
+| W103 | unclosed block at EOF | `}` inserted |
+| W104 | duplicate directive, first wins | — |
+| W105 | family reserved, rendered as flowchart | — |
+| W106 | `Name {…}` closed on one line opens a group around `Name`; read as a group, braces are not label text | the quoted form `"Name {…}"` |
+| W110 | first statement looks like a family header with wrong case or a `family`/`type`/`diagram` wrapper | `flowchart` |
+| W111 | arrow not valid in this family, line dropped | list of valid arrows |
+| W112 | chain/fan not allowed in this family | one edge per line |
+| W120 | `.` in id outside `model`, slugified | — |
+| W121 | node mentioned in a second group, not moved | — |
+| W122 | unknown element reference, relation dropped | nearest declared name |
+| W130 | two attributes of the same type, last wins | — |
+| W131 | unknown attribute word, kept verbatim; or an `iconpos` other than `top`/`left`, `top` used | nearest known word (Levenshtein ≤ 2) |
+| W132 | unknown icon, plain node | `find_icon` suggestion |
+| W140 | mindmap depth > 6, collapsed | — |
+| W150 | gitgraph unknown branch/commit | — |
+| W160 | unsupported view predicate, kept verbatim | — |
+| W170 | self-edge in a family that cannot draw it (erd, class), dropped | — |
+| W180 | import: construct has no equivalent, dropped (see §11) | — |
+| W190 | animate header or step not understood; defaults used | shows the expected form |
+| E001 | empty document | — |
+| E002 | > 20 000 lines, rest ignored | — |
+| E003 | import: unknown source header | — |
+| E004 | import: a source line could not be read (line is the source's); nothing converted | fix that line |
+
+The code panel lists diagnostics under the editor keyed to line and underlines `col..endCol`.
+MCP returns the array as-is plus `summary: { info, warning, error }` counts.
+
+---
+
+## 11. Import targets — loss tables
+
+Importers produce OFK text + `Diagnostic[]` (source `import`, W180 for drops) — never
+throw. Column key: **1:1** = round-trips back to equivalent source; **degrades** = kept
+with changed fidelity; **dropped** = W180.
+
+### 11.1 Mermaid
+
+Implementation note (2026-09-21): the transpiler (`src/services/dsl/mermaidToDsl.ts`) is
+built on the repo's own DOM-free per-family parsers (`detectMermaidDiagramType` +
+`parseMermaidByType`), which already carry the semantics and the 56-fixture corpus —
+Mermaid's own parser needs a browser and returns a different model, so it is not used for
+conversion. Losses are surfaced as W180 diagnostics in the code panel.
+| Mermaid | OFK | fidelity |
+|---|---|---|
+| `flowchart LR/TD/…` | `flowchart right/down/…` | 1:1 |
+| `A[text]`, `A(text)`, `A([ ])`, `A[[ ]]`, `A[( )]`, `A(( ))`, `A{ }`, `A{{ }}`, `A[/ /]` | `a = text [rect|rounded|ellipse|component|cylinder|circle|diamond|hexagon|parallelogram]` | 1:1 |
+| `A>text]`, `A[\ /]`, `A(((…)))`, most `@{shape}` names | nearest of the 16 shapes | degrades |
+| `@{ shape: icon }`, `@{ img }` | node with `[icon: …]` / plain node | degrades / dropped |
+| `-->` `---` `-.->` `==>` `~~~` `--o` `--x` `<-->` | `->` `--` `-->` `-> [thick]` `-> [invisible]` `[head: circle]` `[head: cross]` `<->` | 1:1 |
+| link length (extra dashes) | ignored | dropped (info) |
+| `-->|text|`, `-- text -->` | `: text` | 1:1 |
+| `A --> B & C`, chains | fans/chains (input), expanded | 1:1 |
+| `subgraph id[title] … direction LR … end` | `id = title [right] { }` group | 1:1 |
+| `style`, `classDef`+`class`/`:::`, `linkStyle` | attrs when fill/stroke maps to a palette colour or hex | degrades (font/stroke-width dropped) |
+| `click A "url"` | `[link: url]` | 1:1; callbacks dropped |
+| `%%{init}%%`, `---config---` | — | dropped |
+| markdown strings | plain text | degrades |
+| `sequenceDiagram` participants/actors/aliases | `participant`, `id = Name [person]` | 1:1 |
+| stereotypes boundary/control/entity/database/collections/queue | `[db]`/`[queue]`/plain | degrades |
+| `->>`, `-->>`, `->`, `-->`, `<<->>`, `-x`, `-)` | `->>`, `-->>`, `->` (no head → `[head: none]`), `-->`, `<->`, `[head: cross]`, `->>` | 1:1 except `-)` degrades |
+| `+`/`-` activation suffix | `activate`/`deactivate` lines | 1:1 |
+| `loop alt else opt par and break` | same | 1:1 |
+| `critical/option` | `alt/else` | degrades |
+| `box`, `rect`, `create/destroy`, `link`, `autonumber n step` | `group` of participants / dropped / dropped / `[link:]` / `autonumber` | degrades / dropped |
+| `stateDiagram-v2` `[*]`, transitions, `state X { }`, `--`, `<<fork>>`, `<<join>>`, `<<choice>>`, `state "d" as id` | same, `[fork]`… , `id = d` | 1:1 |
+| state `note`, `classDef` | `note X : …`, colour attrs | 1:1 / degrades |
+| `classDiagram` members, visibility, `$`, `*`, `<<interface>>`, all arrows, cardinality, labels, `namespace` | same; namespace → `group` | 1:1 |
+| generics `~T~` | `T<…>` in member text | degrades |
+| `erDiagram` entities, PK/FK/UK, comments, crow's foot, `..`/`--`, aliases `["…"]` | same (`UK`→`unique`, comment dropped) | 1:1 except comments |
+| `gitGraph` commit id/type/tag, branch, checkout, merge, cherry-pick | same (`type: REVERSE`→`revert`, `HIGHLIGHT`→`highlight`) | 1:1; `order:`, `parent:` dropped |
+| `mindmap` indentation, `root((x))`, bracket shapes, `::icon(fa fa-x)` | `central: x`, `[circle]`… , `[icon: x]` if in catalog | 1:1 / degrades |
+| `architecture-beta` groups, services, junctions | `architecture` groups and nodes (`pack:name` icon → `icon: pack/name`, junction → `[circle]` node) | degrades |
+| `journey`, `gantt`, `pie`, `timeline`, `sankey-beta`, `C4Context` etc. (Mermaid C4) | — | not converted (error names the convertible types) |
+
+### 11.2 Structurizr DSL
+| Structurizr | OFK | fidelity |
+|---|---|---|
+| `workspace "n" "d" { }` | `title: n` | 1:1 (desc dropped) |
+| `model { }`, `views { }` | same blocks | 1:1 |
+| `person`, `softwareSystem`, `container`, `component` with `"desc" "tech" "tags"` | `person|system|container|component Name [tech:, desc:, tags:]` | 1:1 |
+| `x = container "Name"` | `x = container Name` | 1:1 |
+| `!identifiers hierarchical` / flat | always hierarchical; flat ids rewritten to paths | 1:1 (ids change) |
+| `a -> b "desc" "tech" "tags"` | `a -> b : desc [tech:, tags:]` | 1:1 |
+| scoped `-> b` inside element | resolved to `this -> b` | 1:1 |
+| `!impliedRelationships true` | default behaviour | 1:1; `false` → W180 |
+| `deploymentEnvironment`, `deploymentNode`, `containerInstance`, `infrastructureNode` | `deployment Env { node X { instance a.b } }`, infra → `node` | 1:1 |
+| `group "name" { }`, `deploymentGroup` | members kept, group flattened | W180 |
+| `systemLandscape`, `systemContext x`, `container x`, `component x`, `deployment x env`, `dynamic x` | `view landscape|context of x|container of x|component of x|deployment of x in env`, dynamic → `flow` | 1:1 |
+| `include *`, `include a b`, `exclude a`, `->a->`, `a->`, `->a` | same forms | 1:1 |
+| `element.type==`, `element.tag==`, `&&`, `\|\|` | `where kind is`, `where tag is`, `and`, `or` | 1:1 for these; any other expression (`element.parent==`, `relationship.tag==`, …) → W180, kept verbatim in the view, not applied |
+| `autoLayout lr 300 300` | view direction `[right]`; separations dropped | degrades |
+| `styles { element "Tag" { background shape icon } }` | attrs copied onto every tagged element (no tag styles yet) | degrades |
+| `!include`, `!docs`, `!adrs`, `properties`, `perspectives`, `url` | — | dropped, W180 each |
+| `theme`, `branding`, `terminology`, `configuration` | — | dropped, W180 |
+
+---
+
+## 12. Versioning
+
+- Grammar version is an integer. `%% ofk N`. Parser knows `CURRENT = 1`.
+- A version bump is required only for a change that makes previously canonical text parse
+  differently. Adding a keyword, attribute word, family or diagnostic is *not* a bump
+  (old text still parses the same; old parsers see new words as unknown attrs / nodes).
+- Migration rule: `migrate(text, from, to)` is a chain of pure functions
+  `m1to2`, `m2to3` …, each a line rewrite that emits its own diagnostics. `parse` runs
+  `migrate` first when `N < CURRENT`, then updates the pragma; the serializer always writes
+  `CURRENT`. Frames store `metadata.dsl.version` = the version their `source` is in.
+- `N > CURRENT` → W001, parse as current (forgiveness beats refusal; the user sees why).
+- No pragma → `CURRENT`.
+
+---
+
+## 13. Agent contract
+
+- `get_syntax(family?)` returns Appendix A (all families) or one family's block (≤ 60
+  lines total). It is the only thing an LLM needs to emit valid text.
+- `create_diagram(text) → { id, diagnostics, canonical }` — always returns the canonical
+  text so the agent's next patch is against known lines.
+- `get_diagram(id) → { canonical, hash, diagnostics }`.
+- `update_diagram(id, { base_hash, patches: [{ start, end, lines }] } | { text })` —
+  patches are 1-based inclusive line ranges over the last returned canonical text;
+  `base_hash` mismatch → rejected with the current canonical (agent re-patches); result is
+  re-canonicalised and returned. Because each statement is one line and ordering is
+  stable, "add an edge" = one inserted line, "recolour X" = one replaced line.
+- Determinism guarantees an agent can rely on: same text → same ids → same node identity
+  across generates; canonical text diff == semantic diff.
+
+---
+
+## 14. Worked examples (golden tests for 2.2)
+
+Each example: `input` then `canonical` (`= input` when already canonical). Golden test:
+`format(input) == canonical` and `format(canonical) == canonical`, and the listed
+diagnostics (if any) are produced exactly.
+
+### 14.1 Minimal sketch (architecture default)
+input:
+```
+Frontend -> Backend -> Database
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+Frontend -> Backend
+Backend -> Database
+```
+diagnostics: I002, I003.
+
+### 14.2 Flowchart with decision, fans, aliases
+input:
+```
+flowchart
+Start [terminator] -> Validate
+Validate -> Ok? [decision]
+Ok? -> Ship, Notify: yes
+Ok? -> Fix: no
+Fix -> Validate
+Ship [process] -> End [terminator]
+```
+canonical:
+```
+%% ofk 1
+flowchart
+
+Start [ellipse]
+Ok? [diamond]
+End [ellipse]
+
+Start -> Validate
+Validate -> Ok?
+Ok? -> Ship : yes
+Ok? -> Notify : yes
+Ok? -> Fix : no
+Fix -> Validate
+Ship -> End
+```
+Note `Ship [process]` is dropped as a declaration: `process` = default `rect`.
+
+### 14.3 Architecture with icons, groups, title, direction
+input:
+```
+architecture down
+title: Image upload
+group VPC [violet] {
+  API Gateway [aws/api-gateway]
+  Resize [aws/lambda, green]
+  Resize -> Bucket
+}
+Bucket [aws/s3, orange]
+Postgres [cylinder, blue]
+Resize --> Postgres : async write
+API Gateway -> Resize : invoke
+```
+canonical:
+```
+%% ofk 1
+architecture down
+title: Image upload
+
+Bucket [orange, aws/s3]
+Postgres [cylinder, blue]
+group VPC [violet] {
+  API Gateway [aws/api-gateway]
+  Resize [green, aws/lambda]
+}
+Resize -> Bucket
+Resize --> Postgres : async write
+API Gateway -> Resize : invoke
+```
+Note attr order (colour before icon) and that `Resize -> Bucket` leaves the group because
+Bucket is outside it.
+
+### 14.4 Forgiving input (bad lines, unknown attrs, reversed arrow, keyword as name)
+input:
+```
+flowchart
+Cache [cylinder, chartreuse, octahedron]
+B <- A
+this line has no meaning ]]]
+"group" -> Cache
+```
+canonical:
+```
+%% ofk 1
+flowchart
+
+Cache [cylinder, chartreuse, octahedron]
+
+A -> B
+"group" -> Cache
+```
+diagnostics: W131 line 2 col 18 ("chartreuse" — hint: `teal`?), W131 line 2 col 30
+("octahedron" — hint `hexagon`), W101 line 4 col 1.
+
+### 14.5 Duplicate labels and explicit ids
+input:
+```
+API [blue]
+api2 = API [green]
+API -> api2
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+API [blue]
+api2 = API [green]
+
+API -> api2
+```
+ids: `api`, `api2`.
+
+### 14.6 Group shorthand and nested groups
+input:
+```
+Edge {
+  CDN; WAF
+  CDN -> WAF
+  Inner { Origin }
+}
+WAF -> Origin
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+group Edge {
+  CDN
+  WAF
+  group Inner {
+    Origin
+  }
+  CDN -> WAF
+  WAF -> Origin
+}
+```
+
+### 14.7 Layout hints
+input:
+```
+flowchart right
+A [pin: 0,0] -> B [rank: 2]
+align column B, C
+A -> C : side [from: bottom, to: top]
+```
+canonical:
+```
+%% ofk 1
+flowchart right
+
+A [pin: 0,0]
+B [rank: 2]
+
+A -> B
+A -> C : side [from: bottom, to: top]
+align column B, C
+```
+
+### 14.8 Sequence
+input:
+```
+sequence
+autonumber
+participant Browser [browser]
+Browser -> API : GET /orders
+activate API
+API -> DB : SELECT
+DB --> API : rows
+alt found {
+  API -->> Browser : 200
+} else {
+  API -->> Browser : 404
+}
+deactivate API
+note over Browser, API : cached 60s
+```
+canonical: input with `%% ofk 1` prepended and a blank line after `sequence` (sequence
+keeps strict line order; only the header is normalised).
+
+### 14.9 Sequence with par and self-call
+input:
+```
+sequence
+Worker -> Worker : poll
+par { Worker -> Queue : ack } and { Worker -> Metrics : emit }
+```
+canonical:
+```
+%% ofk 1
+sequence
+
+Worker -> Worker : poll
+par {
+  Worker -> Queue : ack
+} and {
+  Worker -> Metrics : emit
+}
+```
+
+### 14.10 State machine
+input:
+```
+state
+[*] -> Idle
+Idle -> Running : start
+state Running {
+  Loading -> Ready : ok
+  --
+  Logging
+}
+Running -> [*] : stop
+F [fork]
+```
+canonical:
+```
+%% ofk 1
+state
+
+F [fork]
+state Running {
+  Loading -> Ready : ok
+  --
+  Logging
+}
+[*] -> Idle
+Idle -> Running : start
+Running -> [*] : stop
+```
+
+### 14.11 ERD
+input:
+```
+erd
+users { id uuid pk; email text unique }
+orders [blue] {
+  id uuid pk
+  user_id uuid fk
+}
+users 1:N orders: places
+```
+canonical:
+```
+%% ofk 1
+erd
+
+users {
+  id uuid pk
+  email text unique
+}
+orders [blue] {
+  id uuid pk
+  user_id uuid fk
+}
+users ||--o{ orders : places
+```
+
+### 14.12 Class
+input:
+```
+class
+Order {
+  +id: int
+  +total(): Money
+}
+Shape [interface] { +area(): float }
+Order --|> Base
+Order "1" --> "*" Item : has
+```
+canonical:
+```
+%% ofk 1
+class
+
+Order {
+  +id: int
+  ---
+  +total(): Money
+}
+Shape [interface] {
+  +area(): float
+}
+Order --|> Base
+Order "1" --> "*" Item : has
+```
+
+### 14.13 Mindmap
+input:
+```
+mindmap
+central: Product
+* Growth [green]
+    * SEO
+    * Referrals
+* Retention
+```
+canonical:
+```
+%% ofk 1
+mindmap
+central: Product
+
+- Growth [green]
+  - SEO
+  - Referrals
+- Retention
+```
+
+### 14.14 Gitgraph
+input:
+```
+gitgraph
+commit Initial
+branch feature
+commit Start work
+checkout main
+merge feature [tag: v1.1]
+cherry-pick start-work
+```
+canonical: input with `%% ofk 1` prepended and a blank line after `gitgraph`.
+
+### 14.15 Notes and links
+input:
+```
+Cache [cylinder, link: https://wiki/cache]
+note Cache : evicts LRU
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+Cache [cylinder, link: https://wiki/cache]
+note Cache : evicts LRU
+```
+
+### 14.16 C4 — context level
+input:
+```
+architecture
+model {
+  person Customer
+  system Shop @core
+  external Stripe
+  Customer -> Shop : buys
+  Shop -> Stripe : charges [tech: HTTPS]
+}
+views {
+  view context of Shop
+}
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+model {
+  person Customer
+  system Shop [tags: core]
+  external Stripe
+  Customer -> Shop : buys
+  Shop -> Stripe : charges [tech: HTTPS]
+}
+views {
+  view context of Shop
+}
+```
+
+### 14.17 C4 — container level with implied relation
+input:
+```
+architecture
+model {
+  person Customer
+  system Shop {
+    container Web [tech: React]
+    container API [tech: Go]
+    store DB [tech: Postgres]
+    Web -> API : calls
+    API -> DB : reads
+  }
+  Customer -> Shop.Web : uses
+}
+views { view container of Shop }
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+model {
+  person Customer
+  system Shop {
+    container Web [tech: React]
+    container API [tech: Go]
+    store DB [cylinder, tech: Postgres]
+    Web -> API : calls
+    API -> DB : reads
+  }
+  Customer -> Shop.Web : uses
+}
+views {
+  view container of Shop
+}
+```
+Semantics: `view context of Shop` shows `Customer -> Shop` implied from
+`Customer -> Shop.Web`. `store` implies `cylinder` (emitted, so readers without the model layer render it too).
+
+### 14.18 C4 — component level with predicates
+input:
+```
+architecture
+model {
+  system Shop { container API { component Router; component Orders; component Auth @deprecated; Router -> Orders; Router -> Auth } }
+}
+views {
+  view component of Shop.API { exclude * where tag is @deprecated }
+}
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+model {
+  system Shop {
+    container API {
+      component Router
+      component Orders
+      component Auth [tags: deprecated]
+      Router -> Orders
+      Router -> Auth
+    }
+  }
+}
+views {
+  view component of Shop.API {
+    exclude * where tag is @deprecated
+  }
+}
+```
+
+### 14.19 C4 — deployment
+input:
+```
+architecture
+model { system Shop { container API; store DB } }
+deployment Prod {
+  node AWS [aws/cloud] {
+    node ECS { instance Shop.API }
+    node RDS { instance Shop.DB }
+  }
+}
+views { view deployment of Shop in Prod }
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+model {
+  system Shop {
+    container API
+    store DB [cylinder]
+  }
+}
+deployment Prod {
+  node AWS [aws/cloud] {
+    node ECS {
+      instance Shop.API
+    }
+    node RDS {
+      instance Shop.DB
+    }
+  }
+}
+views {
+  view deployment of Shop in Prod
+}
+```
+
+### 14.20 C4 — flow (dynamic)
+input:
+```
+architecture
+model { person Customer; system Shop { container Web; container API; store DB } }
+flow "Checkout" {
+  step Customer -> Web : opens cart
+  alt "paid" { step Web -> API : POST /orders } else { step Web -> Customer : error }
+  step API -> DB : write
+  goto "Fulfilment"
+}
+```
+canonical:
+```
+%% ofk 1
+architecture
+
+model {
+  person Customer
+  system Shop {
+    container Web
+    container API
+    store DB [cylinder]
+  }
+}
+flow "Checkout" {
+  step Customer -> Web : opens cart
+  alt "paid" {
+    step Web -> API : POST /orders
+  } else {
+    step Web -> Customer : error
+  }
+  step API -> DB : write
+  goto "Fulfilment"
+}
+```
+
+### 14.21 Mermaid import (flowchart)
+mermaid input:
+```
+flowchart LR
+  A[Start] --> B{Ok?}
+  B -->|yes| C([Ship])
+  B -.->|no| D[(Cache)]
+  subgraph infra[Infra]
+    D
+  end
+  style D fill:#f9f
+```
+OFK canonical:
+```
+%% ofk 1
+flowchart right
+
+a = Start
+b = Ok? [diamond]
+c = Ship [ellipse]
+group infra = Infra {
+  d = Cache [cylinder, #ff99ff]
+}
+a -> b
+b -> c : yes
+b --> d : no
+```
+diagnostics: none (all constructs mapped). Explicit ids are kept because Mermaid ids are
+the identity the user may reference elsewhere; `#f9f` expanded to six digits.
+
+### 14.22 Structurizr import (context + container)
+input:
+```
+workspace "Shop" {
+  model {
+    customer = person "Customer" "Buys things"
+    shop = softwareSystem "Shop" {
+      web = container "Web" "" "React"
+      api = container "API" "" "Go"
+    }
+    customer -> web "Uses"
+    web -> api "Calls" "JSON/HTTPS"
+  }
+  views {
+    systemContext shop { include * autoLayout lr }
+    container shop { include * }
+  }
+}
+```
+OFK canonical:
+```
+%% ofk 1
+architecture
+title: Shop
+
+model {
+  customer = person Customer [desc: Buys things]
+  shop = system Shop {
+    web = container Web [tech: React]
+    api = container API [tech: Go]
+  }
+  customer -> shop.web : Uses
+  shop.web -> shop.api : Calls [tech: JSON/HTTPS]
+}
+views {
+  view context of shop [right] {
+    include *
+  }
+  view container of shop {
+    include *
+  }
+}
+```
+diagnostics: W180 "autoLayout separations dropped" (none here since none given).
+
+### 14.23 Empty / whitespace / garbage
+input: `"   \n\n"` → canonical `%% ofk 1\narchitecture\n`, diagnostics E001.
+input: 3 KB of random bytes → some W101/W102 lines, never a throw; canonical is
+`%% ofk 1\narchitecture\n` plus whatever nodes survived.
+
+---
+
+## Appendix A — `get_syntax` cheat-sheet (≤ 60 lines; returned verbatim by MCP)
+
+```
+OFK diagram language, v1. One statement per line. // comment. Bad lines are skipped with a warning.
+Line 1 (optional): %% ofk 1     Line 2 (optional): family [direction]  → flowchart | architecture (default) |
+  sequence | state | erd | class | mindmap | gitgraph | chart | wireframe ; direction: down | right | left | up
+title: My diagram         PALETTE   appearance: pastel | paper | builder | mono  (compile-time colours)
+ICONS     icons: auto | off   (icons from labels; icon: none opts one node out)
+NODES     Name                      Name [shape, colour, icon, key: value]      id = Long Name [attrs]
+          Names are ids (slugified). Quote a name only if it has -> : = , [ ] { } // or starts with a keyword: "Cache: L2"
+EDGES     A -> B : label [attrs]     -> solid   --> dashed   <-> both   --  line     A -> B -> C  A -> B, C (expanded)
+GROUPS    group Name [attrs] {  Member  Other  }      nodes first seen inside belong to the group; groups nest; A -> Name ends on the group
+NOTE      note Name : text
+ATTRS (positional, any order):  shape: rect rounded circle ellipse diamond cylinder hexagon cloud doc note
+          parallelogram person queue component browser mobile   colour: blue green red orange violet teal pink
+          yellow gray #hex   fill: bold outline   flags: shadow thick invisible flow   icon: aws/lambda gcp/pubsub
+          tech/react  keys: label: tech: desc: link: tags: pin: x,y rank: n width: height: head: circle|cross|none
+          from:/to: top|right|bottom|left   Unknown words → warning, kept.   @tag = tags: tag
+LAYOUT    family direction; group X [right]; [rank: 2]; [pin: 120,40]; align row A, B; align column A, B
+--- sequence (order = meaning) ---
+participant Name [person|browser|db|queue]     A -> B : msg   A --> B : reply   A ->> B : async   A -> A : self
+activate A / deactivate A   autonumber   note over A, B : text   note left of A : text
+loop label { … }   alt label { … } else label { … }   opt label { … }   par { … } and { … }   break label { … }
+--- state ---
+[*] -> Idle   Idle -> Running : event   Running -> [*]   state Running { A -> B  --  C }   F [fork]  J [join]  C [choice]
+--- erd ---
+users [blue] { id uuid pk   email text unique   org_id uuid fk }     users ||--o{ orders : places
+cardinality glyphs: || exactly one  |o zero or one  }| one or many  }o zero or many ; -- identifying, .. non-identifying
+--- class ---
+Order [interface|abstract|enum] { +id: int   -items: Item[]   ---   +total(): Money   +save()$ }
+Order --|> Base (inherit)  Order ..|> Iface (realize)  Order *-- Item (compose)  Order o-- Tag (aggregate)
+Order ..> Money (depend)  Order "1" --> "*" Item : has (associate + multiplicity)
+--- mindmap (indent = structure) ---
+central: Topic       - Branch [green]        - Child          - Grandchild [icon: users]
+--- gitgraph ---
+commit Label [tag: v1, highlight|revert]   branch name   checkout name   merge name [tag: v2]   cherry-pick label-slug
+--- chart (family: chart <kind>) ---
+chart bar|line|area|scatter|pie|donut|radar|heatmap|table|quadrant
+Revenue: Jan 12, Feb 19        // one series per line: Category value pairs
+chart quadrant:  x: low, high   y: low, high   quadrants: tl, tr, bl, br   Feature A [0.32, 0.78]
+--- wireframe ---
+screen Login [phone|tablet|browser|window] {   heading: Hi   input: Email [half]   button: Go [half, primary]   }
+toggle: Dark mode [on]   slider [60%]   tabs: A | B | C [active: 1]   alert: Low disk [warning]   tabbar: Home | Me
+controls: button input search checkbox radio toggle dropdown slider navbar tabs image avatar heading paragraph divider
+  link textarea stepper badge progress breadcrumbs pagination rating card list alert menu tooltip accordion datepicker
+  sidebar segmented tabbar statusbar fab
+--- animate (motion export; §6.8) ---
+animate build|walkthrough|pulse [10s] [loop] {   step a, b   step a -> c : POST   step c hold 2s }
+--- C4 model ---
+model { person P  system S { container C [tech: Go] { component X }  store DB  queue Q }  external E   P -> C : uses [tech: HTTPS] }
+deployment Prod { node AWS [aws/cloud] { node ECS { instance S.C } } }
+views { view landscape | context of S | container of S | component of S.C | deployment of S in Prod
+        view custom "Name" { include S.*  include -> DB  exclude * where tag is @old } }
+          `views` is optional: none = one landscape page. Write only the views the user asked for; each is a page.
+flow "Checkout" { step P -> C : opens   alt "ok" { step … } else { step … }   par { … } and { … }   goto "Other"   note "…" }
+RULES     canonical output: one edge per line, attrs in fixed order, no ; , reversed arrows normalised to ->
+          same text → same ids. Edit by line: get_diagram returns canonical text + hash; update_diagram patches line ranges.
+```

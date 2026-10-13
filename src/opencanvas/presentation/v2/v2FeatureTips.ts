@@ -1,0 +1,78 @@
+import { IconArrowUpRight, IconCode, IconMovie, IconSparkles } from '@tabler/icons-react';
+import type { Placement } from '../design-system/Popover';
+
+export type V2TipId = 'code' | 'connect' | 'assistant' | 'motion';
+
+interface V2TipCopy {
+  readonly title: string;
+  /** At most two lines at the tip's width (300px). */
+  readonly text: string;
+  /** The feature's own glyph, the same one its control wears. */
+  readonly icon: typeof IconCode;
+  /** The control the tip points at. */
+  readonly anchor: string;
+  readonly placement: Placement;
+  readonly action?: string;
+  /** The action's shortcut in Mac glyphs (platformKeys formats it), shown on the action button. */
+  readonly keys?: string;
+}
+
+const RAIL = '[role="toolbar"][aria-label="Workspace"]';
+export const V2_TIPS: Readonly<Record<V2TipId, V2TipCopy>> = {
+  code: { title: 'Draw it from text', text: 'Write a few lines and Diagram as code lays them out. It stays editable.', icon: IconCode,
+    anchor: `${RAIL} button[aria-label="Diagram as code"]`, placement: 'left-start', action: 'Open Diagram as code', keys: '⌥C' },
+  connect: { title: 'Connect them', text: 'Press A, then drag from one shape to the other.', icon: IconArrowUpRight,
+    anchor: '[role="toolbar"][aria-label="Create"] button[aria-label^="Connector"]', placement: 'right-start' },
+  assistant: { title: 'Ask for changes in plain words', text: 'Bring your own key. The assistant drafts the edit; you review it.', icon: IconSparkles,
+    anchor: `${RAIL} button[aria-label="AI assistant"]`, placement: 'left-start', action: 'Open the assistant', keys: '⌘J' },
+  motion: { title: 'Make it move', text: 'In Export: turn this page into a GIF, MP4 or animated SVG.', icon: IconMovie,
+    anchor: '[role="toolbar"][aria-label="Share and export"]', placement: 'left-start', action: 'Animate this page' },
+};
+
+/** A trigger must hold this long before its tip shows (a label editor opening a render later sweeps it). */
+export const TIP_QUIET_MS = 700;
+
+const SEEN_KEY = 'ofk.tips.seen';
+const SESSION_KEY = 'ofk.tips.shown';
+
+/** Per-viewer convenience: storage that throws (private mode, blocked) just means "show nothing twice this page". */
+function read(storage: () => Storage, key: string): string | null {
+  try { return storage().getItem(key); } catch { return null; }
+}
+function write(storage: () => Storage, key: string, value: string): void {
+  try { storage().setItem(key, value); } catch { /* this page load still remembers */ }
+}
+
+let shownThisLoad = false;
+const seenThisLoad = new Set<string>();
+
+export function tipSeen(id: V2TipId): boolean {
+  if (seenThisLoad.has(id)) return true;
+  try { return (JSON.parse(read(() => localStorage, SEEN_KEY) ?? '[]') as unknown[]).includes(id); } catch { return false; }
+}
+
+/** Seen forever: shown once, or the feature was used first. */
+export function markTipSeen(id: V2TipId): void {
+  if (tipSeen(id)) return;
+  seenThisLoad.add(id);
+  let seen: unknown[] = [];
+  try { seen = JSON.parse(read(() => localStorage, SEEN_KEY) ?? '[]') as unknown[]; } catch { /* start over */ }
+  write(() => localStorage, SEEN_KEY, JSON.stringify([...(Array.isArray(seen) ? seen : []), id]));
+}
+
+/** At most one tip per session, each at most once ever. */
+export function mayShowTip(id: V2TipId): boolean {
+  return !shownThisLoad && read(() => sessionStorage, SESSION_KEY) === null && !tipSeen(id);
+}
+
+export function recordTipShown(id: V2TipId): void {
+  shownThisLoad = true;
+  write(() => sessionStorage, SESSION_KEY, id);
+  markTipSeen(id);
+}
+
+/** Test seam: a fresh page load. */
+export function resetTipsForTest(): void {
+  shownThisLoad = false;
+  seenThisLoad.clear();
+}

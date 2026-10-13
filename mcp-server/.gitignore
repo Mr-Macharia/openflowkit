@@ -2,3 +2,7 @@ dist
 node_modules
 *.tsbuildinfo
 .DS_Store
+src/generated/
+src/generated-viewer/
+data/icon-art/
+/LICENSE

@@ -1,67 +1,105 @@
 ---
-draft: false
-title: Keyboard Shortcuts
-description: Reference the current keyboard shortcuts for editing, navigation, and diagram authoring in OpenFlowKit.
+title: Keyboard shortcuts
+description: Every keyboard shortcut in the editor, generated from the shortcut map the app itself renders.
 ---
 
-These are the current shortcut groups shown in the app.
+:::note[Always current]
+Built from the app's own source (`src/opencanvas/presentation/v2/v2Shortcuts.ts`) on every docs build, so it can't drift. To change it, edit the source.
+:::
 
-## Essentials
+Keys are shown with `⌘`; on Windows and Linux read the same rows as `Ctrl`. This list is made from the same table as the ? sheet in the app.
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Undo | `Cmd + Z` | `Ctrl + Z` |
-| Redo | `Cmd + Shift + Z` | `Ctrl + Shift + Z` or `Ctrl + Y` |
-| Select all | `Cmd + A` | `Ctrl + A` |
-| Delete selection | `Delete` | `Backspace` |
-| Clear selection | `Escape` | `Escape` |
+## Tools
 
-## Manipulation
+| Action | Keys |
+| --- | --- |
+| Select | `V` |
+| Hand | `H` |
+| Rectangle | `R` |
+| Ellipse | `O` |
+| Shapes | `S` |
+| Connector | `A` |
+| Text | `T` |
+| Pen | `P` |
+| Highlighter | `⇧P` |
+| Eraser | `X` |
+| Laser pointer | `K` |
+| Frame | `F` |
+| Sticky note | `N` |
+| Place the armed shape at the centre | `↵` |
+| Connect two selected shapes | `A` |
+| Insert: media, charts, frames, wireframe | `⇧S` |
+| Icons and emoji | `I / E` |
+| Image | `⇧I` |
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Multi-select | `Shift + Click` | `Shift + Click` |
-| Selection box | `Shift + Drag` | `Shift + Drag` |
-| Duplicate | `Cmd + D` | `Ctrl + D` |
-| Duplicate-drag | `Opt + Drag` | `Alt + Drag` |
-| Copy | `Cmd + C` | `Ctrl + C` |
-| Paste | `Cmd + V` | `Ctrl + V` |
-| Copy style | `Cmd + Opt + C` | `Ctrl + Alt + C` |
-| Paste style | `Cmd + Opt + V` | `Ctrl + Alt + V` |
+## Canvas
 
-## Nodes
+| Action | Keys |
+| --- | --- |
+| Pan (hold, then drag) | `Space` |
+| Zoom to fit | `⇧1` |
+| Zoom to selection | `⇧2` |
+| Zoom to 100% | `⇧0 / ⌘0 / ⌘1` |
+| Zoom in / out | `⌘= / ⌘−` |
+| Find on canvas | `⌘F` |
+| Layers | `L / ⇧L` |
+| Canvas / Map | `M` |
+| Move between boxes (in Map) | `Arrows` |
+| Edit map as drawing (in Map) | `⇧M` |
+| Snap bypass (hold while dragging) | `⌘` |
+| Keep proportions, one axis, 45° lines, 15° turns (hold while dragging) | `⇧` |
+| From the centre (resize, draw); a copy (move) — hold while dragging | `⌥` |
+| Add to / remove from the selection | `⇧Click / ⌘Click` |
+| Select inside a group (Esc: back to the group) | `Double-click` |
+| Cancel a drag or draw | `Esc` |
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Add mind map child | `Tab` | `Tab` |
-| Add mind map sibling | `Enter` | `Enter` |
-| Rename selection | `F2` | `F2` |
-| Quick-create connected node | `Opt + Arrow` | `Alt + Arrow` |
-| Annotation colors | `1` `2` `3` `4` `5` `6` | `1` `2` `3` `4` `5` `6` |
+## Edit
 
-## Navigation
+| Action | Keys |
+| --- | --- |
+| Undo / redo | `⌘Z / ⇧⌘Z / ⌘Y` |
+| Copy / cut / paste | `⌘C / ⌘X / ⌘V` |
+| Copy / paste style | `⌥⌘C / ⌥⌘V` |
+| Duplicate | `⌘D` |
+| Delete / unplace | `⌫` |
+| Remove from model | `⇧⌘⌫` |
+| Nudge (10 px with Shift) | `Arrows` |
+| Edit label | `↵ / F2 / ⇧↵ / ⌘↵` |
+| Name a blank selected shape by typing | `Any letter` |
+| Select all | `⌘A` |
+| Lock / unlock | `⌘L` |
+| Bold / italic / underline | `⌘B / ⌘I / ⌘U` |
+| Bring forward / send backward | `⌘] / ⌘[` |
+| Bring to front / send to back | `] / [ / ⌥⌘] / ⌥⌘[` |
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Select tool | `V` | `V` |
-| Hand tool | `H` | `H` |
-| Pan canvas | `Space + Drag` | `Space + Drag` |
-| Zoom in | `Cmd + +` | `Ctrl + +` |
-| Zoom out | `Cmd + -` | `Ctrl + -` |
-| Fit view | `Shift + 1` | `Shift + 1` |
-| Nudge node | `Arrow` or `Shift + Arrow` | `Arrow` or `Shift + Arrow` |
+## Arrange
 
-## Help
+| Action | Keys |
+| --- | --- |
+| Group / ungroup | `⌘G / ⇧⌘G` |
+| Wrap in a section | `⌥⌘G` |
+| Align left/right/top/bottom | `⌥A / ⌥D / ⌥W / ⌥S` |
+| Align centre | `⌥H / ⌥V` |
+| Distribute | `⌥⇧H / ⌥⇧V` |
+| Flip horizontal / vertical | `⇧H / ⇧V` |
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Keyboard shortcuts | `?` | `?` |
-| Open Command Center | `Cmd + K` | `Ctrl + K` |
-| Search nodes | `Cmd + F` | `Ctrl + F` |
+## Architecture
 
-## Notes
+| Action | Keys |
+| --- | --- |
+| Open element view | `↵` |
+| Step through a flow | `← / → / Space` |
 
-- Shortcut availability depends on editor focus, current mode, and selection state.
-- Mind map shortcuts only apply when a mind map node is selected.
-- Annotation color shortcuts only apply when an annotation node is selected.
-- Use the [Command Center](/command-center/) for actions that do not need a dedicated shortcut.
+## Panels
+
+| Action | Keys |
+| --- | --- |
+| Architecture model | `⌥M` |
+| Diagram as code | `⌥C` |
+| Generate the diagram (in the code panel) | `⌘↵` |
+| Convert pasted Mermaid / Structurizr / D2 (in the code panel) | `⇧⌘M` |
+| Inspect selection | `⌥I` |
+| AI assistant | `⌘J` |
+| This cheatsheet | `?` |
+| Dismiss panel | `Esc` |
+| Leave the code editor (again: close it) | `Esc` |

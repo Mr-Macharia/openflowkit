@@ -9,18 +9,13 @@ node_modules
 **/node_modules
 dist
 dist-ssr
-dist-lib
-src/lib/dist
-src/lib/*.tgz
 docs-site/dist
-web/dist
 tsconfig.tsbuildinfo
 
 # Tests / reports
 playwright-report
 test-results
 coverage
-benchmarks/results
 
 # Env / secrets
 .env
@@ -38,4 +33,3 @@ pnpm-debug.log*
 .DS_Store
 *.suo
 *.sw?
-diff.patch

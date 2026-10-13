@@ -2,7 +2,7 @@ import type { NodeData } from '@/lib/types';
 import type { DomainLibraryCategory } from '@/services/domainLibrary';
 import { KNOWN_PROVIDER_PACK_IDS, SVG_SOURCES } from '@/services/shapeLibrary/providerCatalog';
 
-export interface ResolvedProviderIconMetadata {
+interface ResolvedProviderIconMetadata {
   provider?: DomainLibraryCategory;
   category?: string;
   label?: string;
@@ -49,7 +49,7 @@ export function inferAssetProviderFromPackId(
   return prefixMatch?.[1];
 }
 
-export function getProviderIconMetadata(
+function getProviderIconMetadata(
   packId: string | undefined,
   shapeId: string | undefined
 ): ResolvedProviderIconMetadata {

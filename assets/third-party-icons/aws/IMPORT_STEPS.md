@@ -20,8 +20,7 @@ Layout convention (matches how `providerCatalog.ts` derives shapeIds — `catego
   gain an `architecture-service-` prefix and collapse into one catalog category.
 - **Architecture-Group**, **Category**, **Resource**: keep as their own top-level
   folders under `processed/` (e.g. `processed/Resource/Compute/EC2_Instance.svg` →
-  shapeId `resource-compute-ec2-instance`, category "Resource"). The `Category` and
-  `Architecture Group` sets are excluded from icon auto-matching in `iconMatcher.ts`.
+  shapeId `resource-compute-ec2-instance`, category "Resource").
 
 When AWS renames a category, the derived shapeId prefix changes; grep `src/` for any
 hard-coded `archIconShapeId` / `archResourceType` referencing the old prefix and update.
@@ -40,14 +39,12 @@ npm run shape-pack:manifest -- \
   "Amazon Web Services"
 ```
 
-## 4) Validate before wiring
+## 4) Regenerate the icon manifest and validate
 
 Run:
 
 ```bash
+node scripts/gen-icon-manifest.mjs
 npx tsc -b --pretty false
-npm run test -- --run \
-  src/services/shapeLibrary/ingestionPipeline.test.ts \
-  src/services/shapeLibrary/manifestValidation.test.ts \
-  src/services/templates.selector.test.ts
+npm run test -- --run src/services/shapeLibrary
 ```

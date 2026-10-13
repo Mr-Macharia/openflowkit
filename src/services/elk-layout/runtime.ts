@@ -1,9 +1,5 @@
-import type { ElkNode } from 'elkjs/lib/elk.bundled.js';
 import { createLogger } from '@/lib/logger';
-
-export interface ElkLayoutEngine {
-  layout: (graph: ElkNode) => Promise<ElkNode>;
-}
+import { createElkLayoutPort, type ElkLayoutEngine } from '../dsl/elkLayoutPort';
 
 interface ElkModuleLike {
   default?: new () => unknown;
@@ -39,12 +35,22 @@ async function loadWorkerElk(): Promise<ElkLayoutEngine> {
     throw new Error('ELK worker module did not expose a constructor.');
   }
   const workerUrl = new URL('elkjs/lib/elk-worker.min.js', import.meta.url).href;
-  const Ctor = module.default as new (args: { workerUrl: string }) => ElkLayoutEngine;
-  const candidate = new Ctor({ workerUrl });
+  // elk-api never listens for the worker's error event: a worker that fails to load (a deploy
+  // replaced its hashed file under an open tab) would leave every layout pending forever.
+  let fail: (error: Error) => void = () => undefined;
+  const broken = new Promise<never>((_, reject) => { fail = reject; });
+  broken.catch(() => undefined);
+  const workerFactory = (url: string) => {
+    const worker = new Worker(url);
+    worker.addEventListener('error', () => fail(new Error('The layout engine failed to load. Reload the page and try again.')));
+    return worker;
+  };
+  const Ctor = module.default as new (args: { workerUrl: string; workerFactory: (url: string) => Worker }) => ElkLayoutEngine;
+  const candidate = new Ctor({ workerUrl, workerFactory });
   if (!candidate || typeof candidate.layout !== 'function') {
     throw new Error('ELK worker instance does not implement layout().');
   }
-  return candidate;
+  return { layout: (graph) => Promise.race([candidate.layout(graph), broken]) };
 }
 
 export async function getElkInstance(): Promise<ElkLayoutEngine> {
@@ -68,7 +74,5 @@ export async function getElkInstance(): Promise<ElkLayoutEngine> {
   return elkInstancePromise;
 }
 
-/** Reset the cached ELK instance — useful in tests or when the instance may have become stale. */
-export function resetElkInstance(): void {
-  elkInstancePromise = null;
-}
+/** The editor's layout port: ELK in a worker, in process under tests. */
+export const elkDslLayoutPort = createElkLayoutPort(getElkInstance);
