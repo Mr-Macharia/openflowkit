@@ -80,7 +80,7 @@ add `--add-host=host.docker.internal:host-gateway` to reach a server on the host
 
 **Share** always offers an [editable copy](/share-links/#editable-copy) link: it needs no
 server. The **view-only link** needs the share Worker and a Cloudflare Turnstile site key; without
-them the option says "Needs a share server". The Docker image passes no build variables, so a
+them the option says "Not set up on this site". The Docker image passes no build variables, so a
 plain Docker build has only editable links. To turn on view-only links:
 
 1. Deploy the share Worker from `worker/` to your Cloudflare account, with an R2 bucket and a
