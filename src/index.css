@@ -8,6 +8,10 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+/* The canvas ground before anything paints (a redirect, a chunk on its way): never a white flash in dark mode. */
+html { background: #f7f7f5; }
+@media (prefers-color-scheme: dark) { html { background: #191b19; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 body { font-family: Inter, system-ui, sans-serif; overscroll-behavior: none; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -36,8 +40,14 @@ body { font-family: Inter, system-ui, sans-serif; overscroll-behavior: none; }
 .ofk-system .ofk-loader { --ofk-loader-paper: var(--ofk-surface); --ofk-loader-ink: var(--ofk-text); --ofk-loader-line: var(--ofk-border); }
 .ofk-loader-screen { position: fixed; inset: 0; z-index: 1; background: #f7f7f5; }
 @media (prefers-color-scheme: dark) { .ofk-loader-screen { background: #191b19; } }
-/* Fresh loaders wait 300 ms, so a fast load never flashes one; a loader taking over from another doesn't. */
+/* Fresh loaders wait 300 ms, so a fast load never flashes one; a loader taking over from another doesn't.
+   A screen loader's ground is there at once (it hides what is behind it); only its mark waits. */
 .ofk-loader[data-fade] { animation: ofk-loader-in 400ms ease-out 300ms backwards; }
+.ofk-loader-screen[data-fade] { animation: none; }
+.ofk-loader-screen[data-fade] > .ofk-loader-mark { animation: ofk-loader-in 400ms ease-out 300ms backwards; }
+/* Over an editor still getting ready (its chrome included); it fades into the finished screen. */
+.ofk-loader[data-cover] { z-index: 1000; }
+.ofk-loader[data-leaving] { opacity: 0; pointer-events: none; transition: opacity 200ms ease-out; }
 .ofk-loader-mark { width: 96px; height: 64px; overflow: visible; }
 .ofk-loader-mark * {
   transform-box: fill-box; transform-origin: center;

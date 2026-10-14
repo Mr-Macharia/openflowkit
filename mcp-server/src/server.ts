@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerViewer } from './lib/card.js';
 import { MCP_SERVER_NAME, MCP_SERVER_VERSION } from './lib/version.js';
-import { LiveBridge } from './lib/bridge.js';
+import { CONNECT_URL, LiveBridge } from './lib/bridge.js';
 import { DocumentStore } from './lib/documentStore.js';
 import { registerValidateDsl } from './tools/validateDsl.js';
 import { registerAnalyzeCodebase } from './tools/analyzeCodebase.js';
@@ -26,6 +26,18 @@ export interface CreatedServer {
   readonly store: DocumentStore;
 }
 
+/** What the model reads before any tool: how a drawing reaches the user. */
+export const INSTRUCTIONS = [
+  'OpenFlowKit draws diagrams from a small text DSL (get_syntax for the grammar, validate_openflow_dsl to check it).',
+  'How a drawing reaches the user: when an OpenFlowKit editor tab is paired with this server (whoami says mode "live-editor"),'
+    + ' create_diagram, update_diagram and the other drawing tools draw live on that canvas, where the user sees them at once.',
+  `When no editor is paired, ask the user to open ${CONNECT_URL} and press Connect, then call the tool again.`
+    + ' Or use file mode: openflow_create (or openflow_open with a .openflow.json path), draw, then openflow_save;'
+    + ' a file-mode drawing also returns an openUrl the user can open to see it.',
+  'Several agent sessions can share one canvas: whoami shows bridge.shared when this server draws through another one.',
+  'Call whoami when unsure which mode you are in.',
+].join('\n');
+
 /**
  * Builds the MCP server and its live bridge. The bridge is started separately
  * (see index.ts) so tests can pair a fake editor without opening a socket.
@@ -38,7 +50,7 @@ export function createServerWithDeps(options: ServerOptions = {}): CreatedServer
     ...(process.env.OPENFLOWKIT_BRIDGE_TOKEN ? { token: process.env.OPENFLOWKIT_BRIDGE_TOKEN } : {}),
     log,
   });
-  const server = new McpServer({ name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION });
+  const server = new McpServer({ name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION }, { instructions: INSTRUCTIONS });
   const deps: OpToolDeps = { store, bridge };
 
   registerValidateDsl(server);

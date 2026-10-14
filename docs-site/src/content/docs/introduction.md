@@ -47,5 +47,6 @@ file" does, and the [FAQ](/faq/) for every network request the app makes.
 - [Quick start](/quick-start/) — five minutes from empty canvas to exported diagram.
 - [Home and templates](/templates/) — start from one of twelve real diagrams.
 - [OpenFlow DSL](/openflow-dsl/) — the text language and its workflow.
-- [MCP Server](/mcp-server/) — put an agent on the canvas.
+- [Connect your agent](/connect-your-agent/) — put an agent on the canvas.
+- [MCP Server](/mcp-server/) — every tool it gets.
 - [Keyboard shortcuts](/keyboard-shortcuts/) — every key, generated from the app's map.

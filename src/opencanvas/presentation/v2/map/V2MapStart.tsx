@@ -7,7 +7,7 @@ import { V2Welcome } from '../V2Workspace';
 import './map.css';
 
 /** The repo a pasted `owner/repo` or GitHub URL names, or null: the same parser and gate the map route applies. */
-function repoToMap(input: string): RepoRef | null {
+export function repoToMap(input: string): RepoRef | null {
   const ref = parseRepoPath(input);
   return ref && isRepoMapAddress({ owner: ref.owner, repo: ref.repo, ref: ref.ref }) ? ref : null;
 }

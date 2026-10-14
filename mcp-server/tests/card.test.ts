@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { clientShowsApps, diagramCard, MAX_CARD_SVG_BYTES, MCP_APPS_EXTENSION, VIEWER_MIME, VIEWER_URI } from '../src/lib/card.js';
+import { clientShowsApps, diagramCard, MAX_CARD_SVG_BYTES, MCP_APPS_EXTENSION, PREVIEW_TOOL, PREVIEW_TOOL_META, VIEWER_MIME, VIEWER_URI } from '../src/lib/card.js';
 import { createServerWithDeps } from '../src/server.js';
 import { LiveBridge } from '../src/lib/bridge.js';
 import { bridgeUrls, type BridgeRequest } from '../src/lib/agent.js';
@@ -27,6 +27,14 @@ describe('diagramCard', () => {
     expect(card.svg).toBeUndefined();
     expect(card.noPreview).toMatch(/too large to show here/);
     expect(card.openUrl).toMatch(/^https:\/\/app\.test\/#\/from\/dsl\?d=/);
+  });
+
+  it('stamps every card with the server time and a rising sequence (the viewer greys out older cards by it)', () => {
+    const first = diagramCard({ ...base, svg: '<svg/>' });
+    const second = diagramCard({ ...base, svg: null });
+    expect(Number.isFinite(first.createdAt)).toBe(true);
+    expect(second.createdAt).toBeGreaterThanOrEqual(first.createdAt);
+    expect(second.seq).toBe(first.seq + 1);
   });
 
   it('says there is no preview when the export failed', () => {
@@ -93,6 +101,21 @@ describe('local server, file mode', () => {
     const updated = await client.callTool({ name: 'update_diagram', arguments: { frameId, dsl: 'flowchart\nCart -> Ship' } });
     expect((updated.structuredContent as { svg: string }).svg).toContain('Ship');
     await client.close();
+  });
+
+  it('offers the card-only preview tool to a host that shows apps, and keeps it from one that does not', async () => {
+    const apps = await connect(UI);
+    const listed = (await apps.listTools()).tools.find((tool) => tool.name === PREVIEW_TOOL);
+    expect(listed?._meta).toEqual(PREVIEW_TOOL_META);
+    const preview = await apps.callTool({ name: PREVIEW_TOOL, arguments: { source: FLOW } });
+    expect(preview.structuredContent).toMatchObject({ nodes: 3, connectors: 2 });
+    expect((preview.structuredContent as { svg: string }).svg).toContain('data-node-id="frame"');
+    await apps.close();
+
+    const plain = await connect({});
+    expect((await plain.listTools()).tools.map((tool) => tool.name)).not.toContain(PREVIEW_TOOL);
+    expect((await plain.callTool({ name: PREVIEW_TOOL, arguments: { source: FLOW } }).catch((error: Error) => ({ isError: true, error }))).isError).toBe(true);
+    await plain.close();
   });
 
   it('gives a text-only client no card, but a link to open the diagram in the app', async () => {

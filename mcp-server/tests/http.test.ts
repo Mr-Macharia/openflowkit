@@ -49,10 +49,11 @@ function raw(options: { method?: string; path?: string; host?: string; body?: st
 }
 
 describe('remote MCP endpoint', () => {
-  it('lists exactly render_diagram and get_syntax, with the ui meta', async () => {
+  it('lists exactly render_diagram, get_syntax and the card-only preview, with the ui meta', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['get_syntax', 'render_diagram']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['get_syntax', 'preview_diagram', 'render_diagram']);
+    expect(tools.find((t) => t.name === 'preview_diagram')!._meta).toEqual({ ui: { resourceUri: 'ui://openflowkit/viewer.html', visibility: ['app'] } });
     const render = tools.find((t) => t.name === 'render_diagram')!;
     expect(render._meta).toEqual({ ui: { resourceUri: 'ui://openflowkit/viewer.html' } });
     await client.close();

@@ -53,6 +53,8 @@ export function useV2TestApi(options: V2TestApiOptions) {
       getMapState: mapState,
       openMapBoxes: mapOpen,
       getMapMotion: () => ({ ...(mapMotion() as object), ...hostRef.current?.getMotionState() }),
+      // An agent's change building in: runs, frames drawn, whether one is on screen.
+      getRevealState: () => hostRef.current?.getRevealState() ?? null,
       pickTransformHandle: (point: { x: number; y: number }) => hostRef.current?.pickTransformHandle(point) ?? null,
       getDocument: () => document,
       getProposal: () => ({

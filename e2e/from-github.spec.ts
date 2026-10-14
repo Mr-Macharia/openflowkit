@@ -82,7 +82,7 @@ test('a rate-limited read asks for an optional token, sends it to the API only, 
   await expect(page.getByRole('alert')).toContainText('limiting reads');
   await expect(page.getByRole('alert')).toContainText('The CLI reads a checkout');
   await expectSystemState(page, 'v2-from-github', 'Try with token');
-  await expect(page.getByText('A token raises the limit to 5,000/hour.')).toBeVisible();
+  await expect(page.getByText('A token raises the limit to 5,000/hour and reads the private repos it can access.', { exact: false })).toBeVisible();
   await expect(page.getByRole('link', { name: /token on GitHub/ })).toHaveAttribute('href', 'https://github.com/settings/personal-access-tokens/new');
   limited = false;
   await page.getByLabel('GitHub token (optional)').fill('github_pat_test123');

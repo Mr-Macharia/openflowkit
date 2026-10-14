@@ -1,22 +1,17 @@
-import { buildNodeStateMap } from '../../domain/scene/nodeState';
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import type { Point2d } from '../../domain/geometry/types';
 import { panCamera } from '../../domain/camera/camera';
-import { addToSelection, clearSelection, replaceSelection } from '../../application/selection/selection';
 import { snapToAngle } from '../../domain/geometry/point';
-import { beginTransformOperation, boundsBetween, updateTransformOperation, type TransformModifiers } from './pointerOperations';
-import { sideAnchor } from '../../domain/connectors/connectHandles';
-import { beginConnectorOperation, updateConnectorOperation } from './v2ConnectorOperations';
-import { defaultShapeSize } from '../../domain/nodes/shapeNode';
-import { buildInsertShapeCommand } from '../../domain/commands/sceneEdits';
+import { boundsBetween, updateTransformOperation, type TransformModifiers } from './pointerOperations';
+import { updateConnectorOperation } from './v2ConnectorOperations';
 import { strokeHitBySegment } from '../../domain/nodes/strokeGeometry';
-import { buildNodeWorldMatrices } from '../../domain/scene/worldGeometry';
 import {
-  CLICK_THRESHOLD_PX, OBJECT_SNAP_PX, HANDLE_CURSORS, modifiersOf, localPoint,
-  latestLocalPoint, textOrigin, nodeCenterWorld, pickHandleNear, connectorPreview, stickyAppearance,
-  ERASE_RADIUS_PX, pickChartPoint, inkPreview, retargetSample, strokeWorldPoints,
-  finishGesture, keyboardGestures, toolShape, dragBox, enteredGroup, SQUARE_SIZE, type V2Operation, type V2PointerOptions, type PointerLike,
+  CLICK_THRESHOLD_PX, OBJECT_SNAP_PX, modifiersOf, localPoint, latestLocalPoint, connectorPreview, ERASE_RADIUS_PX, inkPreview,
+  retargetSample, strokeWorldPoints, finishGesture, keyboardGestures, dragBox, type V2Operation, type V2PointerOptions, type PointerLike,
 } from './v2PointerGestures';
+import { beginOperation } from './v2PointerBegin';
+import { hoverIdle } from './v2PointerHover';
+import { useV2DoubleTap } from './useV2DoubleTap';
 import { useV2Touch } from './useV2Touch';
 
 const MODIFIER_KEYS = new Set(['Shift', 'Alt', 'Meta', 'Control']);
@@ -83,7 +78,7 @@ export function useV2Pointer(options: V2PointerOptions) {
   }, [gestureApiRef, cancelGesture]);
 
   const lastPointerTypeRef = useRef<string>('mouse');
-  const doubleTapAt = useDoubleTap(optionsRef);
+  const doubleTapAt = useV2DoubleTap(optionsRef);
   const { beginTouch, moveTouch, endTouch, resetTouch } = useV2Touch(optionsRef, cancelGesture);
 
   const applyPendingTransformPreview = useCallback(() => {
@@ -115,43 +110,7 @@ export function useV2Pointer(options: V2PointerOptions) {
       if (!host) return;
       const point = latestLocalPoint(event);
       if (!operation) {
-        const tool = opts.toolRef.current;
-        const shape = toolShape(tool, opts.toolConfigRef.current);
-        if (shape && !opts.readOnlyRef.current && event.target instanceof HTMLCanvasElement) {
-          // The shape a click will drop, centred on the pointer like the click is.
-          const size = tool === 'square' ? { width: SQUARE_SIZE, height: SQUARE_SIZE } : defaultShapeSize(shape);
-          const world = host.screenToWorld(point);
-          host.setPlacementGhost({ shape, bounds: {
-            x: world.x - size.width / 2, y: world.y - size.height / 2, width: size.width, height: size.height,
-          } });
-          host.setHover(null, null);
-          return;
-        }
-        host.setPlacementGhost(null);
-        if (tool === 'select' && event.target instanceof HTMLCanvasElement) {
-          const readOnly = opts.readOnlyRef.current;
-          const handle = readOnly ? null : host.pickTransformHandle(point);
-          // Handles sit outside their node, so a hover over one comes from
-          // the neighbourhood search, not from the node under the pointer.
-          const handleHit = readOnly ? null : pickHandleNear(host, opts, point);
-          const page = opts.pageRef.current;
-          const hoverNode = handleHit?.nodeId
-            ?? host.pickNode(point, page ? enteredGroup(page, opts.selectionRef.current.nodeIds) : null);
-          const hoverSide = handleHit?.side ?? null;
-          host.setHover(hoverNode, hoverSide);
-          const connectorHandle = host.getSelectedConnectorId() ? host.pickConnectorHandle(point) : null;
-          const hoverConnector = hoverNode || handle || connectorHandle ? null : host.pickConnector(point);
-          host.setHoveredConnector(hoverConnector);
-          const cursor = hoverSide ? 'crosshair'
-            : handle ? HANDLE_CURSORS[handle]
-              : hoverNode ? (readOnly ? 'pointer' : 'move')
-                : connectorHandle ? (connectorHandle.kind === 'endpoint' ? 'crosshair' : 'grab')
-                  : hoverConnector ? 'pointer' : '';
-          event.target.style.cursor = cursor;
-        } else {
-          host.setHover(null, null);
-          host.setHoveredConnector(null);
-        }
+        hoverIdle(host, opts, event, point);
         return;
       }
       if (operation.pointerId !== event.pointerId) return;
@@ -328,183 +287,14 @@ export function useV2Pointer(options: V2PointerOptions) {
         window.removeEventListener('keyup', onWindowKey);
       };
       const point = localPoint(event);
-      const tool = opts.toolRef.current;
-      if (tool === 'hand' || opts.spacePanRef.current || event.button === 1) {
-        operationRef.current = { kind: 'pan', pointerId: event.pointerId, last: point };
-        return;
-      }
-      // The laser only points: V2LaserTrail draws it, the document never hears of it.
-      if (tool === 'laser') return;
-      if (opts.readOnlyRef.current) {
-        const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-        const fromNode = opts.onNodeDrag && !additive ? host.pickNode(point) : null;
-        operationRef.current = {
-          kind: 'marquee',
-          pointerId: event.pointerId,
-          start: point,
-          current: point,
-          additive,
-          ...(fromNode ? { fromNode } : {}),
-        };
-        return;
-      }
-      const shape = toolShape(tool, opts.toolConfigRef.current);
-      if (shape) {
-        const world = host.screenToWorld(point);
-        operationRef.current = {
-          kind: 'create',
-          pointerId: event.pointerId,
-          shape,
-          square: tool === 'square',
-          page,
-          startWorld: world,
-          startScreen: point,
-          currentScreen: point,
-        };
-        return;
-      }
-      if (tool === 'pen' || tool === 'highlighter') {
-        const world = host.screenToWorld(point);
-        operationRef.current = {
-          kind: 'ink', pointerId: event.pointerId, page, stroke: tool, points: [world],
-        };
-        host.setFreeformPreview(inkPreview(opts, tool, [world]));
-        return;
-      }
-      if (tool === 'eraser') {
-        operationRef.current = {
-          kind: 'erase', pointerId: event.pointerId, page,
-          matrices: buildNodeWorldMatrices(page),
-          from: host.screenToWorld(point), removed: new Set(),
-        };
-        return;
-      }
-      if (tool === 'connector') {
-        // Starts anywhere: over a shape binds that end, empty canvas leaves
-        // it free (ADR-001), like Excalidraw and tldraw arrows.
-        const nodeId = host.pickNode(point);
-        const world = host.screenToWorld(point);
-        operationRef.current = {
-          kind: 'connect',
-          pointerId: event.pointerId,
-          page,
-          sourceNodeId: nodeId,
-          sourceSide: null,
-          fromWorld: (nodeId && nodeCenterWorld(page, nodeId)) || world,
-          startScreen: point,
-          toWorld: world,
-        };
-        return;
-      }
-      host.setHover(null, null);
-      host.setHoveredConnector(null);
-      const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-      const selectedConnectorId = host.getSelectedConnectorId();
-      const selectedConnector = selectedConnectorId
-        ? page.connectors.find(({ id }) => id === selectedConnectorId) ?? null
-        : null;
-      const connectorHandle = selectedConnector ? host.pickConnectorHandle(point) : null;
-      if (selectedConnector && connectorHandle && !additive) {
-        host.setConnectorSelection([selectedConnector.id], connectorHandle);
-        operationRef.current = beginConnectorOperation(
-          event.pointerId, page, selectedConnector, connectorHandle
-        );
-        return;
-      }
-      const states = buildNodeStateMap(page);
-      const canTransform = opts.selectionRef.current.nodeIds.every((id) => !states.get(id)?.locked);
-      const handle = canTransform ? host.pickTransformHandle(point) : null;
-      // A handle is never a selection gesture: ⇧/⌥ held at the grab are the resize's modifiers.
-      if (handle && opts.selectionRef.current.nodeIds.length > 0) {
-        operationRef.current = beginTransformOperation(event.pointerId, page,
-          opts.selectionRef.current.nodeIds, handle, host.screenToWorld(point));
-        return;
-      }
-      // A side handle starts a quick-create drag from that side, whether or
-      // not its node is selected; the preview runs from the side anchor.
-      // Handles sit outside the node bounds, so search neighbours by
-      // proximity (this also covers touch, which never hovers first).
-      if (!additive) {
-        const hit = pickHandleNear(host, opts, point, states);
-        if (hit) {
-          if (!opts.selectionRef.current.nodeIds.includes(hit.nodeId)) {
-            opts.applyConnectorSelection([]);
-            opts.applySelection(replaceSelection([hit.nodeId]));
-          }
-          operationRef.current = { kind: 'connect', pointerId: event.pointerId, page,
-            sourceNodeId: hit.nodeId, sourceSide: hit.side,
-            fromWorld: sideAnchor(hit.bounds, hit.side),
-            startScreen: point, toWorld: host.screenToWorld(point) };
-          return;
-        }
-      }
-      const chartPoint = opts.readOnlyRef.current ? null
-        : pickChartPoint(host, page, point, opts.cameraRef.current.zoom);
-      if (chartPoint && !additive) {
-        opts.applyConnectorSelection([]);
-        opts.applySelection(replaceSelection([chartPoint.node.id]));
-        operationRef.current = {
-          kind: 'chart-point', pointerId: event.pointerId, page,
-          node: chartPoint.node, index: chartPoint.index,
-        };
-        return;
-      }
-      const nodeId = host.pickNode(point, enteredGroup(page, opts.selectionRef.current.nodeIds));
-      // ⇧/⌘ on a shape (Figma): it joins the selection at once and a drag moves them all; a click
-      // without a drag on one already selected takes it back out.
-      if (nodeId && additive) {
-        const current = opts.selectionRef.current;
-        const wasSelected = current.nodeIds.includes(nodeId);
-        if (![...current.nodeIds, nodeId].some((id) => states.get(id)?.locked)) {
-          opts.applyConnectorSelection([]);
-          if (!wasSelected) opts.applySelection(addToSelection(current, [nodeId]));
-          operationRef.current = {
-            ...beginTransformOperation(event.pointerId, page, opts.selectionRef.current.nodeIds, null, host.screenToWorld(point)),
-            ...(wasSelected ? { clickSelects: current.nodeIds.filter((id) => id !== nodeId) } : {}),
-          };
-          return;
-        }
-      }
-      if (nodeId && !additive) {
-        if (!opts.selectionRef.current.nodeIds.includes(nodeId)) {
-          opts.applyConnectorSelection([]);
-          opts.applySelection(replaceSelection([nodeId]));
-        }
-        if (opts.selectionRef.current.nodeIds.some((id) => states.get(id)?.locked)) return;
-        const many = opts.selectionRef.current.nodeIds.length > 1;
-        operationRef.current = {
-          ...beginTransformOperation(event.pointerId, page, opts.selectionRef.current.nodeIds, null, host.screenToWorld(point)),
-          ...(many ? { clickSelects: [nodeId] } : {}),
-        };
-        return;
-      }
-      const connectorId = host.pickConnector(point);
-      if (connectorId && !nodeId) {
-        const connectors = opts.selectedConnectorIdsRef.current;
-        if (additive) {
-          // ⇧/⌘ toggles a line in or out, the shapes kept.
-          opts.applyConnectorSelection(connectors.includes(connectorId)
-            ? connectors.filter((id) => id !== connectorId) : [...connectors, connectorId]);
-        } else {
-          opts.applySelection(clearSelection());
-          opts.applyConnectorSelection([connectorId]);
-        }
-        operationRef.current = null;
+      operationRef.current = beginOperation(opts, host, page, event, point, () => {
         detachWindow();
         try {
           section.releasePointerCapture(event.pointerId);
         } catch {
           /* already released */
         }
-        return;
-      }
-      operationRef.current = {
-        kind: 'marquee',
-        pointerId: event.pointerId,
-        start: point,
-        current: point,
-        additive,
-      };
+      });
     },
     [beginTouch, detachWindow, pointerMove, pointerUp]
   );
@@ -556,51 +346,4 @@ export function useV2Pointer(options: V2PointerOptions) {
     handleDoubleClick,
     cancelGesture,
   };
-}
-
-function useDoubleTap(optionsRef: RefObject<V2PointerOptions>) {
-  return useCallback(
-    (point: Point2d) => {
-      const opts = optionsRef.current;
-      const host = opts.hostRef.current;
-      if (!host) return;
-      if (opts.readOnlyRef.current) {
-        const nodeId = opts.onNodeDoubleClick ? host.pickNode(point) : null;
-        if (nodeId) opts.onNodeDoubleClick!(nodeId);
-        return;
-      }
-      if (opts.toolRef.current !== 'select') return;
-      const page = opts.pageRef.current;
-      const nodeId = host.pickNode(point, page ? enteredGroup(page, opts.selectionRef.current.nodeIds) : null);
-      // A group draws nothing to edit: a double-click enters it, selecting the member under the pointer (Figma).
-      if (nodeId && page?.nodes.find(({ id }) => id === nodeId)?.kind === 'group') {
-        const member = host.pickNode(point, nodeId);
-        if (member && member !== nodeId) {
-          opts.applyConnectorSelection([]);
-          opts.applySelection(replaceSelection([member]));
-        }
-        return;
-      }
-      if (nodeId) {
-        // Charts are data: their double-click edits the numbers, not a label.
-        if (opts.onOpenChartData?.(nodeId)) return;
-        opts.openEditor(nodeId);
-        return;
-      }
-      const connectorId = host.pickConnector(point);
-      if (connectorId) {
-        opts.openConnectorEditor(connectorId, point);
-        return;
-      }
-      if (!page) return;
-      const id = opts.mintId('node');
-      opts.commit(buildInsertShapeCommand(page, {
-        kind: 'text', id, label: '', at: textOrigin(host.screenToWorld(point)), appearance: stickyAppearance(opts, 'text'),
-      }));
-      opts.applyConnectorSelection([]);
-      opts.applySelection(replaceSelection([id]));
-      opts.openEditor(id, { isNew: true });
-    },
-    [optionsRef]
-  );
 }

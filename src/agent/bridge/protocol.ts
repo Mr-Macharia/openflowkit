@@ -31,6 +31,8 @@ export interface BridgeRequest {
   readonly op: string;
   readonly input: unknown;
   readonly pageId?: string;
+  /** The agent's MCP clientInfo.name ("claude-code"), so the editor can say who is drawing. */
+  readonly client?: string;
 }
 
 export type BridgeResult =

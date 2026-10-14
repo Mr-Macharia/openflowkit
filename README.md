@@ -74,9 +74,10 @@ one undo step. Paste Mermaid, Structurizr or D2 and it converts.
 Type `owner/repo` into the box on an empty canvas and press **Map repo**, or open
 `app.openflowkit.com/#/map/github/<owner>/<repo>`
 ([try a sample](https://app.openflowkit.com/#/map/github/dockersamples/example-voting-app)).
-Your browser reads the public repo from GitHub and draws its parts. Boxes open in place, and every
+Your browser reads the repo from GitHub and draws its parts. Boxes open in place, and every
 arrow lists the `file:line` behind it, linked to the code. No key and no install. For a private
-repo, map a checkout: `npx openflowkit map . --html map.html`.
+repo, add a read-only GitHub token on the page, or map a checkout: `npx openflowkit map . --html map.html`
+([private repos](https://docs.openflowkit.com/map-mode/#private-repos)).
 
 <p align="center">
   <picture>
@@ -163,6 +164,7 @@ OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 | Your agent runs… | How to connect | What it can do |
 | --- | --- | --- |
 | **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | The MCP server, below | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files in your repo, maps a codebase, takes screenshots |
+| **In a chat app**: claude.ai, Claude Desktop, ChatGPT | Add a custom connector: `https://mcp.openflowkit.com/mcp`, choose **No sign-in** | Draws a diagram in the chat as a card, with **Open in OpenFlowKit**. Not on your open canvas |
 | **In your browser** (experimental) | Nothing to install: open a diagram in a browser whose agent supports [WebMCP](https://docs.openflowkit.com/webmcp/) | Reads and edits the diagram you have open |
 
 <a href="https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19"><img src="https://cursor.com/deeplink/mcp-install-dark.svg" height="32" alt="Add OpenFlowKit to Cursor"></a>
@@ -174,6 +176,8 @@ For Claude Code, one line:
 claude mcp add -s user openflowkit -- npx -y openflowkit mcp
 ```
 
+For Codex: `codex mcp add openflowkit -- npx -y openflowkit mcp`.
+
 For Claude Desktop, Windsurf and any other MCP client:
 
 ```json
@@ -184,8 +188,10 @@ For Claude Desktop, Windsurf and any other MCP client:
 }
 ```
 
-Restart the agent, then click **Connect agent** in the app. That panel copies the same config with
-a pairing token. With no app open, the same tools edit `.openflow.json` files in your repo.
+Restart the agent, then click **Connect agent** in the app, or open
+[app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect). That panel has the steps for each client
+and copies the same config with a pairing token. With no app open, the same tools edit `.openflow.json` files in
+your repo. Every client, step by step, with fixes: [Connect your agent](https://docs.openflowkit.com/connect-your-agent/).
 
 <details>
 <summary><b>Plugins: Claude Code and Codex</b> (server and skill in one install)</summary>

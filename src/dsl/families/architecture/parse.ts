@@ -1,18 +1,41 @@
-import type { DslAttribute, DslDiagnostic, DslDirection, DslEdge } from '../../ast';
-import { lineDiagnostic, tokenDiagnostic } from '../../diagnostics';
-import { canonicalizeAttributes, readAttributes } from '../../attributes';
-import type { CanonicalAttribute } from '../../sceneMeta';
+import type { DslDiagnostic, DslDirection, DslEdge } from '../../ast';
+import { tokenDiagnostic } from '../../diagnostics';
 import { joinTokens, type DslSegment } from '../../segments';
 import { slugifyDslId } from '../../text';
 import { attributeSlot, DIRECTIONS } from '../../vocabulary';
 import type { DslToken } from '../../tokenize';
-import { createArchIndex, resolveElementRef, suggestElementRef, viewDisplayName } from '../../model/model';
 import {
-  ELEMENT_KINDS, FLOW_STEP_KINDS, VIEW_KINDS,
-  type ArchElement, type ArchFlow, type ArchModel, type ArchRelation, type ArchView,
-  type ElementKind, type FlowStep, type FlowStepKind, type ViewKind, type ViewRule, type ViewRuleWhere,
+  ELEMENT_KINDS,
+  FLOW_STEP_KINDS,
+  VIEW_KINDS,
+  type ArchElement,
+  type ArchFlow,
+  type ArchView,
+  type FlowStep,
+  type FlowStepKind,
+  type ViewKind,
+  type ViewRule,
+  type ViewRuleWhere,
 } from '../../model/types';
 import { parseEdge } from '../graph/parse';
+import {
+  FLOW_KEYWORDS,
+  TYPED_ELEMENT_KEYS,
+  TYPED_RELATION_KEYS,
+  blockLines,
+  blockTree,
+  canonicalAttributesWithTags,
+  extractTags,
+  isArchitectureWorkspace,
+  joinTagValue,
+  readDeclaration,
+  splitAttributes,
+  type ArchitectureWorkspace,
+  type Block,
+  type Declaration,
+  type RelationDraft,
+} from './parseHelpers';
+import { resolveWorkspaceDraft } from './parseResolve';
 
 /**
  * The C4 block parser (grammar §9): `model`, `deployment`, `views` and `flow`
@@ -23,179 +46,6 @@ import { parseEdge } from '../graph/parse';
  * reference resolves against the finished tree, so relations may precede their
  * targets (and Structurizr's scoped `-> B` works).
  */
-
-interface Block {
-  readonly tokens: readonly DslToken[];
-  readonly children: Block[];
-  readonly segment: DslSegment;
-}
-
-/** Unknown blocks round-trip whole, braces and children included. */
-function blockLines(block: Block, indent = ''): string[] {
-  const head = joinTokens(block.tokens);
-  if (block.children.length === 0) return [`${indent}${head}`];
-  return [
-    `${indent}${head} {`,
-    ...block.children.flatMap((child) => blockLines(child, `${indent}  `)),
-    `${indent}}`,
-  ];
-}
-
-function blockTree(segments: readonly DslSegment[]): Block[] {
-  const roots: Block[] = [];
-  const stack: Block[][] = [roots];
-  for (const segment of segments) {
-    if (segment.tokens[0]?.kind === 'comment') continue;
-    if (segment.closes) {
-      if (stack.length > 1) stack.pop();
-      continue;
-    }
-    if (segment.tokens.length === 0) continue;
-    const block: Block = { tokens: segment.tokens, children: [], segment };
-    stack.at(-1)!.push(block);
-    if (segment.opens) stack.push(block.children);
-  }
-  return roots;
-}
-
-/** Tags read back from a `where` clause: `@ core` → `@core`, bare `core` → `@core`. */
-function joinTagValue(tokens: readonly DslToken[]): string {
-  const text = joinTokens(tokens).replace(/@\s+/g, '@');
-  return text.startsWith('@') ? text : `@${text}`;
-}
-
-/** `@core` is two tokens (`@` + word); fold them into tags and hand back the rest. */
-function extractTags(tokens: readonly DslToken[]): { tokens: DslToken[]; tags: string[] } {
-  const out: DslToken[] = [];
-  const tags: string[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index]!;
-    if (token.value === '@' && tokens[index + 1]?.kind === 'word') {
-      tags.push(tokens[index + 1]!.value);
-      index += 1;
-      continue;
-    }
-    out.push(token);
-  }
-  return { tokens: out, tags };
-}
-
-/**
- * Canonical attribute list with model semantics: a `tags:` value may carry a
- * comma-separated list, so bare entries after it are tags, not attributes.
- */
-function canonicalAttributesWithTags(
-  attributes: readonly DslAttribute[],
-  sugar: readonly string[] = [],
-): { attributes: CanonicalAttribute[]; tags: string[] } {
-  const tags = new Set(sugar.map((tag) => tag.toLowerCase()));
-  const kept: DslAttribute[] = [];
-  let inTags = false;
-  const addTags = (value: string) => {
-    for (const part of value.split(',').map((entry) => entry.trim()).filter(Boolean)) tags.add(part.toLowerCase());
-  };
-  for (const attribute of attributes) {
-    if (attribute.key) {
-      inTags = attribute.key.toLowerCase() === 'tags';
-      if (inTags) addTags(attribute.value);
-      else kept.push(attribute);
-      continue;
-    }
-    if (inTags) addTags(attribute.value);
-    else kept.push(attribute);
-  }
-  return { attributes: canonicalizeAttributes(kept, []), tags: [...tags] };
-}
-
-/** Attributes with a typed home on `ArchElement`; the rest stay in `attrs`. */
-const TYPED_ELEMENT_KEYS = new Set(['tech', 'desc', 'link', 'icon', 'color']);
-const TYPED_RELATION_KEYS = new Set(['label', 'tech', 'link']);
-
-function splitAttributes(
-  attributes: readonly CanonicalAttribute[],
-  typed: ReadonlySet<string>,
-): { values: Map<string, string>; attrs: CanonicalAttribute[] } {
-  const values = new Map<string, string>();
-  const attrs: CanonicalAttribute[] = [];
-  for (const attribute of attributes) {
-    const key = attribute.key?.toLowerCase();
-    if (key && typed.has(key)) {
-      if (!values.has(key)) values.set(key, attribute.value);
-      continue;
-    }
-    attrs.push(attribute);
-  }
-  return { values, attrs };
-}
-
-interface RelationDraft {
-  readonly env?: string;
-  readonly scope: string | null;
-  readonly line: number;
-  readonly from: string;
-  readonly to: string;
-  readonly label?: string;
-  readonly tech?: string;
-  readonly link?: string;
-  readonly tags: readonly string[];
-  readonly attrs?: readonly CanonicalAttribute[];
-}
-
-interface Declaration {
-  readonly localId: string;
-  readonly name: string;
-  readonly kind: ElementKind;
-  readonly tags: string[];
-  readonly attrs: readonly CanonicalAttribute[];
-  readonly line: number;
-  readonly first: DslToken;
-}
-
-/** `<kind> Name [attrs]` or `id = <kind> Name [attrs]`; null when the line is not a declaration. */
-function readDeclaration(tokens: readonly DslToken[], diagnostics: DslDiagnostic[]): Declaration | null {
-  const { tokens: cleaned, tags: sugar } = extractTags(tokens);
-  if (cleaned.length === 0) return null;
-  const open = cleaned.findIndex((token) => token.value === '[');
-  const head = open >= 0 ? cleaned.slice(0, open) : cleaned;
-  let explicitId: string | undefined;
-  let rest = head;
-  if (head[1]?.value === '=') {
-    explicitId = head[0]!.value;
-    rest = head.slice(2);
-  }
-  const kind = rest[0]?.value;
-  if (!kind || !(ELEMENT_KINDS as readonly string[]).includes(kind)) return null;
-  const name = joinTokens(rest.slice(1));
-  if (!name) return null;
-  const parsed = readAttributes(cleaned, diagnostics);
-  const { attributes, tags } = canonicalAttributesWithTags(parsed.attributes, sugar);
-  const wanted = explicitId ?? slugifyDslId(name);
-  const localId = /^[A-Za-z_][A-Za-z0-9_-]*$/.test(wanted) ? wanted : slugifyDslId(wanted);
-  if (explicitId && localId !== explicitId) {
-    diagnostics.push(tokenDiagnostic('W120', 'warning', cleaned[0], `Invalid explicit id ${explicitId}; slugified as ${localId}`));
-  }
-  return { localId, name, kind: kind as ElementKind, tags, attrs: attributes, line: cleaned[0]!.line, first: cleaned[0]! };
-}
-
-/** IcePanel's step vocabulary in DSL spelling; `alt`/`par` are the short forms. */
-const FLOW_KEYWORDS: Readonly<Record<string, FlowStepKind | 'step'>> = {
-  step: 'step', alt: 'alternate', par: 'parallel', note: 'info',
-};
-
-interface ArchitectureWorkspace {
-  readonly model: ArchModel;
-  /** Lines the parser could not honour, kept for the serializer's `reserved` tail. */
-  readonly reserved: readonly string[];
-}
-
-/** True when the text uses at least one C4 construct. */
-function isArchitectureWorkspace(segments: readonly DslSegment[]): boolean {
-  return blockTree(segments).some((root) => {
-    const first = root.tokens[0]?.value;
-    if (first === 'model' || first === 'views' || first === 'deployment' || first === 'workspace') return true;
-    return first === 'flow' && root.tokens.length > 1;
-  });
-}
 
 export function parseArchitectureWorkspace(
   segments: readonly DslSegment[],
@@ -572,111 +422,8 @@ export function parseArchitectureWorkspace(
   };
   for (const root of roots) walkRoot(root);
 
-  // ---- resolve references -------------------------------------------------
-
-  const provisional: ArchModel = { elements, relations: [], views, flows: flowDrafts.map(({ flow }) => flow) };
-  const index = createArchIndex(provisional);
-  const instanceTargets = new Map<ArchElement, string>();
-
-  for (const entry of pendingInstances) {
-    const target = resolveElementRef(index, entry.ref, entry.element.parent);
-    if (!target) {
-      diagnostics.push(lineDiagnostic(entry.line, 'W122', 'warning', `Unknown instance target ${entry.ref}; instance kept as a plain node`));
-      continue;
-    }
-    instanceTargets.set(entry.element, target.id);
-  }
-  const resolvedRelations: ArchRelation[] = [];
-  const pairOccurrences = new Map<string, number>();
-  const logicalIndex = createArchIndex({...index.model, elements: index.model.elements.filter((element) => !element.env)});
-  const environmentIndexes = new Map<string, ReturnType<typeof createArchIndex>>();
-  for (const entry of pendingRelations) {
-    let relationIndex = index;
-    if (entry.env) {
-      if (!environmentIndexes.has(entry.env)) environmentIndexes.set(entry.env, createArchIndex({...index.model, elements: index.model.elements.filter((element) => element.env === entry.env)}));
-      relationIndex = environmentIndexes.get(entry.env)!;
-    }
-    const endpoint = (reference: string): ArchElement | null => {
-      const direct = resolveElementRef(relationIndex, reference, entry.scope);
-      if (direct || !entry.env) return direct;
-      // Importers may spell an instance by its logical target's display path.
-      const target = resolveElementRef(logicalIndex, reference);
-      const instances = target ? relationIndex.model.elements.filter((element) => instanceTargets.get(element) === target.id) : [];
-      return instances.length === 1 ? instances[0]! : null;
-    };
-    const from = endpoint(entry.from);
-    const to = endpoint(entry.to);
-    if (!from || !to) {
-      const unknown = !from ? entry.from : entry.to;
-      diagnostics.push(lineDiagnostic(entry.line, 'W122', 'warning', `Unknown element reference ${unknown}; relation dropped`, suggestElementRef(relationIndex, unknown)));
-      continue;
-    }
-    const pair = `rel:${from.id}->${to.id}`;
-    const occurrence = pairOccurrences.get(pair) ?? 0;
-    pairOccurrences.set(pair, occurrence + 1);
-    resolvedRelations.push({
-      id: occurrence ? `${pair}:${occurrence + 1}` : pair, from: from.id, to: to.id, tags: entry.tags,
-      ...(entry.label ? { label: entry.label } : {}),
-      ...(entry.tech ? { tech: entry.tech } : {}),
-      ...(entry.link ? { link: entry.link } : {}),
-      ...(entry.attrs ? { attrs: entry.attrs } : {}),
-      line: entry.line,
-    });
-  }
-  const resolvedFlows: ArchFlow[] = flowDrafts.map(({ flow, refs }) => ({
-    ...flow,
-    steps: resolveSteps(flow.steps, refs, index, diagnostics),
-  }));
-  const resolvedViews = views.map((view) => {
-    if (!view.of) return view;
-    const target = resolveElementRef(index, view.of, null);
-    if (!target) diagnostics.push(lineDiagnostic(view.line ?? 1, 'W122', 'warning', `Unknown view target ${view.of}; the view shows nothing`));
-    return target ? { ...view, of: target.id, name: viewDisplayName(view, target) } : view;
-  });
-  const resolvedElements = elements.map((element) => {
-    const target = instanceTargets.get(element);
-    if (!target) return element;
-    const targetElement = elements.find((candidate) => candidate.id === target);
-    return { ...element, instanceOf: target, ...(targetElement ? { name: targetElement.name } : {}) };
-  });
-
-  return {
-    reserved,
-    model: {
-      ...(modelName ? { name: modelName } : {}),
-      elements: resolvedElements,
-      relations: resolvedRelations,
-      views: resolvedViews,
-      flows: resolvedFlows,
-    },
-  };
-}
-
-function resolveSteps(
-  steps: readonly FlowStep[],
-  refs: ReadonlyMap<FlowStep, { from: string; to: string }>,
-  index: ReturnType<typeof createArchIndex>,
-  diagnostics: DslDiagnostic[],
-): FlowStep[] {
-  return steps.map((step) => {
-    const raw = refs.get(step);
-    let from: string | undefined;
-    let to: string | undefined;
-    if (raw) {
-      const fromElement = resolveElementRef(index, raw.from, null);
-      const toElement = resolveElementRef(index, raw.to, null);
-      if (!fromElement || !toElement) {
-        diagnostics.push(lineDiagnostic(step.line ?? 1, 'W122', 'warning', `Unknown flow reference ${!fromElement ? raw.from : raw.to}; step kept without a relation`));
-      } else {
-        from = fromElement.id;
-        to = toElement.id;
-      }
-    }
-    const { from: _rawFrom, to: _rawTo, ...rest } = step;
-    return {
-      ...rest,
-      ...(from && to ? { from, to } : {}),
-      ...(step.branches ? { branches: step.branches.map((branch) => ({ ...branch, steps: resolveSteps(branch.steps, refs, index, diagnostics) })) } : {}),
-    };
-  });
+  return resolveWorkspaceDraft(
+    { elements, views, flowDrafts, pendingRelations, pendingInstances, reserved, modelName },
+    diagnostics,
+  );
 }

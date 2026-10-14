@@ -13,8 +13,8 @@ a data model, a state machine. Not a list, a single call, or what one sentence e
 
 ## Setup (once)
 
-`claude mcp add -s user openflowkit -- npx -y openflowkit mcp` (any MCP client works:
-the command is `npx -y openflowkit mcp`). Nothing leaves the machine.
+`claude mcp add -s user openflowkit -- npx -y openflowkit mcp` (any MCP client: `npx -y openflowkit mcp`); it
+calls no outside service. In claude.ai or ChatGPT, `https://mcp.openflowkit.com/mcp` draws chat cards only.
 
 ## Draw and save
 
@@ -22,9 +22,9 @@ the command is `npx -y openflowkit mcp`). Nothing leaves the machine.
 2. `validate_openflow_dsl` with `{ dsl }` until `ok`. Fix every `error`: a line the parser dropped is one,
    with its line and a hint. Warnings are guesses; read them. For Mermaid (or Structurizr DSL, D2),
    `converted.losses` name what did not carry over and `converted.dsl` is what it became.
-3. With the editor open and paired ("Connect agent"), `create_diagram` with `{ dsl }` draws it
-   where the user is looking. Otherwise use file mode: `openflow_create`, then
-   `create_diagram` with `{ dsl, documentId }`.
+3. With an editor paired (`whoami`; if not, ask the user to open app.openflowkit.com/#/connect),
+   `create_diagram` with `{ dsl }` draws where the user is looking. Otherwise use file mode:
+   `openflow_create`, then `create_diagram` with `{ dsl, documentId }`.
 4. `openflow_save` with `{ path }` (plus `documentId` in file mode) beside the code, e.g.
    `src/payments/checkout-flow.openflow.json`; `svg: true` also writes a `.svg` (for a README).
 5. Tell the user the path, and what you left out.

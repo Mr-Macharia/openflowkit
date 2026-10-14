@@ -15,7 +15,7 @@ import {
   type SceneDocumentV1,
 } from '../lib/agent.js';
 import type { DocumentStore } from '../lib/documentStore.js';
-import type { LiveBridge } from '../lib/bridge.js';
+import { NOT_PAIRED, type LiveBridge } from '../lib/bridge.js';
 import { loadFileCapabilities } from '../lib/fileCapabilities.js';
 import { svgBeside, tryWriteSvgBeside } from '../lib/svgBeside.js';
 import { toolError } from '../lib/errors.js';
@@ -32,7 +32,7 @@ const documentIdField = z.string().min(1).optional()
 
 const SCRATCH = createAgentDocument('scratch');
 const pageIdField = z.string().min(1).optional()
-  .describe('Page to act on (see list_pages); defaults to the page the editor shows, or the first page in file mode.');
+  .describe('Page to act on (see list_pages); defaults to the page the editor shows, or the first page in file mode. A repo map page is read from the code: a change for it lands on the map\'s drawing, which the editor shows.');
 
 /** Tool results are plain JSON: agents parse them, humans read them. */
 function text(payload: unknown): CallToolResult {
@@ -150,6 +150,7 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
       ...(DRAWING_OPS.has(op.name) ? { _meta: VIEWER_TOOL_META } : {}),
     }, async (raw: Record<string, unknown>): Promise<CallToolResult> => {
       const { documentId, path: savePath, ...input } = raw;
+      const agent = server.server.getClientVersion()?.name;
       const requestedPage = typeof input.pageId === 'string' ? input.pageId : undefined;
       const respond = async (output: unknown, wrap: (output: unknown) => unknown = (value) => value) => typeof savePath === 'string'
         ? text(wrap(await saveExport(output, savePath)))
@@ -162,14 +163,14 @@ export function registerOpTools(server: McpServer, deps: OpToolDeps): void {
       try {
         if (!documentId && !deps.bridge.connected) await deps.bridge.retryPort();
         if (!documentId && deps.bridge.connected) {
-          const output = await deps.bridge.call(op.name, input, requestedPage);
+          const output = await deps.bridge.call(op.name, input, requestedPage, agent);
           // Live: the diagram is on the user's canvas already, so no link; the card shows the frame as the editor drew it.
           return await withCard(await respond(output), output, async (frameId, pageId) =>
-            svgText(await deps.bridge.call('export', { format: 'svg', scope: 'selection', ids: [frameId] }, pageId)));
+            svgText(await deps.bridge.call('export', { format: 'svg', scope: 'selection', ids: [frameId] }, pageId, agent)));
         }
         const id = (typeof documentId === 'string' ? documentId : undefined) ?? deps.store.latest()?.id;
         if (!id && !LOOKUPS.has(op.name)) {
-          throw new Error(deps.bridge.unpairedReason ?? 'No document: pair an editor ("Connect agent"), or call openflow_create or openflow_open with a .openflow.json path.');
+          throw new Error(deps.bridge.unpairedReason ?? NOT_PAIRED);
         }
         // Grammar and icon lookups read no document, so an agent may call them before it has one.
         const document = id ? deps.store.get(id) as unknown as SceneDocumentV1 : SCRATCH;
@@ -226,10 +227,12 @@ export function registerDocumentTools(server: McpServer, deps: DocumentToolDeps)
   }, async ({ path: requested, documentId, svg }) => {
     try {
       const path = await savePathFor(requested);
+      const agent = server.server.getClientVersion()?.name;
+      if (!documentId && !deps.bridge.connected) await deps.bridge.retryPort();
       if (!documentId && deps.bridge.connected) {
         // Live mode: the editor owns the document, so ask it for canonical
         // JSON and write the bytes here (the server owns disk IO).
-        const exported = await deps.bridge.call('export', { format: 'json', scope: 'document' }) as {
+        const exported = await deps.bridge.call('export', { format: 'json', scope: 'document' }, undefined, agent) as {
           files?: readonly { text?: string }[];
         };
         const json = exported.files?.[0]?.text;
@@ -238,7 +241,7 @@ export function registerDocumentTools(server: McpServer, deps: DocumentToolDeps)
         if (!svg) return text({ saved: path, mode: 'live-editor' });
         try {
           // The first page, as file mode and the docs say, not whichever page the editor shows.
-          const picture = await deps.bridge.call('export', { format: 'svg', scope: 'page' }, deps.bridge.health().pages[0]?.pageId) as { files?: readonly { text?: string }[] };
+          const picture = await deps.bridge.call('export', { format: 'svg', scope: 'page' }, deps.bridge.health().pages[0]?.pageId, agent) as { files?: readonly { text?: string }[] };
           const svgText = picture.files?.[0]?.text;
           if (!svgText) throw new Error('The editor did not return an SVG.');
           await writeFile(svgBeside(path), svgText, 'utf8');
@@ -264,18 +267,19 @@ export function registerDocumentTools(server: McpServer, deps: DocumentToolDeps)
   }, async () => {
     await deps.bridge.retryPort();
     const health = deps.bridge.health();
+    const bridge = deps.bridge.status();
     return text({
       server: `${health.name} ${health.version}`,
       cloud: 'none — everything is local',
-      bridge: deps.bridge.status(),
+      bridge,
       mode: health.connected ? 'live-editor' : 'file',
       editor: health.connected
         ? { documentId: health.documentId, name: health.documentName, pageId: health.pageId, pages: health.pages, lastSeenMs: health.lastSeenMs }
         : null,
       documents: deps.store.list().map(({ id, name }) => ({ documentId: id, name })),
       hint: health.connected
-        ? 'Ops act on the paired editor. Pass documentId to target a file-mode document instead.'
-        : deps.bridge.unpairedReason ?? 'No editor paired. Use openflow_open for file mode, or open the app and click "Connect agent".',
+        ? `Ops act on the paired editor${bridge.shared?.side === 'guest' ? `, through the OpenFlowKit server on port ${bridge.port} that other agent sessions share` : ''}. Pass documentId to target a file-mode document instead.`
+        : deps.bridge.unpairedReason ?? NOT_PAIRED,
     });
   });
 }

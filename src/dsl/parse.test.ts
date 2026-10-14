@@ -129,6 +129,29 @@ describe('parse for non-graph families', () => {
     expect(parse('flowchart\napi = "Checkout API"').diagnostics.filter((item) => item.code === 'W101')).toEqual([]);
   });
 
+  it('reads flow step words inside `flow { }` as steps, so the starter template lints clean (V10)', async () => {
+    const { C4_STARTER } = await import('../agent/starterTemplates');
+    expect(parse(C4_STARTER).diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+    const flow = 'architecture\nmodel {\n person A\n system B\n}\nflow "F" {\n intro "Hi"\n process "Think"\n step A -> B : go\n conclusion "Done"\n}';
+    expect(parse(flow).diagnostics.filter((item) => item.severity !== 'info')).toEqual([]);
+    // Outside a flow the words are ordinary names, and `word "Label"` still warns.
+    expect(parse('flowchart\nintro "Hi"').diagnostics.map((item) => item.code)).toContain('W101');
+  });
+
+  // Review 2 #5: a bare `process` line inside a flow was read as a step and the node dropped (only an I002 info).
+  it('inside `flow { }` a step word is a step only with text after it; alone it stays a node', () => {
+    const flow = (line: string) => {
+      const parsed = parse(`flowchart\nflow "F" {\n ${line}\n}`);
+      const group = parsed.statements.find((item) => item.kind === 'group') as { statements: { kind: string }[] } | undefined;
+      return { inner: group?.statements ?? [], warnings: parsed.diagnostics.filter((item) => item.severity !== 'info') };
+    };
+    expect(flow('process "Think"').inner).toMatchObject([{ kind: 'reserved', keyword: 'process', value: 'Think' }]);
+    expect(flow('intro Hello there').inner).toMatchObject([{ kind: 'reserved', keyword: 'intro' }]);
+    expect(flow('process').inner).toMatchObject([{ kind: 'node', node: { label: 'process' } }]);
+    expect(flow('process').warnings).toEqual([]);
+    expect(flow('info [shape: circle]').inner).toMatchObject([{ kind: 'node', node: { label: 'info' } }]);
+  });
+
   it('gives one diagnostic for a Mermaid shape written inline on an edge', () => {
     const found = parse('flowchart\nStart -> Check{Valid?}').diagnostics.filter((item) => item.severity !== 'info');
     expect(found).toHaveLength(1);

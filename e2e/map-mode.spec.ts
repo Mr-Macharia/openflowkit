@@ -239,7 +239,7 @@ test('an edit made from the Model panel shows in the map, and undo takes it back
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect.poll(async () => (await mapState(page)).labels.customer).toBe(original);
   // Not silent: what was undone is announced, the Canvas page behind the map being what changed.
-  await expect(page.getByText('Undid last change').first()).toBeAttached();
+  await expect(page.getByText(/^Undid /).first()).toBeAttached();
 });
 
 test('a selected map box shows an outline and no handles to resize or rotate it @gate', async ({ page }) => {

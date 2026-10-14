@@ -11,7 +11,7 @@ to that element. Everything is produced in the browser from the same exported SV
 
 | Format | What you get | Options |
 | --- | --- | --- |
-| **PNG** | A raster image of the selection, page or pages | 1× or 2× resolution; light/dark/print theme; **Canvas** or **Transparent** background; **Copy 2×** to the clipboard |
+| **PNG** | A raster image of the selection, page or pages | 1× or 2× resolution; light/dark/print theme; **Canvas** or **Transparent** background; **Copy PNG** to the clipboard, at the chosen resolution |
 | **SVG** | Vector markup that opens in Figma, Illustrator and browsers | Light/dark/print theme; **Canvas** or **Transparent** background |
 | **PDF** | The browser's print dialog over the exported SVG — choose "Save as PDF" | Light/dark/print theme; the button reads **Print / PDF** |
 | **JSON** | The whole document, every page, in the canonical format | — |

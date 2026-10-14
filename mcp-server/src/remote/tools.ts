@@ -33,6 +33,8 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
       title: z.string().max(200).optional().describe('Diagram title.'),
       theme: z.enum(['light', 'dark']).optional().describe('Picture theme; default light.'),
     },
+    // Draws a picture from its input; it stores nothing and reaches no other system.
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _meta: VIEWER_TOOL_META,
   }, async ({ source, title, theme }): Promise<CallToolResult> => {
     try {
@@ -76,6 +78,7 @@ export function registerRemoteTools(server: McpServer, { appOrigin, deadlineMs =
       family: z.preprocess((value) => typeof value === 'string' ? value.trim().toLowerCase() : value, z.enum(DSL_FAMILIES))
         .optional().describe('One family’s section; omit for the full reference.'),
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ family }): Promise<CallToolResult> => ({
     content: [{ type: 'text', text: grammarSection(await loadGrammar(), family) }],
   }));

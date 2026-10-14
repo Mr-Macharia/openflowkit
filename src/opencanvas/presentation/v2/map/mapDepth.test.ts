@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { firstMapVisit, forgetMapMode, savedOpen, saveOpen, savedMode, saveMode } from './mapDepth';
+import { firstMapVisit, forgetMapMode, saveDrawing, savedDrawing, savedOpen, saveOpen, savedMode, saveMode } from './mapDepth';
 
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 
@@ -79,5 +79,17 @@ describe('firstMapVisit', () => {
   it('blocked storage is never a first visit (no panel popping open on every load)', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
     expect(firstMapVisit('d')).toBe(false);
+  });
+});
+
+describe('savedDrawing', () => {
+  it('remembers the drawing a map was left for, per document and page, and forgets it with the document', () => {
+    saveDrawing('d1', 'map', 'drawing-2');
+    saveDrawing('d1', 'other', 'drawing-9');
+    expect(savedDrawing('d1', 'map')).toBe('drawing-2');
+    expect(savedDrawing('d2', 'map')).toBeNull();
+    forgetMapMode('d1');
+    expect(savedDrawing('d1', 'map')).toBeNull();
+    expect(savedDrawing('d1', 'other')).toBeNull();
   });
 });

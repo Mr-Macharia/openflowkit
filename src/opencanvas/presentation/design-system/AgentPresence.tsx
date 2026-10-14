@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { HTMLAttributes, Ref } from 'react';
 import { IconSparkles } from '@tabler/icons-react';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -107,27 +107,24 @@ export function ProvenanceBadge({
     </span>
   );
 }
-/** Screen-space label showing where an agent is acting. Never captures pointer events. */
+/**
+ * An agent's pointer on the canvas: a real arrow with its name in an offset pill. Its owner places it (style.transform,
+ * the arrow's tip at the origin) and fades it; it never takes pointer events.
+ */
 export function AgentCursor({
   name,
-  x,
-  y,
-  children,
-}: {
-  name: string;
-  x: number;
-  y: number;
-  children?: ReactNode;
-}) {
+  working = false,
+  ref,
+  ...rest
+}: { name: string; working?: boolean; ref?: Ref<HTMLDivElement> } & HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className="ofk-agent-cursor"
-      style={{ transform: `translate(${x}px, ${y}px)` } as CSSProperties}
-      aria-hidden="true"
-    >
+    <div ref={ref} className="ofk-agent-cursor" aria-hidden="true" {...rest}>
+      <svg className="ofk-agent-cursor-arrow" viewBox="0 0 20 22" width="20" height="22">
+        <path d="M2.5 1.5v16.2l4.3-4 2.9 6.6 2.9-1.3-2.8-6.4h5.9z" />
+      </svg>
       <span className="ofk-agent-cursor-pill">
-        <Icon icon={IconSparkles} /> {name}
-        {children}
+        {name}
+        {working ? <span className="ofk-agent-cursor-dots"><i /><i /><i /></span> : null}
       </span>
     </div>
   );

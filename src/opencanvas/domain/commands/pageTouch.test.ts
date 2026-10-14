@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDocument } from '../../testing/builders/documentBuilder';
-import { commandTouchesPage } from './pageTouch';
+import { commandTouchesPage, pageOfCommand } from './pageTouch';
 import type { DocumentCommand } from './types';
 
 const LOCKED = 'locked';
@@ -38,5 +38,18 @@ describe('commandTouchesPage', () => {
     expect(commandTouchesPage(reorder, LOCKED)).toBe(true);
     expect(commandTouchesPage({ kind: 'batch', id: 'b', label: 'b', commands: [edit('set-node', 'other', { node })] }, LOCKED)).toBe(false);
     expect(commandTouchesPage({ kind: 'batch', id: 'b', label: 'b', commands: [{ kind: 'batch', id: 'c', label: 'c', commands: [edit('set-page', LOCKED)] }] }, LOCKED)).toBe(true);
+  });
+});
+
+describe('pageOfCommand', () => {
+  it('names the one page an edit, an inserted or a removed page, or a one-page batch changes', () => {
+    expect(pageOfCommand(edit('set-node', 'p2', { node }))).toBe('p2');
+    expect(pageOfCommand({ kind: 'insert-page', id: 'i', label: 'i', index: 3, page: { ...page, id: 'p3' } })).toBe('p3');
+    expect(pageOfCommand({ kind: 'remove-page', id: 'r', label: 'r', index: 1, page: { ...page, id: 'p3' } })).toBe('p3');
+    expect(pageOfCommand({ kind: 'batch', id: 'b', label: 'b', commands: [edit('set-node', 'p2', { node }), edit('insert-node', 'p2', { node })] })).toBe('p2');
+  });
+  it('is null for a document-level step or one that spans pages', () => {
+    expect(pageOfCommand({ kind: 'set-document-name', id: 'x', label: 'x', before: 'a', after: 'b' })).toBeNull();
+    expect(pageOfCommand({ kind: 'batch', id: 'b', label: 'b', commands: [edit('set-node', 'p1', { node }), edit('set-node', 'p2', { node })] })).toBeNull();
   });
 });

@@ -70,9 +70,9 @@ function techOf(model: MapModel, node: MapNode): string | undefined {
   return node.kind === 'external' || node.kind === 'more' ? found : mainLanguage(model, node) ?? found;
 }
 
-/** The quiet line under the name: how big the box is (never "0 files"). */
+/** The quiet line under the name: how big the box is (never "0 files", nor "0 lines" for a file still being read). */
 function noteOf(model: MapModel, node: MapNode): string | undefined {
-  if (node.kind === 'file') return count(node.loc, 'line');
+  if (node.kind === 'file') return node.loc > 0 ? count(node.loc, 'line') : undefined;
   if (node.kind === 'more') return node.desc;
   if (node.kind === 'external') return node.ai ? node.desc : undefined;
   if (node.id === OUTSIDE) return count(externalsIn(model, node), 'service');

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenFlowKit diagram</title>
 <style>
-  :root { color-scheme: light dark; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #d8d8d8; --panel: #f6f6f6; --accent: #111; --warn: #9a5b00; }
-  :root[data-theme="dark"] { --bg: #1b1b1c; --fg: #ececec; --muted: #a0a0a0; --line: #3a3a3c; --panel: #262628; --accent: #fff; --warn: #e5b25d; }
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #d8d8d8; --panel: #f6f6f6; --accent: #111; --warn: #9a5b00; --brand: #e95420; }
+  :root[data-theme="dark"] { --bg: #1b1b1c; --fg: #ececec; --muted: #a0a0a0; --line: #3a3a3c; --panel: #262628; --accent: #fff; --warn: #e5b25d; --brand: #f07443; }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   :root[data-mode="fullscreen"], :root[data-mode="fullscreen"] body { height: 100%; }
@@ -21,7 +21,26 @@
   #stage { position: relative; height: 420px; overflow: hidden; cursor: grab; touch-action: none; }
   :root[data-mode="fullscreen"] #stage { flex: 1; height: auto; }
   #stage.drag { cursor: grabbing; }
-  #img { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; max-width: none; border-radius: 8px; }
+  #img, #live { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; max-width: none; border-radius: 8px; }
+  #live svg { display: block; border-radius: 8px; overflow: hidden; }
+  /* While the model writes: the picture glides to fit as it grows, new shapes pop in, new connectors draw on. */
+  #live.glide { transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+  .ofk-pop { transform-box: fill-box; transform-origin: center; animation: ofk-pop .45s cubic-bezier(.2, .8, .2, 1) var(--d, 0s) both; }
+  .ofk-fade { animation: ofk-fade .45s ease-out var(--d, 0s) both; }
+  .ofk-draw { stroke-dasharray: 1; animation: ofk-draw .6s ease-out var(--d, 0s) both; }
+  @keyframes ofk-pop { from { opacity: 0; transform: scale(.88); } }
+  @keyframes ofk-fade { from { opacity: 0; } }
+  @keyframes ofk-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  #drawing { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); animation: ofk-pulse .9s ease-in-out infinite alternate; }
+  @keyframes ofk-pulse { from { opacity: .35; } }
+  /* An older card steps back once a newer one is drawn in the same conversation; hover or focus brings it forward. */
+  #badge { color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  :root.superseded #stage, :root.superseded h1 { opacity: .5; filter: grayscale(1); transition: opacity .3s, filter .3s; }
+  :root.superseded body:hover #stage, :root.superseded body:focus-within #stage, :root.superseded body:hover h1 { opacity: 1; filter: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .ofk-pop, .ofk-fade, .ofk-draw, #drawing { animation: none; }
+    #live.glide, :root.superseded #stage, :root.superseded h1 { transition: none; }
+  }
   #zoom { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; }
   details { padding: 6px 12px; border-top: 1px solid var(--line); color: var(--warn); font-size: 12px; }
   details ul { margin: 4px 0 0; padding-left: 18px; }
@@ -32,6 +51,8 @@
 <body>
 <header>
   <h1 id="title">Diagram</h1>
+  <span id="badge" title="A newer diagram was drawn later in this conversation." hidden>Earlier version</span>
+  <span id="drawing" aria-hidden="true" hidden></span>
   <span id="meta"></span>
   <button id="open" class="primary" type="button">Open in OpenFlowKit</button>
   <button id="download" type="button" hidden>Download SVG</button>
@@ -39,6 +60,7 @@
 </header>
 <div id="stage" tabindex="0" role="img" aria-label="Diagram. Drag to pan, scroll or +/- to zoom, 0 to fit.">
   <img id="img" alt="" draggable="false">
+  <div id="live" aria-hidden="true" hidden></div>
   <div id="zoom">
     <button id="out" type="button" aria-label="Zoom out">&minus;</button>
     <button id="fit" type="button" aria-label="Fit to view">Fit</button>
@@ -51,17 +73,18 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const stage = $('stage'), img = $('img');
-  const view = { x: 0, y: 0, k: 1 };
-  let data = null, host = { displayModes: [], mode: 'inline', download: false };
+  const stage = $('stage'), img = $('img'), live = $('live');
+  const view = { x: 0, y: 0, k: 1, touched: false };
+  let data = null, host = { displayModes: [], mode: 'inline', download: false, caps: {} };
 
   // --- MCP Apps (SEP-1865) over postMessage JSON-RPC 2.0, hand-rolled ---------------------------
   let nextId = 1;
   const pending = new Map();
   const post = (msg) => parent.postMessage({ jsonrpc: '2.0', ...msg }, '*');
-  const request = (method, params) => new Promise((resolve, reject) => {
+  const request = (method, params, timeoutMs) => new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve, reject });
+    const timer = timeoutMs ? setTimeout(() => { pending.delete(id); reject(new Error(`${method} timed out`)); }, timeoutMs) : 0;
+    pending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
     post({ id, method, params });
   });
   const notify = (method, params) => post({ method, params });
@@ -79,6 +102,9 @@
     }
     const reply = (result) => { if (msg.id !== undefined) post({ id: msg.id, result }); };
     switch (msg.method) {
+      case 'ui/notifications/tool-input-partial': onPartial(msg.params && msg.params.arguments); break;
+      case 'ui/notifications/tool-input': onInput(msg.params && msg.params.arguments); break;
+      case 'ui/notifications/tool-cancelled': onCancelled(); break;
       case 'ui/notifications/tool-result': render(msg.params && msg.params.structuredContent); break;
       case 'ui/notifications/host-context-changed': applyContext(msg.params || {}); break;
       case 'ui/resource-teardown': case 'ping': reply({}); break;
@@ -94,7 +120,7 @@
     document.documentElement.dataset.mode = host.mode;
     $('expand').hidden = !host.displayModes.includes('fullscreen');
     $('expand').textContent = host.mode === 'fullscreen' ? 'Collapse' : 'Expand';
-    if (data) fit();
+    if (data || !live.hidden) fit();
   }
 
   request('ui/initialize', {
@@ -103,9 +129,12 @@
     clientInfo: { name: 'openflowkit-viewer', version: '1.0.0' },
     appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
   }).then((result) => {
-    host.download = !!(result && result.hostCapabilities && result.hostCapabilities.downloadFile);
+    host.caps = (result && result.hostCapabilities) || {};
+    host.download = !!host.caps.downloadFile;
     $('download').hidden = !host.download;
-    applyContext((result && result.hostContext) || {});
+    const context = (result && result.hostContext) || {};
+    if (context.toolInfo && context.toolInfo.id != null) election.id = String(context.toolInfo.id);
+    applyContext(context);
     notify('ui/notifications/initialized', {});
   }, (error) => showHint(`Could not connect to the host: ${error.message}`));
 
@@ -122,6 +151,7 @@
 
   function render(sc) {
     if (!sc) return;
+    endStream();
     // Drawn, but the picture was not sent (too large): say so, and keep the editor link.
     const noPreview = typeof sc.svg !== 'string' && typeof sc.noPreview === 'string' ? sc.noPreview : null;
     $('stage').hidden = noPreview !== null;
@@ -131,6 +161,7 @@
       $('meta').textContent = '';
       $('open').disabled = true; $('download').hidden = true;
       img.removeAttribute('src');
+      clearLive();
       showHint(noteLines(sc).join('\n') || 'The tool returned no diagram.');
       $('hint').style.whiteSpace = 'pre-line';
       return;
@@ -140,10 +171,12 @@
     document.title = sc.title || 'OpenFlowKit diagram';
     $('meta').textContent = `${plural(sc.nodes ?? 0, 'node')} · ${plural(sc.connectors ?? 0, 'connector')}`;
     const linkOk = typeof sc.openUrl === 'string' && OPEN_URL.test(sc.openUrl);
+    joinElection(sc);
     if (noPreview !== null) {
       $('open').disabled = !linkOk;
       $('download').hidden = true;
       img.removeAttribute('src');
+      clearLive();
       showHint(linkOk ? `${noPreview} Open it in OpenFlowKit to see it.` : noPreview);
       return;
     }
@@ -157,15 +190,233 @@
     const list = $('notesList');
     list.replaceChildren(...notes.map((n) => Object.assign(document.createElement('li'), { textContent: n })));
     // An <img> never runs scripts in the SVG; textContent/data URL only, no innerHTML.
-    img.onload = fit;
+    // The streamed preview stays up until the final picture has loaded, so the card never blinks empty.
+    img.onload = () => { clearLive(); fit(); scheduleSnapshot(); };
     img.src = `data:image/svg+xml;base64,${utf8Base64(sc.svg)}`;
     img.alt = sc.title || 'Diagram';
   }
 
+  // --- Drawing while the model writes (MCP Apps ui/notifications/tool-input-partial) -------------
+  // Hosts may stream the half-written arguments. The card asks the server for a preview (the app-only tool
+  // preview_diagram, through the host's tools/call) of the complete lines at most every 250 ms, one call at a time, and
+  // shows it only when it has more shapes and connectors than the one on screen. The final tool-result replaces it.
+  // A host that sends no partials never reaches this code; nor does one that cannot proxy tool calls.
+  const PREVIEW_EVERY_MS = 250, PREVIEW_TIMEOUT_MS = 8000;
+  const stream = { seen: false, final: false, sent: '', pending: null, timer: 0, busy: false, shown: 0, theme: 'light' };
+  const sourceOf = (args) => !args ? null : typeof args.source === 'string' ? args.source : typeof args.dsl === 'string' ? args.dsl : null;
+
+  function onPartial(args) {
+    const text = sourceOf(args);
+    if (stream.final || text === null || !host.caps.serverTools) return;
+    if (!stream.seen) { stream.seen = true; $('drawing').hidden = false; }
+    if (args.theme === 'light' || args.theme === 'dark') stream.theme = args.theme;
+    if (typeof args.title === 'string' && args.title.trim()) $('title').textContent = args.title.trim();
+    // The last line may be cut mid-word ("Pay -> Do"): only complete lines are drawn.
+    const cut = text.lastIndexOf('\n');
+    queuePreview(cut < 0 ? '' : text.slice(0, cut));
+  }
+  // The whole arguments, once: the last line is complete now. Only a card that was already streaming asks.
+  function onInput(args) {
+    const text = sourceOf(args);
+    if (stream.seen && !stream.final && text !== null) queuePreview(text);
+  }
+  function onCancelled() {
+    if (!stream.seen || stream.final) return;
+    endStream();
+    $('meta').textContent = 'Cancelled before it was finished';
+  }
+  // The first new line arms the timer and later ones only replace the text, so a model writing a line every
+  // 100 ms still gets a frame every 250 ms (a debounce that restarts on every line would wait for the last one).
+  function queuePreview(text) {
+    if (!text.trim() || text === stream.sent || text === stream.pending) return;
+    stream.pending = text;
+    if (!stream.timer) stream.timer = setTimeout(flushPreview, PREVIEW_EVERY_MS);
+  }
+  async function flushPreview() {
+    stream.timer = 0;
+    if (stream.busy || stream.final || stream.pending === null) return;
+    const text = stream.pending;
+    stream.pending = null; stream.sent = text; stream.busy = true;
+    try {
+      const result = await request('tools/call', { name: 'preview_diagram', arguments: { source: text, theme: stream.theme } }, PREVIEW_TIMEOUT_MS);
+      const sc = result && !result.isError ? result.structuredContent : null;
+      const count = sc ? (Number(sc.nodes) || 0) + (Number(sc.connectors) || 0) : 0;
+      if (!stream.final && sc && typeof sc.svg === 'string' && count > stream.shown && showPreview(sc.svg)) {
+        stream.shown = count;
+        $('meta').textContent = `Drawing · ${plural(Number(sc.nodes) || 0, 'node')} · ${plural(Number(sc.connectors) || 0, 'connector')}`;
+      }
+    } catch { /* a missed frame: the next line, or the final result, draws it */ }
+    stream.busy = false;
+    if (stream.pending !== null && !stream.final && !stream.timer) stream.timer = setTimeout(flushPreview, PREVIEW_EVERY_MS);
+  }
+  function endStream() {
+    stream.final = true; stream.pending = null;
+    clearTimeout(stream.timer); stream.timer = 0;
+    $('drawing').hidden = true;
+  }
+  function clearLive() { live.hidden = true; live.classList.remove('glide'); live.replaceChildren(); }
+
+  // Keyed by the exporter's data-node-id / data-connector-id: a shape already on screen stays (or is swapped in
+  // place when it changed); only new ones animate. Never an innerHTML swap of the whole picture.
+  const keyOf = (el, i) => el.hasAttribute('data-node-id') ? `node:${el.getAttribute('data-node-id')}`
+    : el.hasAttribute('data-connector-id') ? `edge:${el.getAttribute('data-connector-id')}` : `${el.localName}#${i}`;
+  const signature = new WeakMap();
+  const SAFE_HREF = /^(#|data:image\/(png|jpeg|gif|webp|svg\+xml)[;,])/i;
+  /** The server drew it, but labels come from the model: no scripts, handlers or outside links in the page's DOM. */
+  function clean(root) {
+    // SMIL can set an attribute (an href) after this check runs: the picture never needs it, so it goes too.
+    for (const el of root.querySelectorAll('script, foreignObject, iframe, object, embed, animate, set, animateTransform, animateMotion')) el.remove();
+    for (const el of [root, ...root.querySelectorAll('*')]) {
+      for (const { name, value } of [...el.attributes]) {
+        const bare = name.toLowerCase().replace(/^xlink:/, '');
+        if (bare.startsWith('on') || (bare === 'href' && !SAFE_HREF.test(value.trim()))) el.removeAttribute(name);
+      }
+    }
+  }
+  /** Shapes pop in one after another, then their connectors draw on: about half a second for any batch. */
+  function enter(added) {
+    const isShape = ([key]) => key.startsWith('node:') && key !== 'node:frame';
+    const shapes = added.filter(isShape), rest = added.filter((entry) => !isShape(entry));
+    const step = (count) => Math.min(0.06, 0.4 / Math.max(1, count));
+    shapes.forEach(([key, el], i) => animate(el, key, i * step(shapes.length)));
+    const after = shapes.length ? Math.min(shapes.length * step(shapes.length), 0.4) + 0.1 : 0;
+    rest.forEach(([key, el], i) => animate(el, key, after + i * step(rest.length)));
+  }
+  function animate(el, key, seconds) {
+    const delay = `${seconds.toFixed(2)}s`;
+    if (key.startsWith('node:') && key !== 'node:frame') {
+      // The group carries its position as a transform attribute, which a CSS transform would replace: scale a wrapper.
+      const pop = document.createElementNS(el.namespaceURI, 'g');
+      pop.setAttribute('class', 'ofk-pop');
+      pop.style.setProperty('--d', delay);
+      pop.append(...el.childNodes);
+      el.append(pop);
+    } else if (key.startsWith('edge:')) {
+      for (const path of el.querySelectorAll('path, line, polyline')) {
+        path.style.setProperty('--d', delay);
+        // A dashed connector keeps its dashes: it fades in instead of drawing on.
+        if (path.hasAttribute('stroke-dasharray')) path.classList.add('ofk-fade');
+        else { path.setAttribute('pathLength', '1'); path.classList.add('ofk-draw'); }
+      }
+    } else {
+      el.classList.add('ofk-fade');
+      el.style.setProperty('--d', delay);
+    }
+  }
+  /** Patches the preview in place; false when the text is not a drawable SVG. */
+  function showPreview(text) {
+    const parsed = new DOMParser().parseFromString(text, 'image/svg+xml');
+    const next = parsed.documentElement;
+    if (!next || next.localName !== 'svg' || parsed.getElementsByTagName('parsererror').length) return false;
+    clean(next);
+    let svg = live.firstElementChild;
+    if (!svg) {
+      svg = document.importNode(next, false);
+      live.append(svg);
+    }
+    for (const name of ['viewBox', 'width', 'height']) if (next.hasAttribute(name)) svg.setAttribute(name, next.getAttribute(name));
+    const incoming = [...next.children].map((el, i) => [keyOf(el, i), el]);
+    const wanted = new Set(incoming.map(([key]) => key));
+    const old = new Map();
+    [...svg.children].forEach((el, i) => { const key = keyOf(el, i); if (wanted.has(key)) old.set(key, el); else el.remove(); });
+    const added = [];
+    incoming.forEach(([key, fresh], i) => {
+      const source = fresh.outerHTML;
+      const before = old.get(key);
+      let el = before;
+      if (!before || signature.get(before) !== source) {
+        el = document.importNode(fresh, true);
+        signature.set(el, source);
+        if (before) before.replaceWith(el); else added.push([key, el]);
+      }
+      // Moved only when out of place: re-inserting an element restarts its animation.
+      if (svg.children[i] !== el) svg.insertBefore(el, svg.children[i] || null);
+    });
+    enter(added);
+    const first = live.hidden;
+    live.hidden = false;
+    $('stage').hidden = false;
+    if (!view.touched) { live.classList.toggle('glide', !first); fit(); }
+    return true;
+  }
+
+  // --- Older cards step back (Claude's instance-supersession pattern) ----------------------------
+  // Every card of this connector in one conversation shares the iframe origin, so a BroadcastChannel reaches them all.
+  // The server stamps each card {createdAt, seq}; a card that hears of a newer one greys out and stops talking to the model.
+  const election = { id: null, key: null, peers: new Map(), channel: null };
+  let superseded = false;
+  /** Newer = later createdAt, then higher seq, then the larger instance id (so two cards never both win). */
+  const isNewer = (other, mine, myId) => other.createdAt !== mine.createdAt ? other.createdAt > mine.createdAt
+    : other.seq != null && mine.seq != null && other.seq !== mine.seq ? other.seq > mine.seq
+    : String(other.id) > String(myId);
+  function joinElection(sc) {
+    if (!Number.isFinite(sc.createdAt) || typeof BroadcastChannel !== 'function') return;
+    if (election.id === null) election.id = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2);
+    election.key = { createdAt: sc.createdAt, seq: Number.isFinite(sc.seq) ? sc.seq : null };
+    if (!election.channel) {
+      election.channel = new BroadcastChannel('openflowkit-card');
+      election.channel.onmessage = (event) => {
+        const peer = event.data;
+        if (!peer || peer.id === election.id || !Number.isFinite(peer.createdAt) || !election.key) return;
+        if (peer.type === 'hello') say('born');
+        election.peers.set(peer.id, peer);
+        recount();
+      };
+    }
+    say('hello');
+    recount();
+  }
+  const say = (type) => election.channel.postMessage({ type, id: election.id, ...election.key });
+  function recount() {
+    superseded = [...election.peers.values()].some((peer) => isNewer(peer, election.key, election.id));
+    document.documentElement.classList.toggle('superseded', superseded);
+    $('badge').hidden = !superseded;
+  }
+
+  // --- Claude sees what it drew (MCP Apps ui/update-model-context) ------------------------------
+  // After the final picture loads, a PNG of it (512 px at most) goes into the model's context for its next turn,
+  // so it can notice overlaps itself. Only for a host that takes context updates with images, and never from an older card.
+  const SNAPSHOT_DELAY_MS = 1500, SNAPSHOT_MAX_PX = 512;
+  let snapshotTimer = 0;
+  function takesImages() {
+    const modes = host.caps.updateModelContext;
+    if (!modes || typeof modes !== 'object') return false;
+    // A host that lists its modalities must list images; one that lists none is taken at its word.
+    return Object.keys(modes).length === 0 || 'image' in modes;
+  }
+  function scheduleSnapshot() {
+    clearTimeout(snapshotTimer);
+    if (takesImages()) snapshotTimer = setTimeout(sendSnapshot, SNAPSHOT_DELAY_MS);
+  }
+  function sendSnapshot() {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (superseded || !data || !w || !h) return;
+    const k = Math.min(1, SNAPSHOT_MAX_PX / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * k)); canvas.height = Math.max(1, Math.round(h * k));
+    let png = '';
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      png = canvas.toDataURL('image/png');
+    } catch { return; } // a tainted or unsupported canvas: the model still has the DSL
+    const base64 = png.slice(png.indexOf(',') + 1);
+    if (!png.startsWith('data:image/png') || !base64) return;
+    const text = `The diagram card "${data.title || 'Diagram'}" as the user sees it (${plural(data.nodes ?? 0, 'node')}, ${plural(data.connectors ?? 0, 'connector')}).`;
+    request('ui/update-model-context', { content: [{ type: 'text', text }, { type: 'image', data: base64, mimeType: 'image/png' }] }).catch(() => {});
+  }
+
   // --- Pan / zoom (CSS transform) -----------------------------------------------------------------
-  const paint = () => { img.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; };
+  const paint = () => { img.style.transform = live.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; };
+  /** The size of what is showing: the streamed preview until the final picture replaces it. */
+  function pictureSize() {
+    const svg = live.hidden ? null : live.firstElementChild;
+    if (svg) return [Number(svg.getAttribute('width')) || 1, Number(svg.getAttribute('height')) || 1];
+    return [img.naturalWidth || 1, img.naturalHeight || 1];
+  }
   function fit() {
-    const w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+    const [w, h] = pictureSize();
     const box = stage.getBoundingClientRect();
     view.k = Math.min(1, (box.width - 32) / w, (box.height - 32) / h) || 1;
     view.x = (box.width - w * view.k) / 2;
@@ -173,6 +424,7 @@
     paint();
   }
   function zoomAt(factor, cx, cy) {
+    view.touched = true;
     const k = Math.min(8, Math.max(0.05, view.k * factor));
     const ratio = k / view.k;
     view.x = cx - (cx - view.x) * ratio;
@@ -197,6 +449,7 @@
   stage.addEventListener('pointermove', (e) => {
     if (!drag) return;
     view.x += e.clientX - drag.x; view.y += e.clientY - drag.y;
+    view.touched = true;
     drag = { x: e.clientX, y: e.clientY };
     paint();
   });
@@ -206,16 +459,16 @@
   stage.addEventListener('keydown', (e) => {
     if (e.key === '+' || e.key === '=') zoomCentre(1.25);
     else if (e.key === '-' || e.key === '_') zoomCentre(0.8);
-    else if (e.key === '0') fit();
+    else if (e.key === '0') { view.touched = false; fit(); }
     else return;
     e.preventDefault();
   });
   $('in').onclick = () => zoomCentre(1.25);
   $('out').onclick = () => zoomCentre(0.8);
-  $('fit').onclick = fit;
-  window.addEventListener('resize', () => { if (data) fit(); });
+  $('fit').onclick = () => { view.touched = false; fit(); };
+  window.addEventListener('resize', () => { if (data || !live.hidden) fit(); });
   let last = '';
-  new ResizeObserver(() => {
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => {
     // The body's own height: documentElement.scrollHeight never drops below the frame, so a card could never shrink.
     const width = Math.ceil(document.documentElement.scrollWidth), height = Math.ceil(document.body.getBoundingClientRect().height);
     if (`${width}x${height}` !== last) { last = `${width}x${height}`; notify('ui/notifications/size-changed', { width, height }); }

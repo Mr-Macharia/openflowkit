@@ -30,9 +30,16 @@ export function BrandLoaderMark(): React.JSX.Element {
   );
 }
 
-/** Where in its loop a loader already on screen is (the HTML one, or the fallback before this). */
+/**
+ * Where in its loop a loader already on screen is (the HTML one, or the fallback before this). One still in its
+ * invisible first 300 ms is not on screen yet: the new one waits out its own, so a fast load never pops one in.
+ */
 function continuedPhaseMs(): number | null {
-  const animation = document.querySelector('.ofk-loader-logo')?.getAnimations?.()[0];
+  const shown = document.querySelector('.ofk-loader');
+  // A screen loader fades its mark, not itself (its ground shows at once): either one still hidden means not on screen yet.
+  const mark = shown?.querySelector('.ofk-loader-mark');
+  if (!shown || Number(getComputedStyle(shown).opacity) < 0.5 || (mark && Number(getComputedStyle(mark).opacity) < 0.5)) return null;
+  const animation = shown.querySelector('.ofk-loader-logo')?.getAnimations?.()[0];
   const progress = animation?.effect?.getComputedTiming().progress;
   return typeof progress === 'number' ? progress * BRAND_LOADER_CYCLE_MS : null;
 }
@@ -41,14 +48,21 @@ function continuedPhaseMs(): number | null {
  * `screen` fills the viewport on the canvas ground (route chunks, redirects); without it the mark
  * sits in a state screen beside its own caption. A loader that replaces another picks up its loop
  * where that one was, so handing over from the HTML to React never restarts or blinks.
+ * `cover` lies over a screen that is still getting ready (above its chrome); `leaving` fades it into that screen.
  */
-export function BrandLoader({ label, screen = false }: { readonly label?: string; readonly screen?: boolean }): React.JSX.Element {
+export function BrandLoader({ label, screen = false, cover = false, leaving = false, ground }: {
+  readonly label?: string; readonly screen?: boolean; readonly cover?: boolean; readonly leaving?: boolean;
+  /** The ground it lies on (a cover takes the editor's canvas colour, so the app's own theme shows, not the OS's). */
+  readonly ground?: string;
+}): React.JSX.Element {
   const [phase] = useState(continuedPhaseMs);
   return (
     <div
       className={screen ? 'ofk-loader ofk-loader-screen' : 'ofk-loader'}
       data-fade={phase === null || undefined}
-      style={phase === null ? undefined : { '--ofk-loader-phase': `${-Math.round(phase)}ms` } as React.CSSProperties}
+      data-cover={cover || undefined}
+      data-leaving={leaving || undefined}
+      style={{ ...(phase === null ? {} : { '--ofk-loader-phase': `${-Math.round(phase)}ms` }), ...(ground ? { background: ground } : {}) } as React.CSSProperties}
       {...(label ? { role: 'status', 'aria-label': label } : { 'aria-hidden': true })}
     >
       <BrandLoaderMark />

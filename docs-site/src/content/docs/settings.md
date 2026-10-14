@@ -1,6 +1,6 @@
 ---
 title: Settings and preferences
-description: Every preference OpenFlowKit keeps — appearance, grid, palette, icons from labels, the agent bridge — and where each one lives.
+description: Every preference OpenFlowKit keeps — appearance, grid, palette, icons from labels, usage stats, the agent bridge — and where each one lives.
 ---
 
 Preferences are stored per browser in `localStorage` under one key and are validated
@@ -18,6 +18,7 @@ Open the canvas menu → **Settings**.
 | Dot grid | On, Off | The canvas grid |
 | Snap to grid | On, Off | Whether drags snap to the grid (hold `⌘`/`Ctrl` to bypass) |
 | Icons from labels | On (default), Off | Generated diagrams put a logo on nodes that name a technology; a diagram's `icons:` line wins — see [Architecture](/diagram-architecture/#icons-from-labels) |
+| Share usage stats (under Privacy) | On (default), Off | Basic usage stats help us improve OpenFlowKit: which features are used, and how often. Your diagrams stay on your device. Off stops them |
 
 ## Elsewhere in the app
 
@@ -27,7 +28,7 @@ Some preferences live with the thing they affect:
 | --- | --- |
 | Canvas background | Camera controls; reset to the theme default |
 | Diagram palette (`pastel`, `paper`, `builder`, `mono`) | The code panel's palette picker; the default for generated frames, and synced from a frame you open with **Edit as code** |
-| Agent bridge port, token, enable | The **Connect agent** panel — see [MCP Server](/mcp-server/) |
+| Agent bridge port, token, enable | The **Connect agent** panel — see [Connect your agent](/connect-your-agent/) |
 | Tag perspectives | The [model panel](/architecture-c4/) — which tags stay bright |
 | Recent emoji | The [emoji picker](/insert-media/), newest first |
 

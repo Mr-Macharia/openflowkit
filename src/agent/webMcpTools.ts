@@ -37,7 +37,7 @@ const USER_CONTENT = new Set(['get_document', 'get_diagram', 'list_diagrams', 'l
 /** Raster animation runs to megabytes: far past what a tool result carries. */
 const MOTION_RASTER = new Set(['gif', 'mp4', 'webm']);
 const pageIdField = z.string().min(1).optional()
-  .describe('Page to act on (see list_pages); defaults to the page the editor shows.');
+  .describe('Page to act on (see list_pages); defaults to the page the editor shows. A repo map page is read from the code: a change for it lands on the map\'s drawing, which the editor shows.');
 /** At most this many on-screen shapes are named; the count says how many there are. */
 const ON_SCREEN_LIMIT = 100;
 

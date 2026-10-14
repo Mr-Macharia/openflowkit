@@ -96,7 +96,8 @@ export function V2InspectPanel(props: V2InspectPanelProps): React.JSX.Element {
           ) : null}
         </>
       )}
-      <p className="sr-only" role="status" aria-live="polite">{status}</p>
+      {/* Seen and heard: a copy has no other feedback. */}
+      <p className="ofk-caption" role="status" aria-live="polite">{status}</p>
     </Panel>
   );
 }

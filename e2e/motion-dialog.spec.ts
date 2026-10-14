@@ -88,17 +88,15 @@ test('animation export previews, scrubs, plays and downloads', { tag: '@local' }
   expect(text).not.toContain('ofk-camera');
 });
 
+// An empty page is turned away before the dialog (2026-10-13 polish, V13): Animate is disabled like Download, and the
+// Export panel says why.
 test('an empty page says so instead of failing', async ({ page }) => {
   await page.goto('/');
   await page.waitForSelector('[data-testid="v2-canvas"]');
   await page.getByRole('button', { name: 'Canvas menu' }).click();
   await page.getByRole('menuitem', { name: 'Export…' }).click();
-  await page.getByRole('button', { name: /Animate this page/ }).click();
-  await expect(page.getByText('Nothing to animate yet')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Download SVG/ })).toBeDisabled();
-  // Esc closes the panel and returns focus to the opener.
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('complementary', { name: 'Animation export' })).toBeHidden();
+  await expect(page.getByRole('button', { name: /Animate this page/ })).toBeDisabled();
+  await expect(page.getByText('Nothing to export here — this page has no shapes.')).toBeVisible();
 });
 
 test('the format hint follows the pick and steps stay a disclosure @gate', async ({ page }) => {

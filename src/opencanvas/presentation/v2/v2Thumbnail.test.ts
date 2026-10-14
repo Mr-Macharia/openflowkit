@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyV2Document } from './v2Document';
 import { buildCanonicalFixtureDocument } from './v2Export.testFixtures';
-import { buildV2Thumbnail, scheduleV2Thumbnail } from './v2Thumbnail';
+import { buildV2Thumbnail, fitThumbnail, scheduleV2Thumbnail } from './v2Thumbnail';
 import type { V2DocumentRepository } from '../../../services/storage/v2/v2Repository';
 
 afterEach(() => vi.useRealTimers());
@@ -17,8 +17,32 @@ describe('buildV2Thumbnail', () => {
     expect(thumbnail!.light).toContain('Client');
   });
 
-  it('has nothing to draw for an empty first page', async () => {
+  it('has nothing to draw when no page has anything on it', async () => {
     expect(await buildV2Thumbnail(createEmptyV2Document('empty'))).toBeNull();
+  });
+
+  it('a repo document (empty map page first) shows its newest drawing, not a blank card (R17)', async () => {
+    const drawn = await buildCanonicalFixtureDocument();
+    const [page] = drawn.pages;
+    const map = { ...page!, id: 'map', name: 'sindresorhus/ky', nodes: [], connectors: [] };
+    const older = { ...page!, id: 'older', name: 'Older', nodes: page!.nodes.filter((node) => !node.content.label?.toString().includes('Client')) };
+    const newest = { ...page!, id: 'newest', name: 'Newest' };
+    const thumbnail = await buildV2Thumbnail({ ...drawn, pages: [map, older, newest] });
+    expect(thumbnail?.light).toContain('Client');
+    expect((await buildV2Thumbnail({ ...drawn, pages: [map, older] }))?.light).not.toContain('Client');
+  });
+});
+
+describe('fitThumbnail', () => {
+  it('keeps the first picture that fits the cap, drawing the plainer one only when needed, else nothing', () => {
+    const big = { light: 'x'.repeat(40), dark: 'y'.repeat(40) };
+    const plain = { light: 'x'.repeat(20), dark: 'y'.repeat(20) };
+    const second = vi.fn(() => plain);
+    expect(fitThumbnail([() => big, second], 100)).toBe(big);
+    expect(second).not.toHaveBeenCalled();
+    expect(fitThumbnail([() => big, second], 50)).toBe(plain);
+    expect(fitThumbnail([() => big, () => plain], 10)).toBeNull();
+    expect(fitThumbnail([() => null, () => plain], 50)).toBe(plain);
   });
 });
 

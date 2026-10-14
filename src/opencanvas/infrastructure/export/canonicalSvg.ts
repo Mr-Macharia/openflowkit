@@ -1,71 +1,38 @@
-import { architectureCardLayout } from '../../domain/nodes/architectureCardLayout';
-import { FONT_STACKS, resolveNodeStyle, type NodeStyle } from '../../domain/nodes/nodeStyle';
-import { resolveNodeVisualStyle, resolveTextVisualStyle } from '@/theme';
-import { nodePaletteName } from '../../domain/nodes/nodePalette';
+import { resolveNodeStyle } from '../../domain/nodes/nodeStyle';
 import type { SceneDocumentV1, SceneNode, ScenePage } from '../../domain/document/types';
-import { boundsFromPoints } from '../../domain/geometry/bounds';
-import { boundsCorners } from '../../domain/geometry/bounds';
-import type { Bounds2d, Matrix2d, Point2d, Size2d } from '../../domain/geometry/types';
-import { resolveBasicNodePresentation, type BasicNodeShape } from '../../domain/nodes/basicNodePresentation';
-import { basicNodeDecorations } from '../../domain/nodes/basicNodeDecorations';
-import { resolveChartPresentation } from '../../domain/nodes/chartNodePresentation';
-import {
-  resolveWidgetInks, resolveWidgetPresentation, widgetBackdrop, type WidgetInk, type WidgetInkPaint, type WidgetPrimitive,
-} from '../../domain/nodes/widgetNodePresentation';
+import { boundsFromPoints, boundsCorners } from '../../domain/geometry/bounds';
+import type { Bounds2d, Matrix2d, Point2d } from '../../domain/geometry/types';
+import { resolveBasicNodePresentation } from '../../domain/nodes/basicNodePresentation';
+import { resolveWidgetInks } from '../../domain/nodes/widgetNodePresentation';
 import { frameChromePrimitives, framePresetOf } from '../../domain/nodes/framePreset';
 import { isBackdropNode, isContainerNodeKind } from '../../domain/nodes/containerNodePresentation';
 import { nodeLabelBounds, nodeOutline } from '../../domain/nodes/nodeLabelBounds';
-import type { ConnectorMarkerGlyph, ProjectedConnector } from '../../domain/connectors/types';
-import { connectorMarkerShapes, markerOutward, type MarkerShape } from '../../domain/connectors/markers';
-import { connectorLabelLineHeight, connectorLabelLines, connectorLabelOnCanvas, connectorLabelPlate } from '../../domain/connectors/labelStyle';
+import { connectorLabelOnCanvas } from '../../domain/connectors/labelStyle';
 import { resolveArchitectureNodePresentation } from '../../domain/nodes/architectureNodePresentation';
-import { architectureIconBounds, iconCardLayout, type IconCardText } from '../../domain/nodes/iconCardLayout';
-import { applyMatrixToPoint } from '../../domain/geometry/matrix';
-import { inkMonochromeSvg, monochromeIconInk, svgDataUrl, svgFromDataUrl } from '../../domain/nodes/iconInk';
-import {
-  resolveFreeformNodePresentation,
-  type AnnotationNodePresentation,
-  type ImageNodePresentation,
-  type StrokeNodePresentation,
-  type TextNodePresentation,
-} from '../../domain/nodes/freeformNodePresentation';
-import { pressureTiltSegmentWidth } from '../../domain/nodes/strokeInput';
-import { smoothStroke } from '../../domain/nodes/strokeGeometry';
+import { iconCardLayout } from '../../domain/nodes/iconCardLayout';
+import { FONT_STACKS } from '../../domain/nodes/nodeStyle';
+import { resolveFreeformNodePresentation } from '../../domain/nodes/freeformNodePresentation';
 import { projectPageConnectors } from '../../domain/connectors/routeProjection';
 import { buildNodeWorldMatrices, nodeWorldBounds } from '../../domain/scene/worldGeometry';
 import { buildNodeStateMap } from '../../domain/scene/nodeState';
 import { descendantIds } from '../../domain/scene/queries';
 import { resolveLabelSizing } from '../../domain/node-sizing/labelWrap';
-import { measurePortableText, SUBLABEL_FONT, truncateTextToWidth } from '../../domain/text/measurement';
-import { SEQUENCE_ACTIVATION_WIDTH, sequenceHeadShape } from '../../domain/nodes/sequenceNodePresentation';
-import { isJsonObject } from '../../domain/document/json';
-import { annotationColors } from '../pixi/freeformNodeVisual';
-import { isSequenceParticipant, sequenceNodeColors } from '../pixi/sequenceNodeVisual';
-import { classEntityNodeColors } from '../pixi/classEntityNodeVisual';
-import { classEntityLayout, CLASS_ENTITY_HEADER_HEIGHT } from '../../domain/nodes/classEntityRows';
+import { isSequenceParticipant } from '../pixi/sequenceNodeVisual';
 import { cameraFitMatrix } from '../../domain/animation/camera';
-import { PULSE_DASH, PULSE_TRAVEL } from '../../domain/animation/frame';
 import type { ElementFrameState, FrameState } from '../../domain/animation/types';
+import {
+  ANIMATED_CLASS, cssAnimation, connectorPathDash, elementFrameStyle, matrixAttribute, matrixCss, nodeGroup, number, pathData, safeColor,
+  SVG_BACKGROUND, textElement, xml, type CssAnimation, type ElementAnimations,
+} from './svgMarkup';
+import { iconDefs, iconMarkup, type IconSheet } from './svgIcons';
+import { exportAnnotationNode, exportImageNode, exportStrokeNode, exportTextNode } from './svgFreeformNodes';
+import { exportChartNode, exportWidgetNode, widgetPrimitivesMarkup } from './svgChartWidgetNodes';
+import { exportArchitectureCard, exportClassEntityNode, exportSequenceNode } from './svgDiagramNodes';
+import { decorationMarkup, iconCaptionMarkup, labelElement, outlineMarkup } from './svgNodeText';
+import { connectorLabelMarkup, connectorPathData, markerMarkup } from './svgConnectors';
 
-// Dark matches the app's dark canvas (tokens.ts darkColors.canvas), so an export looks like the screen.
-export const SVG_BACKGROUND = { light: '#ffffff', dark: '#191b19' } as const;
-
-/** One CSS animation on an exported element; the keyframes live in `<style>`. */
-export interface CssAnimation {
-  readonly name: string;
-  readonly durationMs: number;
-  readonly delayMs: number;
-  /** `both` holds the final keyframe; `backwards` reverts to the base look. */
-  readonly fill?: 'both' | 'backwards' | 'none';
-  readonly timing?: string;
-  readonly iterationCount?: number | 'infinite';
-}
-
-export interface ElementAnimations {
-  readonly group?: CssAnimation;
-  /** Connector draw-on (a unit dash on `pathLength="1"`) or pulse's travelling dash (pixels). */
-  readonly path?: CssAnimation & { readonly dash: string; readonly unitLength?: boolean };
-}
+export { collectIconArt, iconArtKey } from './svgIcons';
+export { ANIMATED_CLASS, matrixCss, scaleAbout, SVG_BACKGROUND, type CssAnimation, type ElementAnimations } from './svgMarkup';
 
 export interface CanonicalSvgExportOptions {
   readonly pageId?: string;
@@ -94,658 +61,13 @@ export interface CanonicalSvgExportOptions {
   readonly iconArt?: Readonly<Record<string, string>>;
 }
 
-export function iconArtKey(packId: string, shapeId: string): string {
-  return `${packId}:${shapeId}`;
-}
-
-/**
- * Every provider icon the document draws, loaded once each by the host's `load`
- * (the editor fetches its bundled art, the MCP server reads its data files).
- * An icon whose load fails or returns null exports as its plate alone.
- */
-export async function collectIconArt(
-  document: SceneDocumentV1,
-  load: (packId: string, shapeId: string) => Promise<string | null>,
-): Promise<Record<string, string>> {
-  const wanted = new Map<string, { packId: string; shapeId: string }>();
-  for (const node of document.pages.flatMap((page) => page.nodes)) {
-    const icon = resolveArchitectureNodePresentation(node)?.icon;
-    if (icon?.kind === 'provider') wanted.set(iconArtKey(icon.packId, icon.shapeId), icon);
-  }
-  const entries = await Promise.all([...wanted].map(async ([key, { packId, shapeId }]) =>
-    [key, await load(packId, shapeId).catch(() => null)] as const));
-  return Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry[1] !== null));
-}
-
-/** The icon on an architecture node as an `<image>` at the canvas's position, or ''. On a dark plate a one-colour dark icon takes the canvas's ink. */
-function iconMarkup(node: SceneNode, iconArt: CanonicalSvgExportOptions['iconArt'], style?: NodeStyle, background?: string): string {
-  const presentation = resolveArchitectureNodePresentation(node);
-  if (!presentation) return '';
-  const { icon } = presentation;
-  const art = icon.kind === 'provider' ? iconArt?.[iconArtKey(icon.packId, icon.shapeId)]
-    : icon.kind === 'url' && icon.url.startsWith('data:image/') ? icon.url : undefined;
-  if (!art) return '';
-  const ink = style && background ? monochromeIconInk(presentation.display, style, background) : null;
-  const svg = ink ? svgFromDataUrl(art) : null;
-  const inked = svg && ink ? inkMonochromeSvg(svg, ink) : null;
-  const href = inked ? svgDataUrl(inked) : art;
-  const box = architectureIconBounds(node, presentation.display);
-  return `<image href="${xml(href)}" x="${number(box.x)}" y="${number(box.y)}" width="${number(box.width)}" height="${number(box.height)}" preserveAspectRatio="xMidYMid meet"/>`;
-}
-
-export const ANIMATED_CLASS = 'ofk-anim';
-
-function number(value: number): string {
-  return Number(value.toFixed(3)).toString();
-}
-
-// Characters XML 1.0 forbids outright (control characters such as PowerPoint's soft break \u000B,
-// lone surrogates, U+FFFE/U+FFFF): one in a label would make the whole file unreadable.
-// eslint-disable-next-line no-control-regex -- matching them is the point
-const XML_ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
-function xml(value: unknown): string {
-  return String(value ?? '').replace(XML_ILLEGAL, '').replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-  })[character]!);
-}
-
-function safeColor(value: unknown, fallback: string): string {
-  return typeof value === 'string' && /^(?:#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(value)
-    ? value : fallback;
-}
-
-/** `fill` (+ `fill-opacity` for an rgba wash): SVG consumers differ on rgba() attribute values. */
-function fillAttributes(value: unknown, fallback: string): string {
-  const wash = typeof value === 'string' ? value.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/) : null;
-  if (!wash) return `fill="${safeColor(value, fallback)}"`;
-  const hex = [wash[1], wash[2], wash[3]].map((part) => Number(part).toString(16).padStart(2, '0')).join('');
-  return `fill="#${hex}" fill-opacity="${number(Number(wash[4]))}"`;
-}
-
-function matrixAttribute(matrix: Matrix2d): string {
-  return `matrix(${number(matrix.a)} ${number(matrix.b)} ${number(matrix.c)} ${number(matrix.d)} ${number(matrix.tx)} ${number(matrix.ty)})`;
-}
-
-/**
- * The same matrix as a CSS `transform` value. One formatter for the still and
- * the animated keyframes: identical strings, identical rendering.
- */
-export function matrixCss(matrix: Matrix2d): string {
-  return `matrix(${number(matrix.a)}, ${number(matrix.b)}, ${number(matrix.c)}, ${number(matrix.d)}, ${number(matrix.tx)}, ${number(matrix.ty)})`;
-}
-
-function cssAnimation(animation: CssAnimation): string {
-  const iteration = animation.iterationCount === undefined ? '1' : String(animation.iterationCount);
-  return `animation:${animation.name} ${number(animation.durationMs)}ms ${animation.timing ?? 'linear'} ${number(animation.delayMs)}ms ${iteration} ${animation.fill ?? 'both'}`;
-}
-
-/**
- * Scale about a point, as a CSS transform list. The wrapper sits inside the
- * node's group, so the point is node-local — no reference box, no origin
- * property, and the node's stroke is never clipped by a layer.
- */
-export function scaleAbout(center: Point2d, scale: number): string {
-  return `translate(${number(center.x)}px,${number(center.y)}px) scale(${number(scale)}) translate(${number(-center.x)}px,${number(-center.y)}px)`;
-}
-
-/**
- * The visible state of one element at a paused frame, as CSS on a wrapper
- * group. The animated export animates the same properties on the same group,
- * so a still and the animated SVG paused at the same time cannot drift.
- */
-function elementFrameStyle(
-  kind: 'node' | 'connector',
-  id: string,
-  state: ElementFrameState | undefined,
-  size: Size2d | undefined,
-  animations: CanonicalSvgExportOptions['animations']
-): { readonly className: string; readonly style: string } | null {
-  const animation = animations?.(kind, id)?.group;
-  const declarations: string[] = [];
-  if (animation) declarations.push(cssAnimation(animation));
-  if (state && state.opacity < 1) declarations.push(`opacity:${number(state.opacity)}`);
-  if (kind === 'node' && (animation || (state && state.scale !== 1))) {
-    declarations.push('transform-origin:0 0');
-  }
-  if (kind === 'node' && state && state.scale !== 1 && size) {
-    declarations.push(`transform:${scaleAbout({ x: size.width / 2, y: size.height / 2 }, state.scale)}`);
-  }
-  if (declarations.length === 0) return null;
-  return {
-    className: animation ? ` class="${ANIMATED_CLASS}"` : '',
-    style: ` style="${declarations.join(';')}"`,
-  };
-}
-
-/** Dash state a paused frame needs on the connector path, if any. */
-function connectorPathDash(state: ElementFrameState | undefined): string {
-  if (!state) return '';
-  if (state.pulsePhase !== undefined) {
-    return ` stroke-dasharray="${PULSE_DASH.join(' ')}" stroke-dashoffset="${number(-state.pulsePhase * PULSE_TRAVEL)}"`;
-  }
-  if (state.drawProgress < 1) {
-    return ` pathLength="1" stroke-dasharray="1" stroke-dashoffset="${number(1 - state.drawProgress)}"`;
-  }
-  return '';
-}
-
-function pathData(points: readonly Point2d[]): string {
-  return points.map((point, index) => `${index ? 'L' : 'M'}${number(point.x)} ${number(point.y)}`).join(' ') + ' Z';
-}
-
-function openPathData(points: readonly Point2d[]): string {
-  return points
-    .map((point, index) => `${index ? 'L' : 'M'}${number(point.x)} ${number(point.y)}`)
-    .join(' ');
-}
-
-function strokePath(
-  data: string,
-  color: string,
-  width: number,
-  opacity: number
-): string {
-  return `<path d="${data}" fill="none" stroke="${color}" stroke-width="${number(width)}" opacity="${number(opacity)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-}
-
-function arrowHeadPath(presentation: StrokeNodePresentation): string {
-  if (presentation.kind !== 'arrow') return '';
-  const end = presentation.points.at(-1);
-  const previous = presentation.points.at(-2);
-  if (!end || !previous) return '';
-  const angle = Math.atan2(end.y - previous.y, end.x - previous.x);
-  const length = Math.max(8, presentation.width * 3);
-  const left = {
-    x: end.x - Math.cos(angle - Math.PI / 6) * length,
-    y: end.y - Math.sin(angle - Math.PI / 6) * length,
-  };
-  const right = {
-    x: end.x - Math.cos(angle + Math.PI / 6) * length,
-    y: end.y - Math.sin(angle + Math.PI / 6) * length,
-  };
-  return `M${number(left.x)} ${number(left.y)} L${number(end.x)} ${number(end.y)} L${number(right.x)} ${number(right.y)}`;
-}
-
-/** Node group with the paused-frame wrapper inside it, so CSS animates the art
- *  while the world transform stays a plain attribute. */
-function nodeGroup(attributes: string, body: string, frame: { readonly className: string; readonly style: string } | null): string {
-  return frame
-    ? `<g ${attributes}><g${frame.className}${frame.style}>${body}</g></g>`
-    : `<g ${attributes}>${body}</g>`;
-}
-
-function exportStrokeNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  presentation: StrokeNodePresentation,
-  frame: { readonly className: string; readonly style: string } | null
-): string {
-  const color = safeColor(presentation.color, '#334155');
-  const inputSamples = presentation.inputSamples;
-  const smoothed = inputSamples || (presentation.kind !== 'pen' && presentation.kind !== 'highlighter')
-    ? presentation.points : smoothStroke(presentation.points);
-  const paths = inputSamples
-    ? presentation.points.slice(1).map((point, index) => strokePath(
-        openPathData([presentation.points[index], point]),
-        color,
-        pressureTiltSegmentWidth(
-          presentation.width,
-          inputSamples[index],
-          inputSamples[index + 1]
-        ),
-        presentation.opacity
-      )).join('')
-    : strokePath(
-        openPathData(smoothed),
-        color,
-        presentation.width,
-        presentation.opacity
-      );
-  const arrowHead = arrowHeadPath({ ...presentation, points: smoothed });
-  return nodeGroup(
-    `data-node-id="${xml(node.id)}" data-node-kind="${presentation.kind}" transform="${matrixAttribute(matrix)}"`,
-    paths + (arrowHead ? strokePath(arrowHead, color, presentation.width, presentation.opacity) : ''),
-    frame
-  );
-}
-
-function textElement(
-  value: string,
-  x: number,
-  y: number,
-  attributes: string,
-  lineHeight: number
-): string {
-  const lines = value.split(/\r?\n/).slice(0, 32);
-  const spans = lines.map((line, index) => (
-    `<tspan x="${number(x)}" dy="${index === 0 ? 0 : number(lineHeight)}">${xml(line)}</tspan>`
-  )).join('');
-  return `<text x="${number(x)}" y="${number(y)}" ${attributes}>${spans}</text>`;
-}
-
-function exportTextNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  presentation: TextNodePresentation,
-  theme: 'light' | 'dark' | 'print',
-  frame: { readonly className: string; readonly style: string } | null
-): string {
-  const colors = resolveTextVisualStyle(
-    presentation.colorKey,
-    'subtle',
-    presentation.customColor,
-    'slate',
-    nodePaletteName(node)
-  );
-  const background = presentation.backgroundColor
-    ? `<rect width="${number(node.size.width)}" height="${number(node.size.height)}" rx="8" fill="${safeColor(presentation.backgroundColor, '#ffffff')}" stroke="${safeColor(colors.border, '#94a3b8')}"/>`
-    : '';
-  const color = safeColor(
-    node.content.textColor,
-    theme === 'dark' && !presentation.backgroundColor ? '#f8fafc' : colors.text
-  );
-  const text = textElement(
-    presentation.label,
-    node.size.width / 2,
-    node.size.height / 2,
-    `text-anchor="middle" dominant-baseline="middle" fill="${color}" font-family="${xml(presentation.fontFamily)}" font-size="${number(presentation.fontSizePx)}" font-weight="${xml(presentation.fontWeight)}" font-style="${xml(presentation.fontStyle)}"`,
-    presentation.fontSizePx * 1.25
-  );
-  return nodeGroup(
-    `data-node-id="${xml(node.id)}" data-node-kind="text" transform="${matrixAttribute(matrix)}"`,
-    background + text,
-    frame
-  );
-}
-
-function exportImageNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  presentation: ImageNodePresentation,
-  theme: 'light' | 'dark' | 'print',
-  frame: { readonly className: string; readonly style: string } | null
-): string {
-  const background = theme === 'dark' ? '#1e293b' : '#fff7ed';
-  const media = presentation.sourceUrl
-    ? `<image href="${xml(presentation.sourceUrl)}" width="${number(node.size.width)}" height="${number(node.size.height)}" opacity="${number(presentation.opacity)}" preserveAspectRatio="xMidYMid meet"/>`
-    : textElement(
-        presentation.label || 'No Image',
-        node.size.width / 2,
-        node.size.height / 2,
-        `text-anchor="middle" dominant-baseline="middle" fill="${theme === 'dark' ? '#f8fafc' : '#9a3412'}" font-family="system-ui,sans-serif" font-size="12" font-weight="600"`,
-        15
-      );
-  return nodeGroup(
-    `data-node-id="${xml(node.id)}" data-node-kind="image" transform="${matrixAttribute(matrix)}"`,
-    `<rect width="${number(node.size.width)}" height="${number(node.size.height)}" rx="8" fill="${background}" stroke="#e95420"/>${media}`,
-    frame
-  );
-}
-
-function exportAnnotationNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  presentation: AnnotationNodePresentation,
-  theme: 'light' | 'dark' | 'print',
-  frame: { readonly className: string; readonly style: string } | null
-): string {
-  const colors = annotationColors(node, presentation, theme === 'dark' ? SVG_BACKGROUND.dark : undefined);
-  const foldSize = Math.min(28, node.size.width / 4, node.size.height / 3);
-  const fold = pathData([
-    { x: node.size.width - foldSize, y: node.size.height },
-    { x: node.size.width, y: node.size.height - foldSize },
-    { x: node.size.width, y: node.size.height },
-  ]);
-  const title = presentation.title
-    ? textElement(
-        presentation.title,
-        12,
-        22,
-        `fill="${safeColor(colors.titleText, '#713f12')}" font-family="system-ui,sans-serif" font-size="14" font-weight="700"`,
-        17
-      )
-    : '';
-  const body = textElement(
-    presentation.body,
-    12,
-    presentation.title ? 46 : 24,
-    `fill="${safeColor(colors.bodyText, '#854d0e')}" font-family="system-ui,sans-serif" font-size="12" font-weight="500"`,
-    15
-  );
-  return nodeGroup(
-    `data-node-id="${xml(node.id)}" data-node-kind="${presentation.kind}" transform="${matrixAttribute(matrix)}"`,
-    `<rect width="${number(node.size.width)}" height="${number(node.size.height)}" rx="8" fill="${safeColor(colors.containerBg, '#fef9c3')}" stroke="${safeColor(colors.containerBorder, '#eab308')}" stroke-width="1.5"/><path d="${fold}" fill="${safeColor(colors.foldBg, '#fef08a')}" stroke="${safeColor(colors.foldBorder, '#ca8a04')}"/>${title}${body}`,
-    frame
-  );
-}
-
-function connectorPathData(commands: ReturnType<typeof projectPageConnectors>[number]['commands']): string {
-  return commands.map((command) => command.kind === 'cubic'
-    ? `C${number(command.control1.x)} ${number(command.control1.y)} ${number(command.control2.x)} ${number(command.control2.y)} ${number(command.point.x)} ${number(command.point.y)}`
-    : `${command.kind === 'move' ? 'M' : 'L'}${number(command.point.x)} ${number(command.point.y)}`
-  ).join(' ');
-}
-
-const SUB_LABEL_SIZE = SUBLABEL_FONT.fontSize;
-
-/** The font attributes of a node's label text, as the canvas styles it. */
-function labelAttributes(style: NodeStyle): string {
-  const common = `fill="${style.textColor}" font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="${number(style.fontSize)}" font-weight="${style.fontWeight}"`;
-  const decoration = style.textDecoration === 'none' ? '' : ` text-decoration="${style.textDecoration}"`;
-  const styleAttr = style.fontStyle === 'normal' ? common : `${common} font-style="italic"`;
-  const spacing = style.letterSpacing === 0 ? '' : ` letter-spacing="${number(style.letterSpacing * style.fontSize)}"`;
-  return `${styleAttr}${decoration}${spacing}`;
-}
-
-/** An icon card's caption, one `<tspan>` per line of the layout the canvas draws, so both break and align alike. */
-function iconCaptionMarkup(text: IconCardText | null, style: NodeStyle): string {
-  if (!text) return '';
-  const lines = (rows: readonly string[], top: number, height: number) => rows
-    .map((line, index) => `<tspan x="${number(text.x)}" y="${number(top + (index + 0.5) * height)}">${xml(line)}</tspan>`).join('');
-  return (text.lines.length ? `<text text-anchor="${text.anchor}" dominant-baseline="middle" ${labelAttributes(style)}>${lines(text.lines, text.top, text.lineHeight)}</text>` : '')
-    + (text.subLines.length ? `<text text-anchor="${text.anchor}" dominant-baseline="middle" fill="${style.textColor}" font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="${SUB_LABEL_SIZE}" font-weight="400" opacity="0.72">${lines(text.subLines, text.subTop, text.subLineHeight)}</text>` : '');
-}
-
-// The label sits in `nodeLabelBounds`, the rect the Pixi renderers and the DOM
-// editor use: a frame's title band, the canvas below an icon plate, a shape's inset.
-function labelElement(style: NodeStyle, box: Bounds2d, label: string, subLabel: string, clipId: string | null, node: SceneNode): string {
-  const padding = style.textPadding;
-  const x = style.textAlign === 'start' ? box.x + padding
-    : style.textAlign === 'end' ? box.x + box.width - padding : box.x + box.width / 2;
-  const anchor = style.textAlign === 'start' ? 'start' : style.textAlign === 'end' ? 'end' : 'middle';
-  const baseline = style.textVerticalAlign === 'top' ? 'hanging' : style.textVerticalAlign === 'bottom' ? 'auto' : 'middle';
-  // Label and sub-label wrap like the canvas draws them (PixiNodeRenderer): the node's width less
-  // padding, its sizing policy's line cap and overflow; the sub-label is 11px/400.
-  const sizing = resolveLabelSizing(node, style);
-  const wrapped = sizing.overflow !== 'visible';
-  const wrap = !wrapped ? {}
-    : { maxWidth: Math.max(1, node.size.width - padding * 2), maxLines: sizing.maxLines, overflow: sizing.overflow };
-  const labelLines = !wrapped ? [label] : measurePortableText(label, {
-    fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.fontSize * style.lineHeight, ...wrap,
-  }).lines;
-  const subLines = subLabel ? measurePortableText(subLabel, {
-    ...SUBLABEL_FONT, lineHeight: SUB_LABEL_SIZE * 1.2,
-    ...wrap,
-  }).lines : [];
-  // Label and sub-label stack as one block, 4px apart, like `layoutNodeContent`.
-  const lineHeight = style.fontSize * style.lineHeight;
-  const stacked = subLines.length > 0 || labelLines.length > 1;
-  const labelHeight = labelLines.length * lineHeight;
-  const blockHeight = stacked ? labelHeight + (subLines.length ? 4 + subLines.length * SUB_LABEL_SIZE * 1.2 : 0) : 0;
-  const blockTop = style.textVerticalAlign === 'top' ? box.y + padding
-    : style.textVerticalAlign === 'bottom' ? box.y + box.height - padding - blockHeight
-      : box.y + (box.height - blockHeight) / 2;
-  const y = stacked ? blockTop + lineHeight / 2
-    : style.textVerticalAlign === 'top' ? box.y + padding
-      : style.textVerticalAlign === 'bottom' ? box.y + box.height - padding
-        : box.y + box.height / 2;
-  const subY = (line: number) => blockTop + labelHeight + 4 + (line + 0.5) * SUB_LABEL_SIZE * 1.2;
-  const stretch = clipId ? ` clip-path="url(#${clipId})"` : '';
-  return `<g${stretch}>`
-    + `<text x="${number(x)}" y="${number(y)}" text-anchor="${anchor}" dominant-baseline="${stacked ? 'middle' : baseline}" ${labelAttributes(style)}>${labelLines.length > 1
-      ? labelLines.map((line, index) => `<tspan x="${number(x)}" y="${number(y + index * lineHeight)}">${xml(line)}</tspan>`).join('') : xml(label)}</text>`
-    + (subLines.length ? `<text text-anchor="${anchor}" dominant-baseline="middle" fill="${style.textColor}" font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="${SUB_LABEL_SIZE}" font-weight="400" opacity="0.72">${subLines.map((line, index) => `<tspan x="${number(x)}" y="${number(subY(index))}">${xml(line)}</tspan>`).join('')}</text>` : '')
-    + '</g>';
-}
-
-function outlineMarkup(
-  outline: readonly Point2d[],
-  style: NodeStyle,
-  filter: string
-): string {
-  const fill = style.fill;
-  const stroke = style.strokeWidth > 0 ? style.stroke : 'none';
-  const dash = style.dash.length ? ` stroke-dasharray="${style.dash.map(number).join(' ')}"` : '';
-  const rect = outline.length === 4 ? plainRect(outline) : null;
-  const shape = rect
-    ? `<rect x="${number(rect.x)}" y="${number(rect.y)}" width="${number(rect.width)}" height="${number(rect.height)}"${style.cornerRadius > 0 ? ` rx="${number(style.cornerRadius)}"` : ''} fill="${fill}" stroke="${stroke}" stroke-width="${number(style.strokeWidth)}"${dash}${filter}/>`
-    : `<path d="${pathData(outline)}" fill="${fill}" stroke="${stroke}" stroke-width="${number(style.strokeWidth)}"${dash}${filter}/>`;
-  return shape;
-}
-
-/** Axis-aligned rectangle when the outline is one, so `rx` can round it. */
-function plainRect(outline: readonly Point2d[]): { x: number; y: number; width: number; height: number } | null {
-  const xs = [...new Set(outline.map(({ x }) => Math.round(x * 1000) / 1000))].sort((a, b) => a - b);
-  const ys = [...new Set(outline.map(({ y }) => Math.round(y * 1000) / 1000))].sort((a, b) => a - b);
-  if (xs.length !== 2 || ys.length !== 2) return null;
-  return { x: xs[0]!, y: ys[0]!, width: xs[1]! - xs[0]!, height: ys[1]! - ys[0]! };
-}
-
-// Charts draw exactly what the presentation says, in the same order as Pixi.
-function exportChartNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  theme: 'light' | 'dark' | 'print',
-  frame: { readonly className: string; readonly style: string } | null
-): string | null {
-  const presentation = resolveChartPresentation(node);
-  if (!presentation) return null;
-  const style = resolveNodeStyle(node, theme === 'dark' ? SVG_BACKGROUND.dark : SVG_BACKGROUND.light);
-  const textColor = style.textColor === 'transparent' ? '#334155' : style.textColor;
-  const parts: string[] = [];
-  // Points are already in world space, so the card is drawn there too and the
-  // group carries no transform.
-  const corners = [
-    { x: 0, y: 0 }, { x: node.size.width, y: 0 },
-    { x: node.size.width, y: node.size.height }, { x: 0, y: node.size.height },
-  ].map((point) => applyMatrixToPoint(matrix, point));
-  const cardStroke = style.strokeWidth > 0 && style.stroke !== 'transparent'
-    ? ` stroke="${xml(style.stroke)}" stroke-width="${number(style.strokeWidth)}"` : '';
-  parts.push(`<path d="${pathData(corners)}" fill="${xml(style.fill)}"${cardStroke}/>`);
-  for (const mark of presentation.marks) {
-    const points = mark.points.map((point) => applyMatrixToPoint(matrix, point));
-    if (mark.kind === 'bar' || mark.kind === 'cell' || mark.kind === 'swatch') {
-      const [first, second] = points;
-      if (!first || !second) continue;
-      parts.push(`<rect x="${number(first.x)}" y="${number(first.y)}" width="${number(second.x - first.x)}" height="${number(second.y - first.y)}"${mark.kind === 'swatch' ? ' rx="2"' : ''} fill="${xml(mark.color)}" fill-opacity="${number(mark.opacity)}"${mark.kind === 'cell' ? ` stroke="${xml(style.fill)}" stroke-opacity="0.6"` : ''}/>`);
-    } else if (mark.kind === 'point') {
-      for (const point of points) {
-        parts.push(`<circle cx="${number(point.x)}" cy="${number(point.y)}" r="3.5" fill="${xml(mark.color)}" fill-opacity="${number(mark.opacity)}"/>`);
-      }
-    } else if (mark.kind === 'line') {
-      parts.push(`<path d="${openPathData(points)}" fill="none" stroke="${xml(mark.color)}" stroke-width="2" stroke-opacity="${number(mark.opacity)}" stroke-linejoin="round"/>`);
-    } else {
-      parts.push(`<path d="${pathData(points)}" fill="${xml(mark.color)}" fill-opacity="${number(mark.opacity)}"${mark.kind === 'area' ? ` stroke="${xml(mark.color)}" stroke-width="1.5"` : ''}/>`);
-    }
-  }
-  for (const rule of presentation.rules) {
-    parts.push(`<path d="${openPathData(rule.map((point) => applyMatrixToPoint(matrix, point)))}" fill="none" stroke="${xml(textColor)}" stroke-opacity="0.2" stroke-width="1"/>`);
-  }
-  if (presentation.table) {
-    const { columns, rows } = presentation.table;
-    const top = rows[0]!;
-    const bottom = rows[rows.length - 1]!;
-    const left = columns[0]!;
-    const right = columns[columns.length - 1]!;
-    const line = (x1: number, y1: number, x2: number, y2: number) =>
-      `<path d="${openPathData([applyMatrixToPoint(matrix, { x: x1, y: y1 }), applyMatrixToPoint(matrix, { x: x2, y: y2 })])}" stroke="${xml(textColor)}" stroke-opacity="0.2" stroke-width="1" fill="none"/>`;
-    for (const x of columns) parts.push(line(x, top, x, bottom));
-    for (const y of rows) parts.push(line(left, y, right, y));
-    const header = applyMatrixToPoint(matrix, { x: left, y: top });
-    const headerCorner = applyMatrixToPoint(matrix, { x: right, y: rows[1]! });
-    parts.push(`<rect x="${number(header.x)}" y="${number(header.y)}" width="${number(headerCorner.x - header.x)}" height="${number(headerCorner.y - header.y)}" fill="${xml(textColor)}" fill-opacity="0.06"/>`);
-  }
-  for (const label of presentation.labels) {
-    if (!label.text) continue;
-    const at = applyMatrixToPoint(matrix, label.at);
-    const anchor = label.anchor === 'start' ? 'start' : label.anchor === 'end' ? 'end' : 'middle';
-    const size = label.role === 'title' ? style.fontSize + 2 : 11;
-    parts.push(`<text x="${number(at.x)}" y="${number(at.y)}" text-anchor="${anchor}" dominant-baseline="middle" fill="${xml(label.color ?? textColor)}" font-family="system-ui,sans-serif" font-size="${number(size)}">${xml(label.text)}</text>`);
-  }
-  return nodeGroup(`data-node-id="${xml(node.id)}" data-node-kind="chart"`, parts.join(''), frame);
-}
-
-// Widgets and frame chrome: the same primitives Pixi paints, node-local, so the
-// group carries the node matrix.
-function widgetPrimitivesMarkup(
-  primitives: readonly WidgetPrimitive[],
-  inks: Readonly<Record<WidgetInk, WidgetInkPaint>>,
-  style: NodeStyle
-): string {
-  const paint = (primitive: Exclude<WidgetPrimitive, { kind: 'text' }>): string => {
-    const opacity = primitive.opacity ?? 1;
-    const fill = primitive.fill ? inks[primitive.fill] : null;
-    const stroke = primitive.stroke ? inks[primitive.stroke] : null;
-    const width = primitive.strokeWidth ?? style.strokeWidth;
-    return (fill ? ` fill="${xml(fill.color)}"${fill.alpha * opacity < 1 ? ` fill-opacity="${number(fill.alpha * opacity)}"` : ''}` : ' fill="none"')
-      + (stroke && width > 0
-        ? ` stroke="${xml(stroke.color)}" stroke-width="${number(width)}"${stroke.alpha * opacity < 1 ? ` stroke-opacity="${number(stroke.alpha * opacity)}"` : ''} stroke-linecap="round" stroke-linejoin="round"`
-        : '');
-  };
-  return primitives.map((primitive) => {
-    if (primitive.kind === 'text') {
-      if (!primitive.text) return '';
-      const ink = inks[primitive.ink];
-      return `<text x="${number(primitive.x)}" y="${number(primitive.y)}" text-anchor="${primitive.anchor}" dominant-baseline="middle" fill="${xml(ink.color)}"${ink.alpha < 1 ? ` fill-opacity="${number(ink.alpha)}"` : ''} font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="${number(primitive.size)}" font-weight="${primitive.weight}">${xml(primitive.text)}</text>`;
-    }
-    if (primitive.kind === 'rect') {
-      if (primitive.width <= 0 || primitive.height <= 0) return '';
-      const radius = Math.min(primitive.radius, primitive.width / 2, primitive.height / 2);
-      return `<rect x="${number(primitive.x)}" y="${number(primitive.y)}" width="${number(primitive.width)}" height="${number(primitive.height)}"${radius > 0 ? ` rx="${number(radius)}"` : ''}${paint(primitive)}/>`;
-    }
-    if (primitive.kind === 'circle') {
-      return primitive.radius > 0 ? `<circle cx="${number(primitive.x)}" cy="${number(primitive.y)}" r="${number(primitive.radius)}"${paint(primitive)}/>` : '';
-    }
-    if (primitive.points.length < 2) return '';
-    return `<path d="${primitive.closed ? pathData(primitive.points) : openPathData(primitive.points)}"${paint(primitive)}/>`;
-  }).join('');
-}
-
-function exportWidgetNode(
-  node: SceneNode,
-  matrix: Matrix2d,
-  theme: 'light' | 'dark' | 'print',
-  frame: { readonly className: string; readonly style: string } | null,
-  parentOf: (id: string) => SceneNode | undefined
-): string | null {
-  const presentation = resolveWidgetPresentation(node);
-  if (!presentation) return null;
-  const background = theme === 'dark' ? SVG_BACKGROUND.dark : SVG_BACKGROUND.light;
-  const style = resolveNodeStyle(node, background);
-  return nodeGroup(
-    `data-node-id="${xml(node.id)}" data-node-kind="widget" transform="${matrixAttribute(matrix)}"${style.opacity < 1 ? ` opacity="${number(style.opacity)}"` : ''}`,
-    widgetPrimitivesMarkup(presentation.primitives, resolveWidgetInks(node, style, widgetBackdrop(node, parentOf, background)), style),
-    frame
-  );
-}
-
-/** Semantic C4 cards use the same header, title and metadata as the canvas. */
-function exportArchitectureCard(node: SceneNode, matrix: Matrix2d, style: NodeStyle, wrapper: ReturnType<typeof elementFrameStyle>, iconArt: CanonicalSvgExportOptions['iconArt']): string | null {
-  const presentation = resolveArchitectureNodePresentation(node);
-  if (presentation?.display !== 'architecture-card') return null;
-  const font = `fill="${style.textColor}" font-family="${xml(FONT_STACKS[style.fontFamily])}"`;
-  const subFont = style.subTextColor ? `fill="${safeColor(style.subTextColor, '#cbd5e1')}" font-family="${xml(FONT_STACKS[style.fontFamily])}"` : font;
-  const layout = architectureCardLayout(node, style);
-  // As the canvas draws it: on a dark wash the header takes the card's hue and the icon keeps a light tile.
-  const washed = Boolean(style.subTextColor);
-  const icon = architectureIconBounds(node, 'architecture-card');
-  const tile = washed
-    ? `<rect x="${number(icon.x)}" y="${number(icon.y)}" width="${number(icon.width)}" height="${number(icon.height)}" rx="6" fill="${safeColor(resolveNodeVisualStyle(presentation.colorKey, presentation.colorMode, presentation.customColor, nodePaletteName(node)).iconBg, '#f1f5f9')}"/>`
-    : '';
-  return nodeGroup(`data-node-id="${xml(node.id)}" transform="${matrixAttribute(matrix)}"`,
-    `<rect width="${number(node.size.width)}" height="${number(node.size.height)}" rx="${number(style.cornerRadius)}" ${fillAttributes(style.fill, '#f8fafc')} stroke="${safeColor(style.stroke, '#cbd5e1')}" stroke-width="${number(style.strokeWidth)}"/>`
-    + `<rect x="10" y="8" width="${number(node.size.width - 20)}" height="26" rx="7" fill="${safeColor(style.stroke, '#cbd5e1')}" opacity="${washed ? '0.3' : '0.12'}"/>`
-    + tile
-    + textElement(layout.provider.displayText, 38, 15, `${subFont} font-size="10" font-weight="700" dominant-baseline="hanging"`, 12)
-    + textElement(layout.resource.displayText, node.size.width - 16, 15, `${subFont} font-size="10" font-weight="600" text-anchor="end" dominant-baseline="hanging"`, 12)
-    + textElement(layout.title.displayText, layout.titleX, layout.titleY, `${font} font-size="${number(style.fontSize)}" font-weight="${style.fontWeight}" dominant-baseline="hanging"`, style.fontSize * style.lineHeight)
-    + textElement(layout.detail.displayText, 12, layout.detailY, `${subFont} font-size="10" font-weight="500" dominant-baseline="hanging"`, 12)
-    + iconMarkup(node, iconArt), wrapper);
-}
-
-/** Sequence participants and notes, drawn as PixiSequenceNodeRenderer draws them (same geometry, same ink). */
-function exportSequenceNode(node: SceneNode, matrix: Matrix2d, theme: 'light' | 'dark' | 'print', wrapper: ReturnType<typeof elementFrameStyle>): string | null {
-  const colors = sequenceNodeColors(node, theme === 'dark' ? SVG_BACKGROUND.dark : undefined);
-  const presentation = colors?.presentation;
-  if (!colors || !presentation) return null;
-  const ink = `stroke="${colors.stroke}"`;
-  const font = `font-family="${xml(FONT_STACKS.sans)}"`;
-  const group = (body: string) => nodeGroup(`data-node-id="${xml(node.id)}" transform="${matrixAttribute(matrix)}"`, body, wrapper);
-  const { width, height } = node.size;
-  if (presentation.kind === 'sequence_fragment') {
-    // One frame per block: an `else`/`and` branch opens on a dashed divider (no tag), and a branch
-    // the next one continues leaves its bottom edge to that divider. Tag and guard share the header row.
-    const edge = (x1: number, y1: number, x2: number, y2: number, dash = '') =>
-      `<line x1="${number(x1)}" y1="${number(y1)}" x2="${number(x2)}" y2="${number(y2)}" ${ink} stroke-width="1.25"${dash}/>`;
-    const guard = node.content.seqGuard;
-    const box = isJsonObject(guard) && typeof guard.x === 'number' && typeof guard.width === 'number'
-      ? { x: guard.x, width: guard.width } : { x: 82, width: width - 92 };
-    const header = (text: string, x: number, size: string) =>
-      `<text x="${number(x)}" y="6" dominant-baseline="text-before-edge" ${font} font-size="10" ${size}>${xml(text)}</text>`;
-    return group(`<rect width="${number(width)}" height="${number(height)}" fill="${colors.fill}" fill-opacity="0.3"/>`
-      + edge(0, 0, 0, height) + edge(width, 0, width, height)
-      + (presentation.continued ? '' : edge(0, height, width, height))
-      + (presentation.divider ? edge(0, 0, width, 0, ' stroke-dasharray="5 5"')
-        : edge(0, 0, width, 0) + `<rect width="${number(Math.min(72, width))}" height="24" fill="${colors.accentFill}" ${ink} stroke-width="1"/>`
-          + header(truncateTextToWidth(presentation.label, 60, 6.2), 8, `font-weight="700" fill="${colors.text}"`))
-      + (presentation.condition
-        ? header(truncateTextToWidth(presentation.divider ? `[${presentation.condition}]` : presentation.condition, box.width, 6.2), box.x, `font-weight="500" fill="${colors.subText}"`)
-        : ''));
-  }
-  if (presentation.kind === 'sequence_note') {
-    const text = measurePortableText(presentation.label, { fontSize: 11, fontWeight: 500, maxWidth: Math.max(40, node.size.width - 24), overflow: 'wrap' });
-    return group(`<rect width="${number(node.size.width)}" height="${number(node.size.height)}" rx="8" fill="${colors.fill}" ${ink} stroke-width="1.25"/>`
-      // Centred top to bottom, as the canvas draws it (PixiSequenceNodeRenderer).
-      + textElement(text.displayText, 12, Math.max(8, (node.size.height - text.height) / 2), `fill="${colors.text}" ${font} font-size="11" font-weight="500" dominant-baseline="hanging"`, 13));
-  }
-  const actor = presentation.participantKind === 'actor';
-  const top = actor ? SEQUENCE_ACTOR_HEIGHT : 0;
-  const centerX = node.size.width / 2;
-  const lifelineStart = top + SEQUENCE_HEADER_HEIGHT;
-  const activations = presentation.activations.flatMap(({ startOrder, endOrder }) => {
-    const y = lifelineStart + SEQUENCE_MESSAGE_OFFSET + startOrder * SEQUENCE_MESSAGE_SPACING;
-    if (y >= node.size.height) return [];
-    const bar = Math.min(Math.max(12, (endOrder - startOrder) * SEQUENCE_MESSAGE_SPACING), node.size.height - y);
-    return [`<rect x="${number(centerX - SEQUENCE_ACTIVATION_WIDTH / 2)}" y="${number(y)}" width="${SEQUENCE_ACTIVATION_WIDTH}" height="${number(bar)}" rx="2" fill="${colors.accentFill}" ${ink}/>`];
-  });
-  const figure = actor
-    ? `<circle cx="${number(centerX)}" cy="9" r="5" fill="none" ${ink} stroke-width="1.5"/>`
-      + `<path d="M${number(centerX)} 14V28M${number(centerX - 9)} 20H${number(centerX + 9)}M${number(centerX)} 28L${number(centerX - 8)} 37M${number(centerX)} 28L${number(centerX + 8)} 37" fill="none" ${ink} stroke-width="1.5"/>`
-    : '';
-  // A cylinder's rim takes the top of the head and a queue's its right end; the name sits in the body.
-  const titleY = top + SEQUENCE_HEADER_HEIGHT / 2 - (presentation.alias ? 6 : 0) + (presentation.head === 'cylinder' ? 6 : 0);
-  const titleX = centerX - (presentation.head === 'queue' ? 6 : 0);
-  const shift = (points: readonly Point2d[]) => points.map((point) => ({ x: point.x, y: point.y + top }));
-  const head = presentation.head === 'box'
-    ? `<rect y="${number(top)}" width="${number(width)}" height="${SEQUENCE_HEADER_HEIGHT}" rx="5" fill="${colors.fill}" ${ink} stroke-width="1.5"/>`
-    : (({ outline, rim }) => `<path d="${pathData(shift(outline))}" fill="${colors.fill}" ${ink} stroke-width="1.5"/>`
-      + `<path d="${openPathData(shift(rim))}" fill="none" ${ink} stroke-width="1.5"/>`)(sequenceHeadShape(presentation.head, width));
-  return group(head
-    + `<line x1="${number(centerX)}" y1="${number(lifelineStart)}" x2="${number(centerX)}" y2="${number(node.size.height)}" ${ink} stroke-width="1.5" stroke-dasharray="6 6"/>`
-    + activations.join('') + figure
-    + textElement(truncateTextToWidth(presentation.label, width - 24, 7), titleX, titleY, `fill="${colors.text}" ${font} font-size="12" font-weight="600" text-anchor="middle" dominant-baseline="central"`, 14)
-    + (presentation.alias ? textElement(truncateTextToWidth(presentation.alias, width - 28, 5.5), centerX, top + SEQUENCE_HEADER_HEIGHT / 2 + 10, `fill="${colors.subText}" ${font} font-size="9" font-weight="500" text-anchor="middle" dominant-baseline="central"`, 11) : ''));
-}
-
-/** Classes and ER entities, drawn as PixiClassEntityNodeRenderer draws them: one layout, one palette. */
-function exportClassEntityNode(node: SceneNode, matrix: Matrix2d, wrapper: ReturnType<typeof elementFrameStyle>): string | null {
-  const colors = classEntityNodeColors(node);
-  const layout = classEntityLayout(node);
-  if (!colors || !layout) return null;
-  const { width, height } = node.size;
-  const texts = layout.texts.filter(({ text }) => text).map((run) =>
-    `<text x="${number(run.x)}" y="${number(run.y)}" text-anchor="${run.anchor}" dominant-baseline="text-before-edge" fill="${colors[run.ink]}" font-family="${xml(run.family)}" font-size="${run.size}" font-weight="${run.weight}">${xml(run.text)}</text>`);
-  return nodeGroup(`data-node-id="${xml(node.id)}" data-node-kind="${node.kind}" transform="${matrixAttribute(matrix)}"`,
-    `<rect width="${number(width)}" height="${number(height)}" rx="${number(Math.min(12, width / 2, height / 2))}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5"/>`
-    + `<rect x="1" y="1" width="${number(Math.max(0, width - 2))}" height="${CLASS_ENTITY_HEADER_HEIGHT - 1}" rx="11" fill="${colors.headerFill}"/>`
-    + layout.dividers.map((y) => `<rect y="${number(y)}" width="${number(width)}" height="1" fill="${colors.stroke}"/>`).join('')
-    + texts.join(''), wrapper);
-}
-
-// The sequence renderer's geometry (PixiSequenceNodeRenderer, routeProjection): header, actor room, message rows.
-const SEQUENCE_HEADER_HEIGHT = 48;
-const SEQUENCE_ACTOR_HEIGHT = 40;
-const SEQUENCE_MESSAGE_OFFSET = 44;
-const SEQUENCE_MESSAGE_SPACING = 52;
-
 function exportNode(
   node: SceneNode,
   matrix: Matrix2d,
   theme: 'light' | 'dark' | 'print',
   frame: ElementFrameState | undefined,
   animations: CanonicalSvgExportOptions['animations'],
-  iconArt: CanonicalSvgExportOptions['iconArt'],
+  icons: IconSheet,
   parentOf: (id: string) => SceneNode | undefined,
 ): string {
   const wrapper = elementFrameStyle('node', node.id, frame, node.size, animations);
@@ -765,7 +87,7 @@ function exportNode(
   // One resolver for every node kind: the renderer, the label editor and the
   // exporter cannot drift. Legacy content keys are its fallbacks, not ours.
   const style = resolveNodeStyle(node, background);
-  const architecture = exportArchitectureCard(node, matrix, style, wrapper, iconArt);
+  const architecture = exportArchitectureCard(node, matrix, style, wrapper, icons);
   if (architecture) return architecture;
   const basic = resolveBasicNodePresentation(node);
   const preset = framePresetOf(node);
@@ -791,69 +113,9 @@ function exportNode(
         ? iconCaptionMarkup(iconCardLayout(node, style).text, style)
         : labelElement(style, nodeLabelBounds(node), label, isContainerNodeKind(node.kind) ? '' : subLabel, clip, node))
       + (isContainerNodeKind(node.kind) && subLabel ? textElement(subLabel, 12, node.size.height - 22, `fill="${style.textColor}" font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="10" font-weight="500" dominant-baseline="hanging"`, 12) : '')
-      + iconMarkup(node, iconArt, style, background),
+      + iconMarkup(node, icons, style, background),
     wrapper
   );
-}
-
-/** Inner lines (venn lens, target rings, note fold) in the node's stroke. */
-function decorationMarkup(shape: BasicNodeShape, size: Size2d, style: NodeStyle): string {
-  if (style.strokeWidth <= 0) return '';
-  const stroke = style.stroke === 'transparent' || !style.stroke ? 'none' : style.stroke;
-  if (stroke === 'none') return '';
-  const dash = style.dash.length ? ` stroke-dasharray="${style.dash.map(number).join(' ')}"` : '';
-  // Node space: the enclosing <g> already carries the node's transform.
-  return basicNodeDecorations(shape, size).map((line) => {
-    const [first, ...rest] = line;
-    if (!first) return '';
-    return `<path d="M ${number(first.x)} ${number(first.y)}`
-      + rest.map((point) => ` L ${number(point.x)} ${number(point.y)}`).join('')
-      + `" fill="none" stroke="${stroke}" stroke-width="${number(style.strokeWidth)}"${dash}/>`;
-  }).join('');
-}
-
-/** A connector label as the canvas draws it: text on a rounded plate over the line. */
-function connectorLabelMarkup(text: string, point: Point2d, style: NodeStyle): string {
-  if (!text) return '';
-  const plate = connectorLabelPlate(text, style, point);
-  const fill = style.fill === 'transparent' ? 'none' : style.fill;
-  const stroke = style.stroke === 'transparent' || style.strokeWidth <= 0 ? 'none' : style.stroke;
-  return `<rect x="${number(plate.x)}" y="${number(plate.y)}" width="${number(plate.width)}" height="${number(plate.height)}" rx="${number(style.cornerRadius)}" fill="${fill}" stroke="${stroke}" stroke-width="${number(style.strokeWidth)}"/>`
-    + connectorLabelLines(text, style).map((line, index, lines) => {
-      // Wrapped like the canvas: the block of lines is centred on the point.
-      const y = point.y + (index - (lines.length - 1) / 2) * connectorLabelLineHeight(style);
-      return `<text x="${number(point.x)}" y="${number(y)}" text-anchor="middle" dominant-baseline="middle" fill="${xml(style.textColor)}" font-family="${xml(FONT_STACKS[style.fontFamily])}" font-size="${number(style.fontSize)}" font-weight="${style.fontWeight}">${xml(line)}</text>`;
-    }).join('');
-}
-
-/** Arrowheads and end glyphs, with the exact geometry the Pixi renderer uses. */
-function markerMarkup(connector: ProjectedConnector, stroke: string, surface: string): string {
-  const { samples, presentation } = connector;
-  if (samples.length < 2) return '';
-  const first = samples[0]!;
-  const last = samples[samples.length - 1]!;
-  const width = presentation.stroke.width;
-  const glyph = (value: ConnectorMarkerGlyph, endpoint: Point2d, outward: Point2d, index: number) =>
-    connectorMarkerShapes(value, endpoint, outward, index * 9)
-      .map((shape) => markerShapeMarkup(shape, stroke, width, presentation.stroke.opacity, surface)).join('');
-  const start = presentation.sourceMarkers
-    .map((value, index) => glyph(value, first, markerOutward(samples, 'source'), index)).join('');
-  const end = presentation.targetMarkers
-    .map((value, index) => glyph(value, last, markerOutward(samples, 'target'), index)).join('');
-  return start + end;
-}
-
-// Hollow glyphs (circle, open triangle/diamond) are filled with the page surface, as the canvas fills them, so the line never shows through.
-function markerShapeMarkup(shape: MarkerShape, stroke: string, width: number, opacity: number, surface: string): string {
-  const paint = (fill: string) => `fill="${fill}" stroke="${stroke}" stroke-width="${number(width)}" opacity="${number(opacity)}"`;
-  if (shape.kind === 'circle') {
-    return `<circle cx="${number(shape.center.x)}" cy="${number(shape.center.y)}" r="${number(shape.radius)}" ${paint(surface)}/>`;
-  }
-  const data = shape.subpaths
-    .map((points) => points.map((point, index) => `${index ? 'L' : 'M'}${number(point.x)} ${number(point.y)}`).join(' '))
-    .join(' ') + (shape.closed ? ' Z' : '');
-  if (shape.filled) return `<path d="${data}" fill="${stroke}" opacity="${number(opacity)}"/>`;
-  return `<path d="${data}" ${paint(shape.closed ? surface : 'none')}${shape.round ? ' stroke-linejoin="round"' : ''}/>`;
 }
 
 /**
@@ -926,6 +188,7 @@ export function exportCanonicalSvg(
   const pixelRatio = Math.min(4, Math.max(1, options.pixelRatio ?? 1));
   const theme = options.theme ?? 'light';
   const background = theme === 'dark' ? SVG_BACKGROUND.dark : SVG_BACKGROUND.light;
+  const icons: IconSheet = { art: options.iconArt, ids: new Map() };
   const connectorMarkup = connectors.map((connector) => {
     const stroke = safeColor(connector.presentation.stroke.color, theme === 'dark' ? '#cbd5e1' : '#475569');
     const state = options.frame?.connectors[connector.id];
@@ -944,7 +207,7 @@ export function exportCanonicalSvg(
   // other node over them, so a frame never hides its edges and a band never hides its messages.
   // A participant goes between the two (over its bands): its lifeline must not cross the message labels.
   const markupOf = (nodes: readonly SceneNode[]) => [...nodes].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id))
-    .map((node) => exportNode(node, matrices.get(node.id)!, theme, options.frame?.nodes[node.id], options.animations, options.iconArt, (id) => byId.get(id))).join('');
+    .map((node) => exportNode(node, matrices.get(node.id)!, theme, options.frame?.nodes[node.id], options.animations, icons, (id) => byId.get(id))).join('');
   const nodeMarkup = markupOf(page.nodes.filter((node) => !isBackdropNode(node) && !isSequenceParticipant(node)));
   const backdropMarkup = markupOf(page.nodes.filter(isBackdropNode)) + markupOf(page.nodes.filter(isSequenceParticipant));
   // Camera glide lives on a root group: CSS cannot animate `viewBox` inside an
@@ -959,5 +222,5 @@ export function exportCanonicalSvg(
   const content = options.cameraAnimation || cameraMatrix
     ? `<g${options.cameraAnimation ? ` class="${ANIMATED_CLASS}"` : ''} style="${cameraStyle}">${backdropMarkup}${connectorMarkup}${nodeMarkup}</g>`
     : `${backdropMarkup}${connectorMarkup}${nodeMarkup}`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${number(x)} ${number(y)} ${number(width)} ${number(height)}" width="${number(width * pixelRatio)}" height="${number(height * pixelRatio)}" data-openflowkit-document="${xml(document.id)}" data-page="${xml(page.id)}" data-theme="${theme}" data-pixel-ratio="${number(pixelRatio)}">${options.styleSheet ? `<style>${options.styleSheet}</style>` : ''}${options.transparent ? '' : `<rect x="${number(x)}" y="${number(y)}" width="${number(width)}" height="${number(height)}" fill="${background}"/>`}${content}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${number(x)} ${number(y)} ${number(width)} ${number(height)}" width="${number(width * pixelRatio)}" height="${number(height * pixelRatio)}" data-openflowkit-document="${xml(document.id)}" data-page="${xml(page.id)}" data-theme="${theme}" data-pixel-ratio="${number(pixelRatio)}">${options.styleSheet ? `<style>${options.styleSheet}</style>` : ''}${options.transparent ? '' : `<rect x="${number(x)}" y="${number(y)}" width="${number(width)}" height="${number(height)}" fill="${background}"/>`}${iconDefs(icons)}${content}</svg>`;
 }

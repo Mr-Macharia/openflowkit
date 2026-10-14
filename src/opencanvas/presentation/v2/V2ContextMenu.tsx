@@ -84,7 +84,8 @@ export function V2ContextMenu(props: V2ContextMenuProps): React.JSX.Element | nu
           </>
         ) : props.inMap ? (
           <>
-            {props.modelElement ? <MenuItem onSelect={() => props.onEditInModel?.()}>Edit in model</MenuItem> : null}
+            {/* A repo map's boxes are read from the code: there is no model to edit them in. */}
+            {props.modelElement?.editable ? <MenuItem onSelect={() => props.onEditInModel?.()}>Edit in model</MenuItem> : null}
             {props.inMap.onShowOnCanvas ? <MenuItem onSelect={props.inMap.onShowOnCanvas}>Show on canvas</MenuItem> : null}
             {props.inMap.onCopyToCanvas ? <MenuItem onSelect={props.inMap.onCopyToCanvas} shortcut={platformKeys('⇧M')}>Edit as drawing</MenuItem> : null}
             <MenuItem onSelect={props.onZoomToSelection} shortcut={platformKeys('⇧2')}>Zoom to selection</MenuItem>

@@ -47,11 +47,18 @@ export function repoMapPageOf(document: SceneDocumentV1): string | null {
   return typeof page === 'string' && page !== '' && page.length <= 200 ? page : null;
 }
 
-/** The document with its source and its map page recorded. Not an undo step: the editor applies it when it creates the document. */
+/**
+ * The document with its source and its map page recorded, that page named "Repo map" (in Pages it sits above its drawings, not as
+ * "Page 1"). Not an undo step: the editor applies it when it creates the document.
+ */
 export function withRepoMapSource(document: SceneDocumentV1, source: RepoMapSource): SceneDocumentV1 {
   const { owner, repo, ref, sha } = source;
   const page = document.pages[0]?.id;
-  return { ...document, metadata: { ...document.metadata, map: { source: { owner, repo, ...(ref ? { ref } : {}), ...(sha ? { sha } : {}) }, ...(page ? { page } : {}) } } };
+  return {
+    ...document,
+    pages: document.pages.map((candidate, index) => (index === 0 ? { ...candidate, name: 'Repo map' } : candidate)),
+    metadata: { ...document.metadata, map: { source: { owner, repo, ...(ref ? { ref } : {}), ...(sha ? { sha } : {}) }, ...(page ? { page } : {}) } },
+  };
 }
 
 /**

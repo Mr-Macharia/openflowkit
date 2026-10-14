@@ -18,7 +18,7 @@ import type { PixiNodeDebugRecord, PixiMediaState } from './pixiNodeDebug';
 import { drawPixiLocalRect, drawPixiNodeOutline } from './pixiNodeOutline';
 import { pixiPaintColor } from './pixiColor';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
-import { decoratePixiText, markTitle } from './pixiText';
+import { decoratePixiText, markStrip, markTitle } from './pixiText';
 import type { PixiTextPool } from './pixiTextPool';
 
 interface PixiArchitectureNodeDrawResult {
@@ -44,6 +44,9 @@ async function inkedIconUrl(url: string, ink: string): Promise<string> {
   const inked = svg ? inkMonochromeSvg(svg, ink) : null;
   return inked ? svgDataUrl(inked) : url;
 }
+
+const ICON_TILE_RADIUS = 6;
+const HEADER_FONT = 10;
 
 function iconBounds(visual: PixiArchitectureNodeVisual, node: SceneNode) {
   return architectureIconBounds(node, visual.presentation.display);
@@ -109,14 +112,8 @@ export class PixiArchitectureNodeRenderer {
       drawPixiNodeOutline(graphics, 'rounded', node.size, matrix, undefined, style.cornerRadius);
       graphics.fill(fill);
       if (style.strokeWidth > 0) graphics.stroke({ ...stroke, width: style.strokeWidth });
-      drawPixiLocalRect(graphics, createBounds2d(10, 8, Math.max(0, node.size.width - 20), 26), matrix, 7);
-      if (!style.subTextColor) {
-        graphics.fill({ color: visual.iconFill });
-        return;
-      }
-      // On a dark-canvas wash the header takes the card's own hue; the icon (dark ink) keeps a light tile.
-      graphics.fill({ color: stroke.color, alpha: 0.3 });
-      drawPixiLocalRect(graphics, bounds, matrix, 6);
+      // The header strip draws with its text (createLabel), so zoomed out it goes with it; the icon keeps its tile.
+      drawPixiLocalRect(graphics, bounds, matrix, ICON_TILE_RADIUS);
       graphics.fill({ color: visual.iconFill });
       return;
     }
@@ -145,14 +142,22 @@ export class PixiArchitectureNodeRenderer {
       const wrap = Math.max(1, nodeLabelBounds(node).width + grown - style.textPadding * 2);
       const layout = architectureCardLayout(grown === 0 ? node : { ...node, size: { ...node.size, width: finalWidth! } }, style);
       const subInk = style.subTextColor ? pixiPaintColor(style.subTextColor, visual.subText).color : visual.subText;
-      const provider = this.texts.plain(layout.provider.displayText, { size: 10, weight: '700', fill: subInk });
+      const provider = this.texts.plain(layout.provider.displayText, { size: HEADER_FONT, weight: '700', fill: subInk });
       provider.position.set(38, 15);
-      const resource = this.texts.plain(layout.resource.displayText, { size: 10, weight: '600', fill: subInk });
+      const resource = this.texts.plain(layout.resource.displayText, { size: HEADER_FONT, weight: '600', fill: subInk });
       resource.anchor.set(1, 0);
       resource.position.set(node.size.width - 16, 15);
       const title = markTitle(this.texts.styled(layout.title.displayText, style, ink, wrap));
       title.position.set(layout.titleX, layout.titleY);
-      content.addChild(provider, resource, title);
+      // On a dark-canvas wash the header takes the card's own hue; the hole shows the icon's tile (drawChrome) and art beneath.
+      const stripColor = style.subTextColor
+        ? { color: pixiPaintColor(style.stroke, visual.stroke).color, alpha: 0.3 }
+        : { color: visual.iconFill };
+      const icon = iconBounds(visual, node);
+      const strip = markStrip(new Graphics()
+        .roundRect(10, 8, Math.max(0, node.size.width - 20), 26, 7).fill(stripColor)
+        .roundRect(icon.x, icon.y, icon.width, icon.height, ICON_TILE_RADIUS).cut(), HEADER_FONT);
+      content.addChild(strip, provider, resource, title);
       decoratePixiText(content, title, style, ink);
       if (presentation.metadata.length > 0) {
         const metadata = this.texts.plain(layout.detail.displayText, {

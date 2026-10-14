@@ -101,9 +101,8 @@ export function V2ExportMenu({
   const effectiveFormat: V2ExportFormat = format === 'json' && effectiveScope === 'selection' ? 'png' : format;
   const activePage = document.pages.find((page) => page.id === pageId) ?? document.pages[0];
   // Exporting an empty page is an error, not an empty file: say so up front.
-  const empty = effectiveScope === 'selection'
-    ? !hasSelection
-    : effectiveScope === 'page' && (activePage?.nodes.length ?? 0) + (activePage?.connectors.length ?? 0) === 0;
+  const pageEmpty = (activePage?.nodes.length ?? 0) + (activePage?.connectors.length ?? 0) === 0;
+  const empty = effectiveScope === 'selection' ? !hasSelection : effectiveScope === 'page' && pageEmpty;
   const whole = sourceDocument ?? document;
   const request = {
     document: effectiveFormat === 'json' ? whole : document, format: effectiveFormat, scope: effectiveScope, pageId, theme,
@@ -255,7 +254,7 @@ export function V2ExportMenu({
   // Two jobs, like Excalidraw's live session vs link: show the finished document, or hand over a diagram to change.
   const linkKinds = [
     { value: 'snapshot', icon: IconLock, title: 'View-only link', available: canShare,
-      detail: canShare ? 'Every page, encrypted in your browser.' : 'Needs a share server.' },
+      detail: canShare ? 'Every page, encrypted in your browser.' : 'Not set up on this site.' },
     { value: 'code', icon: IconCode, title: 'Editable copy', available: Boolean(mermaidTarget),
       detail: mermaidTarget ? 'This page only. Its code, in the link, nothing uploaded.' : 'Needs a diagram made from code.' },
   ] as const;
@@ -270,7 +269,7 @@ export function V2ExportMenu({
       <div className="ofk-v2-properties ofk-v2-export">
         {sharingOnly ? null : <>
         {/* The one export no other diagram tool has: a row of its own, not a footnote. */}
-        <button type="button" className="ofk-v2-export-animate" aria-label="Animate this page…"
+        <button type="button" className="ofk-v2-export-animate" aria-label="Animate this page…" disabled={pageEmpty}
           onClick={() => { onClose(); onOpenAnimation(); }}>
           <span className="ofk-v2-share-glyph" aria-hidden="true"><Icon icon={IconMovie} /></span>
           <span className="ofk-v2-share-text">

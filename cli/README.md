@@ -14,6 +14,6 @@ npx -y openflowkit mcp                             # the MCP server for Claude C
 
 Install it once with `npm i -g openflowkit`, then run `openflowkit …`.
 
-For Claude Code: `claude mcp add openflowkit -- npx -y openflowkit mcp`. The engine is [`@openflowkit/openflowkit-mcp`](https://www.npmjs.com/package/@openflowkit/openflowkit-mcp); both names run the same thing. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
+For Claude Code: `claude mcp add -s user openflowkit -- npx -y openflowkit mcp`, then open [app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect) so it draws on your canvas. Other agents, and the hosted connector for claude.ai and ChatGPT: [Connect your agent](https://docs.openflowkit.com/connect-your-agent/). The engine is [`@openflowkit/openflowkit-mcp`](https://www.npmjs.com/package/@openflowkit/openflowkit-mcp); both names run the same thing. Docs: [docs.openflowkit.com/cli](https://docs.openflowkit.com/cli/).
 
 MIT licensed.

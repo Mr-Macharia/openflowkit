@@ -6,6 +6,7 @@
 // tool result:
 //   sk-ok → 200 · sk-bad → 401 · sk-model → 404 · sk-ratelimited → 429
 //   sk-down → 503 · sk-malformed → 200 non-JSON · anything else → 401
+//   sk-stream → a streamed OpenAI chat reply in two pieces 1.5 s apart, saying whether the request carried an Origin
 // It sends permissive CORS headers, which is what a browser-ready provider does.
 import { createServer } from 'node:http';
 
@@ -111,7 +112,18 @@ export function createStubProviderServer() {
         console.log(`stub ${path} → 200 malformed`);
         return;
       }
-      if (failure && key !== 'sk-ok') {
+      if (key === 'sk-stream' && path.includes('/chat/completions') && /"stream":\s*true/.test(body)) {
+        response.writeHead(200, { ...cors, 'content-type': 'text/event-stream' });
+        const piece = (text) => response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+        piece('Streaming through the proxy');
+        setTimeout(() => {
+          piece(` ${request.headers.origin ? 'with' : 'without'} the browser origin.`);
+          response.end('data: [DONE]\n\n');
+        }, 1500);
+        console.log(`stub ${path} → 200 streamed`);
+        return;
+      }
+      if (failure && key !== 'sk-ok' && key !== 'sk-stream') {
         response.writeHead(failure.status, { ...cors, 'content-type': 'application/json' });
         response.end(JSON.stringify(failure.body));
         console.log(`stub ${path} → ${failure.status}`);

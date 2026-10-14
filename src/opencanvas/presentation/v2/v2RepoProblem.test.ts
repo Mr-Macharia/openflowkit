@@ -10,11 +10,16 @@ describe('describeRepoError', () => {
     expect(view.detail).toContain('Wait 60 seconds');
   });
 
-  it('a private repo points at the CLI and offers no retry that could never work', () => {
-    const view = describeRepoError(new RepoError({ kind: 'private' }, 'acme/shop looks private.'), 'discover');
-    expect(view).toMatchObject({ retry: false, title: 'This repo is private.' });
-    expect(view.askToken).toBeUndefined();
+  it('a private repo the token cannot read asks for one that can, points at the CLI, and offers no plain retry', () => {
+    const view = describeRepoError(new RepoError({ kind: 'private' }, 'The token cannot read it.'), 'discover');
+    expect(view).toMatchObject({ retry: false, title: 'This repo is private.', askToken: true });
     expect(view.detail).toContain('openflowkit discover .');
+  });
+
+  it('not found may be private: the address comes back and a token is one click away', () => {
+    const view = describeRepoError(new RepoError({ kind: 'not-found' }, "acme/shop wasn't found."), 'map');
+    expect(view).toMatchObject({ retype: true, privateToken: true });
+    expect(view.detail).toContain('GitHub token');
   });
 
   it('the hourly limit still asks for a token', () => {

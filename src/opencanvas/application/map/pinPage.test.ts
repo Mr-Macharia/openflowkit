@@ -15,7 +15,9 @@ import { validateSceneDocumentV1 } from '../../domain/document/validation';
 import { paletteResolver } from '../../domain/nodes/nodePalette';
 import { SCENE_DOCUMENT_FORMAT, SCENE_DOCUMENT_VERSION, type SceneDocumentV1, type ScenePage } from '../../domain/document/types';
 import { buildArchElementAddCommand, buildWorkspacePagesCommand, modelPages } from '../dsl/architectureCommands';
-import { buildPinPageCommand } from './pinPage';
+import {
+  agentDrawingRoute, boxesMissing, buildPinPageCommand, buildRefreshDrawingCommand, drawingName, drawingOf, drawingSourceOf, drawingUntouched,
+} from './pinPage';
 
 const NESTED = `architecture
 model {
@@ -104,12 +106,28 @@ describe('buildPinPageCommand', () => {
     expect(done.pages.find((p) => p.id === 'pinned')).toEqual(pinned.pages[1]);
   });
 
-  it('starts the content on the margin on both axes, tight', async () => {
+  it('keeps the map\'s coordinates, so the switch between them keeps the camera', async () => {
     const { model, document } = await world(C4_STARTER);
-    const page = pinnedPage(pin(document, await mapPageOf(model)));
-    const tops = page.nodes.filter((n) => n.parentId === null);
-    expect(Math.min(...tops.map((n) => n.transform.translation.x))).toBe(40);
-    expect(Math.min(...tops.map((n) => n.transform.translation.y))).toBe(40);
+    const mapPage = await mapPageOf(model);
+    const page = pinnedPage(pin(document, mapPage));
+    expect(page.nodes.map((n) => n.transform)).toEqual(mapPage.nodes.map((n) => n.transform));
+    expect(page.connectors.map((c) => c.waypoints)).toEqual(mapPage.connectors.map((c) => c.waypoints));
+  });
+
+  it('remembers the page it was drawn from; the newest drawing of a page is found, and names never repeat', async () => {
+    const { model, document } = await world(C4_STARTER);
+    const mapPage = await mapPageOf(model);
+    expect(drawingOf(document, 'p1')).toBeNull();
+    const first = applyDocumentCommand(document, buildPinPageCommand(document, mapPage, { pageId: 'a', name: drawingName(document, 'Shop'), from: 'p1' })).document;
+    const second = applyDocumentCommand(first, buildPinPageCommand(first, mapPage, { pageId: 'b', name: drawingName(first, 'Shop'), from: 'p1' })).document;
+    expect(second.pages.map((p) => p.name)).toEqual(['Page 1', 'Shop (drawing)', 'Shop (drawing 2)']);
+    expect(drawingSourceOf(second.pages[1]!)).toBe('p1');
+    expect(drawingSourceOf(second.pages[0]!)).toBeNull();
+    expect(drawingOf(second, 'p1')?.id).toBe('b');
+    expect(drawingOf(second, 'a')).toBeNull();
+    expect(validateSceneDocumentV1(JSON.parse(JSON.stringify(second))).success).toBe(true);
+    // Still invisible to the model: the page knows its source page, never an element.
+    expect(archFrameOf(second.pages[2]!)).toBeNull();
   });
 
   it('keeps solid vs dashed, both heads of a two-way arrow, and the count label', async () => {
@@ -133,5 +151,63 @@ describe('buildPinPageCommand', () => {
     expect(() => buildPinPageCommand(document, empty, { pageId: ' ', name: 'x' })).toThrow(/unique/);
     expect(() => buildPinPageCommand(document, empty, { pageId: 'q', name: ' ' })).toThrow(/name/);
     expect(applyDocumentCommand(document, buildPinPageCommand(document, empty, { pageId: 'q', name: 'x' })).document.pages).toHaveLength(2);
+  });
+});
+
+// F02 (2026-10-14): an agent's change for the repo map goes to the map's drawing, the way Canvas goes there.
+describe('a drawing after the map opens more boxes', () => {
+  it('an untouched drawing follows the map in one undo step; an edited one only counts what it lacks', async () => {
+    const { model, document } = await world(NESTED);
+    const before = await mapPageOf(model, new Set(['shop']));
+    const after = await mapPageOf(model, new Set(['shop', 'shop.api']));
+    const made = buildPinPageCommand(document, before, { pageId: 'dr', name: 'Shop (drawing)', from: 'p1' });
+    const drawn = applyDocumentCommand(document, made).document;
+    const drawing = drawn.pages[1]!;
+    const past = [{ command: made }];
+    expect(drawingUntouched(past, 'dr')).toBe(true);
+    expect(buildRefreshDrawingCommand(drawing, before)).toBeNull();
+    expect(boxesMissing(drawing, after)).toBe(2);
+
+    const refresh = buildRefreshDrawingCommand(drawing, after)!;
+    const { document: fresh, inverse } = applyDocumentCommand(drawn, refresh);
+    const redrawn = fresh.pages[1]!;
+    expect(redrawn).toMatchObject({ id: 'dr', name: 'Shop (drawing)', metadata: { drawingOf: 'p1' } });
+    expect(redrawn.nodes.map((n) => n.transform)).toEqual(after.nodes.map((n) => n.transform));
+    expect(redrawn.nodes.every((n) => Object.keys(n.metadata).length === 0)).toBe(true);
+    expect(applyDocumentCommand(fresh, inverse).document).toEqual(drawn);
+    // Still untouched after a refresh; any edit (a user's, an agent's) makes it the reader's own.
+    expect(drawingUntouched([...past, { command: refresh }], 'dr')).toBe(true);
+    const node = redrawn.nodes[0]!;
+    const edit = { kind: 'set-node', id: 'e', label: 'Move', pageId: 'dr', before: node, after: { ...node, transform: { ...node.transform, x: 5 } } } as const;
+    expect(drawingUntouched([...past, { command: refresh }, { command: edit }], 'dr')).toBe(false);
+    // Unknown history (a reload) never throws an edit away.
+    expect(drawingUntouched([], 'dr')).toBe(false);
+  });
+});
+
+describe('agentDrawingRoute', () => {
+  const page = (id: string, drawingOf?: string): ScenePage => ({
+    id, name: id, diagramKind: 'architecture', layers: [createDefaultSceneLayer()], nodes: [], connectors: [],
+    metadata: drawingOf ? { drawingOf } : {}, extensions: {},
+  });
+  const doc = (...pages: ScenePage[]): SceneDocumentV1 => ({
+    format: SCENE_DOCUMENT_FORMAT, schemaVersion: SCENE_DOCUMENT_VERSION, id: 'd', name: 'd',
+    createdAt: '2026-10-14T00:00:00.000Z', updatedAt: '2026-10-14T00:00:00.000Z', pages, metadata: {}, extensions: {},
+  });
+
+  it('on the map: its Canvas, when it has a drawing or the map on screen can make one; else nowhere', () => {
+    expect(agentDrawingRoute(doc(page('map'), page('dr', 'map')), 'map', 'map', false)).toBe('canvas');
+    expect(agentDrawingRoute(doc(page('map')), 'map', 'map', true)).toBe('canvas');
+    // Still being read, a failed read, a shared view: nothing to copy.
+    expect(agentDrawingRoute(doc(page('map')), 'map', 'map', false)).toBe('none');
+  });
+
+  it('on the map\'s drawing: that drawing', () => {
+    expect(agentDrawingRoute(doc(page('map'), page('dr', 'map'), page('dr2', 'map')), 'map', 'dr', false)).toBe('here');
+  });
+
+  it('on another page: the map\'s newest drawing, else nowhere (the map is not on screen to copy)', () => {
+    expect(agentDrawingRoute(doc(page('map'), page('dr', 'map'), page('other')), 'map', 'other', true)).toBe('switch');
+    expect(agentDrawingRoute(doc(page('map'), page('other'), page('x', 'other')), 'map', 'x', true)).toBe('none');
   });
 });

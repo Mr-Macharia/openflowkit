@@ -2,9 +2,7 @@ import type { SceneNode, ScenePage } from '../document/types';
 import type { Point2d, Size2d } from '../geometry/types';
 import type { JsonObject } from '../document/json';
 import { nextNodeZIndex } from './shapeNode';
-import {
-  DEFAULT_CHART_DATA, type ChartKind, type ChartData, type QuadrantData,
-} from './chartNodePresentation';
+import { DEFAULT_CHART_DATA, type ChartKind, type ChartData, type QuadrantData } from './chartNodePresentation';
 
 export const DEFAULT_CHART_SIZE: Size2d = { width: 720, height: 440 };
 

@@ -1,6 +1,6 @@
 ---
 title: FAQ
-description: Privacy, offline use, file formats, Mermaid, Structurizr and D2, browser support, where your data lives, backups, and the errors people hit most.
+description: Privacy, offline use, file formats, Mermaid, Structurizr and D2, browser support, connecting an agent, private repos, map drawings, self-hosted AI, backups, and the errors people hit most.
 ---
 
 ## What is OpenFlowKit?
@@ -25,7 +25,7 @@ Every request the app makes, and when:
 | Answer a feedback question, or **Send feedback…** in the main menu | Your answer, and your email if you add one | `share.openflowkit.com` |
 | Copy or open an **editable copy** link | Nothing: the diagram's code rides in the link's `#fragment` | Nowhere |
 | Map a repo, or turn a repo into a diagram | Requests for the repo's file list and files (plus your GitHub token, if you gave one) | `api.github.com` and `raw.githubusercontent.com` |
-| [Connect an agent](/mcp-server/) | Tool calls and their results | The MCP server on your own machine, at `127.0.0.1` |
+| [Connect an agent](/connect-your-agent/) | Tool calls and their results | The MCP server on your own machine, at `127.0.0.1` |
 | Paste an image URL | A normal image request | That URL |
 | Open Home | A request for the repository's star count, at most once a day (no diagram data) | `api.github.com` |
 
@@ -98,11 +98,38 @@ Mistral, OpenRouter, Ollama, or any OpenAI-compatible endpoint, using your own k
 provider bills you directly. The MCP server needs no key at all: your MCP client's model does
 the work.
 
+## How do I connect Claude Code, Cursor or another agent?
+
+Open **Connect agent** in the editor (or [app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect)) and pick
+your agent. Copy the **Prompt** and paste it into the agent: it adds OpenFlowKit itself. Or run the command yourself,
+for Claude Code `claude mcp add -s user openflowkit -- npx -y openflowkit mcp`. Restart the agent and the panel
+connects on its own. claude.ai and ChatGPT take the hosted connector `https://mcp.openflowkit.com/mcp` instead; it
+draws diagram cards in the chat, not on your canvas. Every client: [Connect your agent](/connect-your-agent/).
+
+## Can I map a private GitHub repo?
+
+Yes. Open the repo's map; on the "not found, or it is private" screen choose **Private repo? Use a GitHub token** and
+paste a fine-grained token with Contents read-only access. It stays in that tab. Or map a local checkout:
+`npx openflowkit map . --html map.html`. See [Map mode](/map-mode/).
+
+## Why didn't my drawing change when I opened more boxes on the map?
+
+A repo map's drawing (its **Canvas**) is a copy you can edit. Until you edit it, it follows the map: open boxes, press
+**Canvas**, and it is redrawn to match. Once you have edited it, it stays yours, and a note offers **New copy** when
+the map shows boxes it has not got. See [A map's drawing](/map-mode/#a-maps-drawing).
+
+## Can a self-hosted copy use a model only my server can reach?
+
+Yes. Start the Docker image with `OPENFLOWKIT_AI_UPSTREAM` set to an OpenAI-compatible URL (Ollama's `/v1`, vLLM,
+LiteLLM), then set the Custom provider's Base URL to `/ai-proxy`. No CORS setup; replies stream. See
+[AI proxy for the Custom provider](/self-hosting/#ai-proxy-for-the-custom-provider).
+
 ## Troubleshooting
 
 | Message or symptom | What it means |
 | --- | --- |
-| An agent says "No document: pair an editor" | The MCP server is running but no editor is connected. In the app, open **Connect agent** and click **Connect**, or have the agent use `openflow_open` on a file |
+| An agent says "No editor is paired. Ask the user to open https://app.openflowkit.com/#/connect and press Connect…" | The MCP server is running but no editor is connected. Open that link (or **Connect agent** → **Connect** in the app), or have the agent work on a file with `openflow_create` or `openflow_open`. More fixes: [Connect your agent](/connect-your-agent/#troubleshooting) |
+| The Connect agent panel says "Waiting for your agent…" | Normal until your agent starts its server: start a new agent session, or restart the app, after adding OpenFlowKit. See [Connect your agent](/connect-your-agent/) |
 | "Another tab saved first" | The same document is open in two tabs. **Reload** takes the other tab's version; **Save as copy** keeps yours as a new document |
 | The canvas asks for WebGL | Turn on hardware acceleration in the browser settings, or try another browser |
 | Ollama doesn't answer from the hosted app | Ollama rejects other origins by default. Quit the Ollama app and run `OLLAMA_ORIGINS='*' ollama serve` |

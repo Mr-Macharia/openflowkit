@@ -250,6 +250,8 @@
 .ofk-v2-guide-help svg { height: 100px; margin-top: 8px; }
 /* visibility, not display: a hidden arrow keeps its box, so it reappears once there is room. */
 .ofk-v2-guide[data-clash] { visibility: hidden; }
+/* An open popover (Settings, Export…) is the focus: guides would peek out from under it. Tooltips are passive and don't count. */
+:root:has(.ofk-popover:not([data-passive])) .ofk-v2-guide { visibility: hidden; }
 .ofk-v2[data-workspace-open='true'] .ofk-v2-welcome { right: var(--v2-panel-width); }
 .ofk-v2[data-left-open='true'] .ofk-v2-welcome { left: var(--v2-left-width); }
 .ofk-v2[data-workspace-open='true'] .ofk-v2-guide-workspace,
@@ -918,6 +920,30 @@
 .ofk-panel[data-status='connected'] .ofk-connection-dot { background: var(--ofk-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ofk-success) 25%, transparent); }
 .ofk-panel[data-status='connected'] .ofk-connection-badge { color: var(--ofk-success); border-color: color-mix(in srgb, var(--ofk-success) 40%, var(--ofk-border)); }
 .ofk-panel[data-status='error'] .ofk-connection-dot { background: var(--ofk-danger); }
+/* Waiting is the normal state until the agent starts its server: neutral, a slow pulse, never red. */
+.ofk-connection-panel:is([data-status='waiting'], [data-status='elsewhere']) .ofk-connection-dot, .ofk-connection-activity[data-working] .ofk-connection-dot { background: var(--ofk-secondary); }
+.ofk-connection-panel[data-status='waiting'] .ofk-connection-dot, .ofk-connection-activity[data-working] .ofk-connection-dot { animation: ofk-connection-pulse 1.6s ease-in-out infinite; }
+.ofk-connection-panel[data-status='waiting'] .ofk-connection-hero-link i { background: var(--ofk-muted); animation: ofk-connection-flow 1.8s ease-in-out infinite; }
+.ofk-connection-waiting { display: flex; align-items: flex-start; justify-content: center; gap: 8px; margin: 0 0 20px; font-size: 12px; line-height: 1.5; color: var(--ofk-secondary); text-align: center; }
+.ofk-connection-waiting .ofk-connection-dot { margin-top: 6px; }
+.ofk-connection-elsewhere { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 20px; padding: 10px 10px 10px 12px; border: 1px solid var(--ofk-border); border-radius: 8px; font-size: 12px; color: var(--ofk-text); }
+.ofk-connection-activity[data-working] { justify-content: flex-start; min-height: 30px; animation: ofk-connection-appear 160ms ease-out 200ms both; }
+@keyframes ofk-connection-appear { from { opacity: 0; } }
+.ofk-connection-client { margin: 0 0 18px; }
+.ofk-connection-client .ofk-dropdown { width: 100%; }
+.ofk-connection-way { width: 100%; }
+.ofk-connection-way .ofk-segmented label { min-height: 26px; font-size: 12px; }
+/* A prompt is prose: a few lines show, the rest scrolls; Copy takes it all. */
+.ofk-connection-snippet[data-prompt] .ofk-v2-bridge-snippet { max-height: 9.5em; overflow-y: auto; }
+.ofk-connection-steps li > div > p { width: 100%; margin: 0; font-size: 12px; line-height: 1.55; color: var(--ofk-secondary); }
+.ofk-connection-panel code { font: 11px var(--ofk-font-mono, monospace); color: var(--ofk-text); overflow-wrap: anywhere; }
+.ofk-connection-note { font-size: 11px !important; color: var(--ofk-muted) !important; }
+.ofk-connection-snippet { position: relative; width: 100%; }
+.ofk-connection-snippet .ofk-v2-bridge-snippet { margin: 0; padding-inline-end: 76px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ofk-connection-flag { white-space: nowrap; }
+.ofk-connection-snippet > .ofk-button { position: absolute; top: 4px; inset-inline-end: 4px; min-height: 24px; padding: 0 8px; font-size: 11px; }
+.ofk-connection-panel a.ofk-button { text-decoration: none; }
+.ofk-connection-web { margin: 0 0 16px; font-size: 12px; line-height: 1.55; color: var(--ofk-secondary); }
 @keyframes ofk-connection-pulse { 50% { opacity: .35; } }
 .ofk-connection-hero { display: flex; align-items: center; justify-content: center; gap: 0; margin: 36px 0 28px; color: var(--ofk-secondary); font-size: 10px; }
 .ofk-connection-hero-node { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--ofk-border); border-radius: 8px; background: var(--ofk-canvas); }
@@ -940,8 +966,6 @@
 .ofk-connection-steps { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 14px; }
 .ofk-connection-steps li { display: flex; gap: 12px; align-items: flex-start; }
 .ofk-connection-steps li > span { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border: 1px solid var(--ofk-border); border-radius: 50%; color: var(--ofk-muted); font-size: 11px; flex: none; }
-.ofk-connection-oneclick { margin: 2px 0 0; color: var(--ofk-muted); font-size: 12px; }
-.ofk-connection-oneclick a { color: var(--ofk-text); }
 .ofk-connection-steps li > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; flex: 1; min-width: 0; }
 .ofk-connection-steps strong { width: 100%; font-size: 12px; font-weight: 500; }
 .ofk-connection-steps .ofk-button { font-size: 12px; }
@@ -951,6 +975,7 @@
 .ofk-connection-summary strong { font-size: 12px; font-weight: 600; }
 .ofk-connection-summary .ofk-button { font-size: 11px; padding-inline: 8px; }
 .ofk-connection-endpoint { color: var(--ofk-muted); font: 10.5px var(--ofk-font-mono, monospace); }
+.ofk-connection-agents { color: var(--ofk-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ofk-connection-heading { margin: 0 0 10px; font-size: 11px; font-weight: 500; letter-spacing: .3px; text-transform: uppercase; color: var(--ofk-muted); }
 .ofk-connection-capabilities { list-style: none; margin: 0 0 20px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ofk-connection-capabilities li { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 10px; border: 1px solid var(--ofk-border); border-radius: 8px; font-size: 11px; line-height: 1.5; color: var(--ofk-secondary); }
@@ -1157,7 +1182,8 @@
   border: 1px solid var(--ofk-border); border-radius: 10px; background: transparent; color: var(--ofk-text);
   font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms var(--ofk-ease), border-color 120ms var(--ofk-ease);
 }
-.ofk-v2-export-animate:hover { background: var(--ofk-raised); border-color: var(--ofk-secondary); }
+.ofk-v2-export-animate:hover:not(:disabled) { background: var(--ofk-raised); border-color: var(--ofk-secondary); }
+.ofk-v2-export-animate:disabled { cursor: default; opacity: .45; }
 .ofk-v2-export-animate:focus-visible { outline: 2px solid var(--ofk-focus); outline-offset: 2px; }
 .ofk-v2-export-animate > .ofk-icon { width: 16px; height: 16px; color: var(--ofk-muted); }
 
@@ -1315,6 +1341,8 @@
 @media (max-width: 720px) {
   .ofk-v2 .ofk-floating-region[data-slot='bottom-start']:has(.ofk-v2-map-toolbar) { flex-direction: column-reverse; align-items: flex-start; gap: 8px; }
   .ofk-v2 .ofk-floating-region[data-slot='bottom-start'] .ofk-v2-map-toolbar { flex-wrap: wrap; }
+  /* Stacked, the bar sits above the view controls and wraps to two rows on a phone (52 + 8 + 88 px): a toast rises above both. */
+  .ofk-v2:has(.ofk-v2-map-toolbar) .ofk-toasts { bottom: calc(var(--ofk-layout-edgeInset) + 156px); }
 }
 
 /* The repo map's panel: one neutral link style (the C4 panel keeps its own), evidence as a block per line. */

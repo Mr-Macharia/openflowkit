@@ -4,8 +4,13 @@ import { lastDocumentId, mintV2Id } from '@/opencanvas/presentation/v2/v2Documen
 import { V2ErrorBoundary } from '@/opencanvas/presentation/v2/V2ErrorBoundary';
 import { BrandLoader } from '@/opencanvas/presentation/v2/BrandLoader';
 
+const loadEditor = () => import('@/opencanvas/presentation/v2/V2EditorPage');
 const HomePage = lazy(async () => {
   const module = await import('@/opencanvas/presentation/v2/V2HomePage');
+  // Every way out of Home opens the editor: it downloads while the reader looks, so a click never waits on a frozen Home.
+  // ponytail: ~1.1 MB fetched even for a visit that only browses the list — split the editor if that matters.
+  const idle = window.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 1));
+  idle(() => { void loadEditor(); });
   return { default: module.V2HomePage };
 });
 
@@ -29,14 +34,14 @@ const FromGithubPage = lazy(async () => ({ default: (await import('@/opencanvas/
 const MapRoute = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/map/MapRoute')).MapRoute }));
 const FromDslPage = lazy(async () => ({ default: (await import('@/opencanvas/presentation/v2/V2FromDslPage')).V2FromDslPage }));
 
-const loadEditor = () => import('@/opencanvas/presentation/v2/V2EditorPage');
 const EditorPage = lazy(async () => ({ default: (await loadEditor()).V2EditorPage }));
 
 // A first visit lands on the newest diagram brought over from v1, if the import finishes
 // within 2 s; otherwise a new document, and the import carries on in the background.
 const FIRST_VISIT_WAIT_MS = 2000;
 
-function HomeDocument(): React.JSX.Element {
+/** `then` rides along to the editor: `#/connect` lands on the last document as `?connect` (opens Connect agent). */
+function HomeDocument({ then = '' }: { readonly then?: string }): React.JSX.Element {
   const [target, setTarget] = useState(lastDocumentId);
   useEffect(() => {
     if (target) return undefined;
@@ -52,7 +57,8 @@ function HomeDocument(): React.JSX.Element {
     ]).then((id) => { if (live) setTarget(id); });
     return () => { live = false; };
   }, [target]);
-  return target ? <Navigate to={`/d/${target}`} replace /> : <BrandLoader screen label="Loading OpenFlowKit" />;
+  // <Navigate> draws nothing while the editor downloads: the loader stays up through it.
+  return <>{target ? <Navigate to={`/d/${target}${then}`} replace /> : null}<BrandLoader screen label="Loading OpenFlowKit" /></>;
 }
 
 /** One editor per document: switching /d/A → /d/B (back, forward) unmounts A's editor, which saves A's pending edit as A. */
@@ -82,6 +88,7 @@ export default function App(): React.JSX.Element {
             <Route path="/map/github/*" element={<MapRoute />} />
             <Route path="/from/dsl" element={<FromDslPage />} />
             <Route path="/v2/:id" element={<LegacyV2Redirect />} />
+            <Route path="/connect" element={<HomeDocument then="?connect" />} />
             <Route path="*" element={<HomeDocument />} />
           </Routes>
         </Suspense>

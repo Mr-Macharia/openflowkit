@@ -93,6 +93,28 @@
                     }
                 ]
             }
+        },
+        {
+            "files": [
+                "src/**/*.ts",
+                "src/**/*.tsx",
+                "mcp-server/src/**/*.ts"
+            ],
+            "excludedFiles": [
+                "**/*.test.ts",
+                "**/*.test.tsx",
+                "**/*.d.ts"
+            ],
+            "rules": {
+                "max-lines": [
+                    "error",
+                    {
+                        "max": 500,
+                        "skipBlankLines": false,
+                        "skipComments": false
+                    }
+                ]
+            }
         }
     ]
 }

@@ -16,7 +16,7 @@ On a first visit, Home offers four starts:
 | **Blank canvas** | An empty document, to draw by hand |
 | **Describe it to AI** | A new document with the [AI assistant](/ai-generation/) open |
 | **Paste code or Mermaid** | A new document with the [code panel](/openflow-dsl/) open; OpenFlow DSL, Mermaid, D2 and Structurizr all work |
-| **Connect your agent** | A new document with the [Connect agent](/mcp-server/) panel open |
+| **Connect your agent** | A new document with the [Connect agent](/connect-your-agent/) panel open |
 
 Below them, **Or start from a template** shows the templates. **Import** (or dropping files
 anywhere on Home) brings in `.json` documents and diagram text files; see

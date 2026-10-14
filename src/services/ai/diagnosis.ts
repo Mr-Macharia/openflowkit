@@ -79,9 +79,23 @@ export const originOf = (url: string): string => {
   try { return new URL(url).origin; } catch { return url; }
 };
 
+/** A same-origin endpoint (`/ai-proxy`): the self-hosted server's AI proxy, not the model server itself. */
+export const viaServerProxy = (url: string): boolean => url.trim().startsWith('/');
+
+const PROXY_SETUP = 'The AI proxy is on only where OpenFlowKit is self-hosted with OPENFLOWKIT_AI_UPSTREAM set.';
+
 /** One sentence naming the cause, one naming the action. */
 export function describeCause(cause: AiFailureCause, context: FailureContext): string {
   const { definition } = context;
+  if (viaServerProxy(context.endpoint)) {
+    if (cause === 'provider-down' && (context.status === 502 || context.status === 504 || context.timedOut)) {
+      return `This server's AI proxy got no answer from the model server${context.status ? ` (${context.status})` : ''}. Check it is running and OPENFLOWKIT_AI_UPSTREAM points at it.`;
+    }
+    // Off in the Docker image: a 503 whose own sentence (quoted after this one) says how to turn it on.
+    if (cause === 'provider-down' && context.status === 503) return "This server's AI proxy answered 503: it is off, or the model server is busy.";
+    // Any other host serves the app's page for an unknown path: a 200 that is not a model's reply.
+    if (cause === 'bad-response' && context.status === 200) return `This server has no AI proxy at ${context.endpoint}. ${PROXY_SETUP}`;
+  }
   switch (cause) {
     case 'bad-key':
       return `The provider rejected the key${context.status ? ` (${context.status})` : ''}.${consoleLine(definition)}`;

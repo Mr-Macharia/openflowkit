@@ -65,6 +65,8 @@ export interface BridgeRequest {
   readonly op: string;
   readonly input: unknown;
   readonly pageId?: string;
+  /** The MCP clientInfo.name of the agent session that made the call (servers after 0.2.4). */
+  readonly client?: string;
 }
 
 export interface BridgeHealth {
@@ -78,6 +80,8 @@ export interface BridgeHealth {
   readonly pageId: string | null;
   readonly pages: readonly BridgePageSummary[];
   readonly lastSeenMs: number | null;
+  /** Servers after 0.2.4: the `POST /call` protocol other local servers share this one's canvas through. */
+  readonly share?: number;
 }
 
 export interface DslLintReport {

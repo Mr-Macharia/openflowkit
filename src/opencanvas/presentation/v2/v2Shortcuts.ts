@@ -79,9 +79,9 @@ export function shortcutGroups(apple = isApplePlatform()): readonly ShortcutGrou
         ['Zoom in / out', '⌘= / ⌘−', ['=', '+', '-']],
         ['Find on canvas', '⌘F', ['f', meta]],
         ['Layers', 'L / ⇧L', ['l']],
-        ['Canvas / Map', 'M', ['m']],
+        ['Canvas / Map (on a drawing: back to its map)', 'M', ['m']],
         ['Move between boxes (in Map)', 'Arrows', []],
-        ['Edit map as drawing (in Map)', '⇧M', ['KeyM']],
+        ['Edit as drawing, a fresh copy (in Map)', '⇧M', ['KeyM']],
         // The dispatcher reads metaKey/ctrlKey for this, never altKey: Alt is
         // taken by resize-from-centre.
         ['Snap bypass (hold while dragging)', '⌘', []],

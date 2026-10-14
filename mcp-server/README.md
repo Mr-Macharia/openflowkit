@@ -22,7 +22,9 @@ It gives the agent the same operations a human has, in two modes:
 - **File** — `openflow_open` a `.openflow.json`, edit it with the same tools,
   `openflow_save` it back.
 
-No API keys, no telemetry, no account, no server-side storage.
+No API keys and no account. This server calls no outside service; the hosted endpoint for chat apps (below) stores nothing.
+
+Every client, step by step, with fixes for what goes wrong: [Connect your agent](https://docs.openflowkit.com/connect-your-agent/).
 
 ```
 You:    Create a checkout flow with a promo-code branch
@@ -44,7 +46,18 @@ npm install -g openflowkit
 openflowkit mcp
 ```
 
-Requires **Node 20.11+**.
+Requires **Node 20.11+**. You don't start the server yourself: add it to your agent, and the agent starts it.
+
+### Claude Code
+
+The terminal and the Claude Code extension for VS Code share this setup:
+
+```bash
+claude mcp add -s user openflowkit -- npx -y openflowkit mcp
+```
+
+Start a new session (or run `/mcp`), then open the app and click **Connect agent**, or open
+[app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect).
 
 ### Teach your agent when and how to draw
 
@@ -64,7 +77,11 @@ Installs this server and the skill together.
 
 ### Codex
 
-Codex reads MCP servers from `~/.codex/config.toml`:
+```bash
+codex mcp add openflowkit -- npx -y openflowkit mcp
+```
+
+Or add it to `~/.codex/config.toml` by hand:
 
 ```toml
 [mcp_servers.openflowkit]
@@ -84,7 +101,7 @@ Then install **OpenFlowKit** from that marketplace in the Plugins Directory.
 
 ## Claude Desktop setup
 
-Edit your Claude Desktop config:
+Settings → Developer → Edit Config opens the config file:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -100,11 +117,16 @@ Edit your Claude Desktop config:
 }
 ```
 
-Restart Claude Desktop. You should see **openflowkit** in the tool picker.
+Quit Claude Desktop fully and open it again; **openflowkit** shows in the tool picker. Then open the app and click
+**Connect agent**. If it says `npx` was not found, use the full path that `which npx` prints. No install at all:
+Claude Desktop also takes the hosted connector (below), which draws cards in the chat instead of on your canvas.
 
-### Cursor / Windsurf / other MCP clients
+### Cursor, VS Code, Windsurf and other MCP clients
 
-Point the client at the same command:
+[Add to Cursor](https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19) ·
+[Install in VS Code](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522openflowkit%2522%252C%2522mcp%2522%255D%257D) (Copilot agent mode)
+
+Anything else points at the same command:
 
 - command: `npx`
 - args: `["-y", "openflowkit", "mcp"]`
@@ -221,15 +243,21 @@ Chat apps that run in the cloud cannot start a local process, so they use the ho
 https://mcp.openflowkit.com/mcp
 ```
 
-- **claude.ai:** Settings → Connectors → Add custom connector, and paste the URL. Every plan can add one; the Free
-  plan allows one custom connector.
-- **ChatGPT:** turn on Developer Mode, then create a connector with the URL. ChatGPT decides which plans have it.
+- **claude.ai** (and Claude Desktop, which shares its connectors): Settings → Connectors (Customize → Connectors on
+  newer accounts) → **Add custom connector**, paste the URL, and choose **No sign-in**. Then, in a chat, **+** →
+  **Connectors** → turn OpenFlowKit on. The Free plan allows one custom connector; on Team and Enterprise only an
+  Owner can add one.
+- **ChatGPT:** where your plan allows custom connectors (developer mode), create one with the same URL.
 
 Ask for a diagram and it appears in the chat as a card: the picture, zoom, and **Open in OpenFlowKit**, which opens
-an editable copy in the app. The diagram rides in the link's `#fragment`, so no server sees it.
+an editable copy in the app. It does not draw on the canvas you have open; for that, run the local server. The
+diagram rides in the link's `#fragment`, so opening it sends the diagram to no server. Where the host supports it, the
+card draws itself while the model writes, sends Claude a small picture of the result, and older cards grey out as
+**Earlier version** when a newer one arrives.
 
-The endpoint serves two tools: `render_diagram` (OpenFlow DSL or Mermaid in, picture out, with the canonical DSL
-and the editor link) and `get_syntax`. It is stateless (a fresh server per request), needs no login and **stores
+The endpoint serves two tools to the model: `render_diagram` (OpenFlow DSL or Mermaid in, picture out, with the
+canonical DSL and the editor link) and `get_syntax`, plus `preview_diagram`, which only the card calls while it streams.
+All three are read-only. It is stateless (a fresh server per request), needs no login and **stores
 nothing**. It has no file system, live editor, discovery or document tools: for those, run the local server.
 
 ## Where the diagram shows up
@@ -267,7 +295,8 @@ The same server also runs on Node: `npm run build && PORT=8787 npm run start:htt
 
 The Worker reads `APP_ORIGIN` and `ALLOWED_HOSTS` from `[vars]` in `wrangler.toml`.
 
-Limits, both hosts: only `POST /mcp` is served (GET and DELETE get 405: there are no sessions). Requests over
+Limits, both hosts: only `POST` is served, on `/mcp` (also `/` and `/mcp/`, for a pasted bare host); GET and DELETE
+get 405, since there are no sessions. Requests over
 512 KB get 413; `source` is capped at 100 KB. A diagram over 1000 shapes or 400 connections in total (all views) is
 refused, only the first view is laid out and drawn, and a render has a 15 s deadline. A picture over 1 MB is not
 sent; the card says so and keeps the editor link. Renders in flight are capped (Node: 4, then 503 with
@@ -275,9 +304,10 @@ sent; the card says so and keeps the editor link. Renders in flight are capped (
 
 ## Privacy model
 
-- **No telemetry.** The server never phones home.
+- **Local.** The stdio server calls no outside service, and the live bridge binds to 127.0.0.1.
 - **No provider keys.** The MCP client model authors diagrams directly.
-- **No OpenFlowKit account.** Nothing leaves the machine; the live bridge binds to 127.0.0.1.
+- **No OpenFlowKit account.** The hosted endpoint needs no sign-in and stores nothing.
+- **The app** keeps your diagrams in your browser and sends basic usage stats, which you can turn off in Settings.
 - **Local filesystem access only when requested.** Codebase analysis only reads the path passed to `analyze_codebase`.
 
 ---
