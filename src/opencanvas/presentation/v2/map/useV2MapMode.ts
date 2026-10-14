@@ -72,6 +72,10 @@ interface Options {
   readonly glide?: (camera: CanvasCamera) => void;
   /** A key that would edit on Canvas was swallowed: the editor explains instead of doing nothing. */
   readonly onBlockedEdit?: () => void;
+  /** A page whose Canvas is another page (a repo map's is its drawing): the reader's Canvas goes there. True when it did. */
+  readonly onCanvas?: () => boolean;
+  /** The renderer is mounted: the map lands its camera only then (a slow start lays the map out first). */
+  readonly ready?: boolean;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -96,25 +100,27 @@ function useStable<T>(value: T): T {
  * written; the scene is a ScenePage handed to the canvas in place of the page.
  */
 export function useV2MapMode(options: Options) {
-  const { page, documentId, repo = null, startable = false, palette, autoIcons, hostRef, cameraRef, updateCamera, fitView, onToolChange, primaryId, select, clearSelection, selectedNodeId, selectedConnectorId, cancelTransient, closeChart, notify, onPin, panelsKey = '', selectedIds = () => [], glide = updateCamera, onBlockedEdit } = options;
+  const { page, documentId, repo = null, startable = false, palette, autoIcons, hostRef, cameraRef, updateCamera, fitView, onToolChange, primaryId, select, clearSelection, selectedNodeId, selectedConnectorId, cancelTransient, closeChart, notify, onPin, panelsKey = '', selectedIds = () => [], glide = updateCamera, onBlockedEdit, onCanvas, ready = true } = options;
   // Cheap: only whether the page carries a model. The model itself is read only while the map is on.
   const isRepo = repo !== null;
   const hasModel = useMemo(() => isRepo || (page ? archFrameOf(page) !== null : false), [isRepo, page]);
   const available = hasModel || startable;
   const [mode, setModeState] = useState<V2MapModeName>('canvas');
-  // Once per document: the reader's last choice (this browser), else a repo document opens in Map and a model page in Canvas.
+  // Once per document: the reader's last choice (this browser), else a model page opens in Canvas. A repo page is always
+  // Map: its Canvas is its drawing, another page.
   const [restored, setRestored] = useState<string | null>(null);
+  const opensIn = (id: string): V2MapModeName => (isRepo ? 'map' : savedMode(id) ?? 'canvas');
   // Each time the map becomes available again (back on the repo page from a pinned one) the choice applies again.
   if (!hasModel && restored !== null) setRestored(null);
   // Another document (Open file…, a link) never inherits the last one's mode: its own saved choice, else Canvas.
   const [seenDocument, setSeenDocument] = useState(documentId);
   if (documentId !== seenDocument) {
     setSeenDocument(documentId);
-    setModeState(documentId && hasModel && (savedMode(documentId) ?? (isRepo ? 'map' : 'canvas')) === 'map' ? 'map' : 'canvas');
+    setModeState(documentId && hasModel && opensIn(documentId) === 'map' ? 'map' : 'canvas');
   }
   if (documentId && hasModel && restored !== documentId) {
     setRestored(documentId);
-    if ((savedMode(documentId) ?? (isRepo ? 'map' : 'canvas')) === 'map') setModeState('map');
+    if (opensIn(documentId) === 'map') setModeState('map');
   }
   const active = mode === 'map' && available;
   // Map on a document with no model: the start screen, not a map.
@@ -128,7 +134,10 @@ export function useV2MapMode(options: Options) {
   const [scene, setScene] = useState<TaggedScene<object> | null>(null);
   const [drawError, setError] = useState<string | null>(null);
   const saved = useRef<{ pageId: string | null; camera: CanvasCamera } | null>(null);
-  const leaving = useRef(false);
+  // 'keep': Map was left for its drawing, which has the map's coordinates, so the camera stays where it is.
+  const leaving = useRef<false | true | 'keep'>(false);
+  // Entering Map from that drawing keeps the camera instead of landing: the same boxes stay where the reader was looking.
+  const keepCamera = useRef(false);
   // The box to select on Canvas once back (an element id), and the box a Canvas selection asked Map to land on (until it has).
   const carry = useRef<string | null>(null);
   const intent = useRef<string | null>(null);
@@ -211,7 +220,7 @@ export function useV2MapMode(options: Options) {
     return () => { stale = true; };
   }, [active, subject, model, look, open, empty, layers.shown, layers.all, isRepo]);
 
-  const setMode = useCallback((next: V2MapModeName) => {
+  const setMode = useCallback((next: V2MapModeName, { keep = false }: { keep?: boolean } = {}) => {
     if (next === mode || (next === 'map' && !available)) return;
     setScene(null);
     if (next === 'map') {
@@ -220,29 +229,38 @@ export function useV2MapMode(options: Options) {
       onToolChange('select');
     } else {
       setError(null);
-      leaving.current = true;
+      keepCamera.current = false;
+      leaving.current = keep ? 'keep' : true;
       // A box still on its way to the screen (a quick M M) counts as selected: Map's own scene has pruned the selection meanwhile.
       carry.current = pendingRef.current ?? intent.current ?? onlySelected();
       intent.current = null;
     }
     setModeState(next);
   }, [mode, available, page?.id, onlySelected, cameraRef, closeChart, onToolChange]);
+  // Map asked for on a page about to be shown; a repo page is already on (it always opens in Map).
+  const [wantMap, setWantMap] = useState<string | null>(null);
+  if (wantMap !== null && page?.id === wantMap) {
+    setWantMap(null);
+    if (available && mode !== 'map') setModeState('map');
+  }
   // A page without a model has no map: fall back to Canvas (the page switch already fitted its own camera).
   if (mode === 'map' && !available) { setModeState('canvas'); setScene(null); setError(null); }
 
   // Back on Canvas, once the page is on the host: the camera it had, or its own fit when the page changed meanwhile.
   useEffect(() => {
     if (active || !leaving.current) return;
+    const keep = leaving.current === 'keep';
     leaving.current = false;
     const was = saved.current;
     saved.current = null;
-    const restored = was !== null && was.pageId === (page?.id ?? null);
-    if (restored) updateCamera(was.camera); else fitView();
+    const restored = keep || (was !== null && was.pageId === (page?.id ?? null));
+    if (keep) { /* the drawing sits where the map was */ } else if (restored) updateCamera(was!.camera); else fitView();
     // The selected box comes along when this page places it, whatever happened to the camera; else no stale ids stay.
     const box = carry.current;
     carry.current = null;
     const host = hostRef.current;
-    const places = box ? (page?.nodes ?? []).filter((node) => placedElementId(node) === box) : [];
+    // A drawing copied from the map keeps the map's box ids.
+    const places = box ? (page?.nodes ?? []).filter((node) => placedElementId(node) === box || node.id === box) : [];
     if (!host || places.length === 0) { clearSelection(); return; }
     // Placed twice: the one on screen now, else the first.
     const view = host.getViewportSize();
@@ -254,7 +272,8 @@ export function useV2MapMode(options: Options) {
     const nodeId = (places.find((node) => onScreen(node.id)) ?? places[0]!).id;
     select(nodeId);
     const bounds = host.getContentBounds([nodeId]);
-    const pan = restored && bounds ? panToUncover(bounds, cameraRef.current, clearance(host)) : null;
+    // Left for its drawing: the camera stays exactly where the map had it, even with a big box half off screen.
+    const pan = restored && !keep && bounds ? panToUncover(bounds, cameraRef.current, clearance(host)) : null;
     if (pan) glide(pan);
   }, [active, page, updateCamera, fitView, clearSelection, select, hostRef, cameraRef, glide]);
 
@@ -264,13 +283,17 @@ export function useV2MapMode(options: Options) {
   const onPartial = useCallback(() => {
     if (partialSaid) return;
     partialSaid = true;
-    notify(`Showing part of the map. ${platformKeys('⇧1')} shows all of it.`);
+    // A phone has no ⇧1: name the button instead.
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    notify(touch ? 'Showing part of the map. Zoom to fit shows all of it.' : `Showing part of the map. ${platformKeys('⇧1')} shows all of it.`);
   }, [notify]);
-  const { shown, player, fit } = useMapMotion({ mapPage, emptyPage: EMPTY_MAP, scene, model, hostRef, cameraRef, updateCamera, markShown, focusRef, onPartial });
+  const { shown, player, fit } = useMapMotion({ mapPage, emptyPage: EMPTY_MAP, scene, model, hostRef, cameraRef, updateCamera, markShown, focusRef, onPartial, keepCameraRef: keepCamera, ready });
   useClearance({ active, selectedId: selectedNodeId, panelsKey, selectedIds, shown, hostRef, cameraRef, glide, busy: () => player.stats().running || seqs.current.shown < seqs.current.asked });
   useMapFocus(hostRef, active && mapPage && mapPage !== EMPTY_MAP ? mapPage : null, selectedNodeId, selectedConnectorId);
 
   useEffect(() => { pendingRef.current = null; }, [active, lineageKey]);
+  // A map that cannot draw (an error, nothing in it) never lands, so the wish to keep the camera must not wait for the next one.
+  useEffect(() => { if (active && (error !== null || empty)) keepCamera.current = false; }, [active, error, empty]);
   useEffect(() => {
     const id = pendingRef.current;
     if (id && mapPage && mapPage !== EMPTY_MAP && mapPage.nodes.some((node) => node.id === id)) { pendingRef.current = null; intent.current = null; select(id); }
@@ -286,10 +309,21 @@ export function useV2MapMode(options: Options) {
     if (element) intent.current = element;
     // "Show on canvas": the element to select once back, in place of whatever Map had selected.
     if (next === 'canvas' && showElement) intent.current = showElement;
+    // A repo page's Canvas is its drawing (another page): nothing to remember, the repo page always reopens in Map.
+    if (next === 'canvas' && active && !showElement && onCanvas?.()) return;
     if (!(element && enterMapAt(element, { reveal: true }))) setMode(next);
     // Map without a model is not a choice worth keeping: reopening lands on the drawing.
     if (documentId && hasModel) saveMode(documentId, next);
-  }, [mode, page, onlySelected, enterMapAt, setMode, documentId, hasModel]);
+  }, [mode, page, onlySelected, enterMapAt, setMode, documentId, hasModel, active, onCanvas]);
+  /** A drawing's Map switch: Map on `pageId` (the page it was drawn from) once the editor shows it, the camera kept. */
+  const returnTo = useCallback((pageId: string) => {
+    setWantMap(pageId);
+    keepCamera.current = true;
+    // Leaving this Map later for the page's own Canvas (a C4 view) fits that page: the drawing's camera means nothing there.
+    saved.current = null;
+    closeChart();
+    onToolChange('select');
+  }, [closeChart, onToolChange]);
   /** M: true when the page has a map to switch to or from, so the key is spent. */
   const toggle = useCallback((): boolean => {
     if (!available) return false;
@@ -399,7 +433,7 @@ export function useV2MapMode(options: Options) {
     return { ...stats, running, layouts: { ...seqs.current } };
   }, [player, hostRef]);
 
-  return { mode: active ? 'map' as const : 'canvas' as const, available, active, start, mapPage, empty: active && empty && !repo, error: active ? error : null, setMode, choose, toggle, clickNode, onKey, state, motionStats, openBoxes, model, arch, reveal, path, findSource, enterMapAt,
+  return { mode: active ? 'map' as const : 'canvas' as const, available, active, start, mapPage, empty: active && empty && !repo, error: active ? error : null, setMode, choose, toggle, returnTo, clickNode, onKey, state, motionStats, openBoxes, model, arch, reveal, path, findSource, enterMapAt,
     /** The aggregated edge a repo-map connector stands for (its evidence), or undefined. */
     edgeOf, edgesAt,
     /** Zoom to fit while Map is on: the whole map clear of the panels and floating chrome (the editor's fit ignores the chrome). */

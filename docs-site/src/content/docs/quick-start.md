@@ -50,9 +50,9 @@ Click **Export** at the top right. Pick a format (PNG, SVG, PDF or JSON) and a s
 
 ## 4. Put an agent on it
 
-- **MCP**: click **Connect agent** in the right-hand rail, copy the MCP configuration (or the
-  one-line Claude Code command) into your client, restart it, then click **Connect**. Every tool
-  then acts on the document you see. See [MCP Server](/mcp-server/).
+- **MCP**: click **Connect agent** in the right-hand rail, pick your client under **Your agent**,
+  copy its setup, and restart the agent. The panel connects by itself, and every tool then acts on
+  the document you see. See [Connect your agent](/connect-your-agent/).
 - **Bring your own key**: press `⌘J`, add a provider key in the assistant panel and describe
   the diagram you want. You review the proposal before it lands, and it applies as one undo
   step. See [AI generation](/ai-generation/).

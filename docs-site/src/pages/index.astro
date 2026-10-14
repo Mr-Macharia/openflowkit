@@ -196,15 +196,16 @@ const MCP_CONFIG = `{
               <li>29 tools: create, update, style, export, screenshot.</li>
               <li>No app open? It edits <code>.openflow.json</code> files in your repo instead.</li>
               <li>No API key of its own. Your client's model does the thinking.</li>
+              <li>In claude.ai or ChatGPT? Add the connector <code>https://mcp.openflowkit.com/mcp</code>: no install, and diagrams appear as cards in the chat.</li>
             </ul>
-            <a class="more" href="/mcp-server/">Set up your client <span aria-hidden="true">→</span></a>
+            <a class="more" href="/connect-your-agent/">Connect your agent <span aria-hidden="true">→</span></a>
           </div>
           <div class="panel code-card" role="group" aria-label="MCP client setup">
             <div class="code-head">Claude Code</div>
             <pre><code><span class="t-l">$</span> claude mcp add -s user openflowkit -- {MCP_COMMAND}</code></pre>
             <div class="code-head">Cursor, Windsurf, VS Code, Claude Desktop</div>
             <pre class="config"><code>{MCP_CONFIG}</code></pre>
-            <p class="code-foot">Then open the app and click <strong>Connect agent</strong>. It shows the exact line for your client.</p>
+            <p class="code-foot">Then open the app and click <strong>Connect agent</strong>. It shows the exact steps for your client.</p>
           </div>
         </div>
       </section>
@@ -238,7 +239,7 @@ const MCP_CONFIG = `{
           <p class="eyebrow">Repo maps</p>
           <h2 id="map-title">Paste a GitHub repo. Get its map.</h2>
           <p>
-            Your browser reads a public repository and draws its services and how they connect. Open an arrow to
+            Your browser reads a GitHub repository (a private one with your token) and draws its services and how they connect. Open an arrow to
             see the file and line it came from. No AI key needed.
           </p>
           <div class="links">
@@ -680,6 +681,7 @@ const MCP_CONFIG = `{
         background: var(--ofk-raised);
         font: 0.85em var(--sl-font-mono);
         color: var(--ofk-text);
+        overflow-wrap: anywhere;
       }
       .points {
         display: grid;

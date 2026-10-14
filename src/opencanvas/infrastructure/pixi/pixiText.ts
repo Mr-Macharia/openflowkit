@@ -127,3 +127,15 @@ const TITLE_LABEL = 'title';
 export function isTitle(text: Text): boolean {
   return text.label === TITLE_LABEL;
 }
+
+const stripFonts = new WeakMap<Container, number>();
+/** A strip painted behind text of `fontSize` (a card header): it hides with that text, so zoomed out no empty bar stays. */
+export function markStrip<T extends Container>(strip: T, fontSize: number): T {
+  stripFonts.set(strip, fontSize);
+  return strip;
+}
+
+/** The text size a marked strip goes with, or null for any other view. */
+export function stripFont(view: Container): number | null {
+  return stripFonts.get(view) ?? null;
+}

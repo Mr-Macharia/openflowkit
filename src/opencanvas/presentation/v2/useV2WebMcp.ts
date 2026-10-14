@@ -18,12 +18,14 @@ export interface V2WebMcpOptions extends LiveAgentSession {
   readonly viewport: () => { width: number; height: number };
   readonly select: (nodeIds: readonly string[], connectorIds: readonly string[], reveal: boolean) => void;
   readonly onActivity: (message: string) => void;
+  /** Id of the command on top of the undo stack: the change line shows only while the agent's change is there (as the bridge's). */
+  readonly undoTopId?: string | null;
 }
 
 interface V2WebMcp {
   /** Tools registered with the browser's agent; 0 when the browser has no WebMCP. */
   readonly tools: number;
-  /** The last change an agent in this browser applied (its undo label); null before the first. */
+  /** The last change an agent in this browser applied (its undo label) while it is the undo top; null otherwise. */
   readonly activity: string | null;
 }
 
@@ -56,7 +58,7 @@ async function settled(read: () => unknown, before: unknown): Promise<void> {
 
 export function useV2WebMcp(options: V2WebMcpOptions): V2WebMcp {
   const [tools, setTools] = useState(0);
-  const [activity, setActivity] = useState<string | null>(null);
+  const [activity, setActivity] = useState<{ label: string; id: string } | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const readOnly = Boolean(options.readOnly);
@@ -74,7 +76,7 @@ export function useV2WebMcp(options: V2WebMcpOptions): V2WebMcp {
         const { command, output } = await runLiveAgentOp(() => optionsRef.current, name, input, pageId, signal);
         trackOnce('agent_webmcp');
         if (command) {
-          setActivity(command.label);
+          setActivity({ label: command.label, id: command.id });
           await settled(() => optionsRef.current.document, before);
         }
         optionsRef.current.onActivity(`${name} ran from an agent in this browser.`);
@@ -94,9 +96,8 @@ export function useV2WebMcp(options: V2WebMcpOptions): V2WebMcp {
           return rect !== null && rect.right > 0 && rect.bottom > 0 && rect.left < width && rect.top < height;
         });
         const { x, y, zoom } = camera();
-        // The repo map page refuses edits as a read-only document does, so the agent is told so up front.
-        const readOnly = Boolean(optionsRef.current.readOnly) || optionsRef.current.lockedPageId === pageId;
-        return { document, pageId, scene, mode, readOnly, selection: selectedIds?.() ?? [], camera: { x, y, zoom }, onScreen };
+        // A repo map page is not read-only to an agent: its changes land on the map's drawing (runLiveAgentOp).
+        return { document, pageId, scene, mode, readOnly: Boolean(optionsRef.current.readOnly), selection: selectedIds?.() ?? [], camera: { x, y, zoom }, onScreen };
       },
       select: (nodeIds, connectorIds, reveal) => optionsRef.current.select(nodeIds, connectorIds, reveal),
     };
@@ -108,5 +109,6 @@ export function useV2WebMcp(options: V2WebMcpOptions): V2WebMcp {
     return () => { controller.abort(new Error(CLOSED)); setTools(0); };
   }, [readOnly]);
 
-  return { tools, activity };
+  // After an Undo (or any later edit) the label would name a change that is no longer there.
+  return { tools, activity: activity && activity.id === (options.undoTopId ?? null) ? activity.label : null };
 }

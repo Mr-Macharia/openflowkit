@@ -115,10 +115,38 @@ describe('canonical SVG export', () => {
     const art = 'data:image/svg+xml;charset=utf-8,%3Csvg%2F%3E';
     const svg = exportCanonicalSvg(document, { iconArt: { [iconArtKey('developer-icons-v1', 'database-postgresql')]: art } });
     const box = architectureIconBounds(card, 'provider-icon');
-    expect(svg).toContain(`<image href="${art}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"`);
+    const id = /<symbol id="([^"]+)" viewBox="0 0 1 1"><image href="([^"]+)" width="1" height="1" preserveAspectRatio="xMidYMid meet"\/><\/symbol>/.exec(svg);
+    expect(id?.[2]).toBe(art);
+    expect(svg).toContain(`<use href="#${id![1]}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>`);
     // No art loaded (headless, or a failed fetch): the plate alone, never a broken link.
     expect(exportCanonicalSvg(document)).not.toContain('<image');
     expect(exportCanonicalSvg(document, { iconArt: {} })).not.toContain('<image');
+  });
+
+  // F01 (2026-10-14): a 20-card repo drawing inlined the TypeScript icon 20 times, so its Recents thumbnail
+  // went over the 60 K cap and the card never got a picture. Each distinct art is written once.
+  it('writes each distinct icon art once and places it per node', () => {
+    const card = (id: string, shapeId: string, x: number) => createTestNode(id, {
+      kind: 'architecture', size: { width: 148, height: 116 }, transform: { translation: { x, y: 0 }, rotationRadians: 0, scale: { x: 1, y: 1 } },
+      content: { label: id, ...iconContent({ provider: 'developer', packId: 'developer-icons-v1', shapeId, label: id }) },
+    });
+    const nodes = [...Array.from({ length: 20 }, (_, index) => card(`ts-${index}`, 'typescript', index * 200)), card('pg', 'database-postgresql', 4200)];
+    const ts = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg viewBox="0 0 24 24"><path fill="#3178c6" d="M0 0h24v24H0z"/></svg>')}`;
+    const pg = 'data:image/svg+xml;charset=utf-8,%3Csvg%2F%3E';
+    const iconArt = { [iconArtKey('developer-icons-v1', 'typescript')]: ts, [iconArtKey('developer-icons-v1', 'database-postgresql')]: pg };
+    const svg = exportCanonicalSvg(createTestDocument({ nodes }), { iconArt });
+    expect(svg.split(ts).length - 1).toBe(1);
+    expect(svg.split(pg).length - 1).toBe(1);
+    expect(svg.match(/<use href="#ofk-icon-/g)).toHaveLength(21);
+    // Every <use> names a symbol that exists, and the picture stays well-formed XML.
+    const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0);
+    const symbols = new Set([...parsed.getElementsByTagName('symbol')].map((symbol) => symbol.id));
+    expect(symbols.size).toBe(2);
+    for (const use of parsed.getElementsByTagName('use')) expect(symbols.has(use.getAttribute('href')!.slice(1))).toBe(true);
+    // The same art gets the same id in another export: two pictures in one page never point at each other's icons.
+    const pgId = [...parsed.getElementsByTagName('symbol')].find((symbol) => symbol.firstElementChild?.getAttribute('href') === pg)!.id;
+    expect(exportCanonicalSvg(createTestDocument({ nodes: [nodes[20]!] }), { iconArt })).toContain(`<symbol id="${pgId}"`);
   });
 
   it('draws an icon tile caption as the layout breaks it: a tspan per line, then the description', () => {

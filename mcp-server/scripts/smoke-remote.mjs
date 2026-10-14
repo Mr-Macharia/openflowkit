@@ -15,7 +15,8 @@ const client = new Client({ name: 'openflowkit-smoke', version: '1' });
 await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
 
 const { tools } = await client.listTools();
-check('tools/list has render_diagram and get_syntax', tools.map((t) => t.name).sort().join() === 'get_syntax,render_diagram');
+check('tools/list has render_diagram, get_syntax and preview_diagram', tools.map((t) => t.name).sort().join() === 'get_syntax,preview_diagram,render_diagram');
+check('preview_diagram is app-only', JSON.stringify(tools.find((t) => t.name === 'preview_diagram')?._meta?.ui?.visibility) === '["app"]');
 check('render_diagram points at the viewer', tools.find((t) => t.name === 'render_diagram')?._meta?.ui?.resourceUri === 'ui://openflowkit/viewer.html');
 
 const { contents } = await client.readResource({ uri: 'ui://openflowkit/viewer.html' });
@@ -32,6 +33,9 @@ check('Mermaid converts and renders', !mermaid.isError && String(mermaid.structu
 const [icons, iconsMs] = await timed(() => client.callTool({ name: 'render_diagram', arguments: { source: 'flowchart\nAPI -> Postgres\nAPI -> Redis' } }));
 const iconCount = (String(icons.structuredContent?.svg).match(/data:image\/svg\+xml/g) ?? []).length;
 check('icon art loads (static assets)', iconCount >= 2, `${iconCount} icons, ${iconsMs} ms`);
+
+const [preview, previewMs] = await timed(() => client.callTool({ name: 'preview_diagram', arguments: { source: 'flowchart\nCart -> Shipping' } }));
+check('preview_diagram draws a keyed preview', !preview.isError && String(preview.structuredContent?.svg).includes('data-node-id="frame"'), `${previewMs} ms`);
 
 const bad = await client.callTool({ name: 'render_diagram', arguments: { source: 'flowchart TD\n  A[[[ --> \n' } });
 check('invalid source returns diagnostics', bad.isError === true && (bad.structuredContent?.diagnostics?.length ?? 0) > 0);

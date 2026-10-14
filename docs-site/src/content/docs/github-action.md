@@ -21,24 +21,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: openflowkit/openflowkit/action@<tag>
+      - uses: openflowkit/openflowkit/action@v2.1.0
 ```
 
-`<tag>` must be a release tag on `main` whose tree contains the `action/` folder. The Action
-works from another repository only once such a tag exists. A branch name also works but moves
-under you; a tag or a commit SHA does not. Inside the OpenFlowKit repository itself,
-`uses: ./action` works.
+Use a release tag (`v2.1.0` or later) or a commit SHA. A branch name also works but moves
+under you. Inside the OpenFlowKit repository itself, `uses: ./action` works.
 
-The default CLI is pinned to `openflowkit@0.2.4`, so that version must be on
-npm. A CLI you point the `cli` input at must also be 0.2.0 or newer: older versions have no
-`render`, `convert` or `op`.
+The default CLI is the version pinned in that tag's `action.yml`: 0.2.3 in
+`v2.1.0`, `0.2.4` from the next release. A CLI you point the `cli` input at must be 0.2.0 or
+newer: older versions have no `render`, `convert` or `op`.
 
 ## Inputs
 
 | Input | Default | What it does |
 | --- | --- | --- |
 | `github-token` | `${{ github.token }}` | Comments, and pushes refreshed SVGs |
-| `cli` | `npx -y openflowkit@0.2.4` | The command that runs the CLI; it never sees the token |
+| `cli` | `npx -y openflowkit@<pinned>` (0.2.3 in `v2.1.0`) | The command that runs the CLI; it never sees the token |
 | `refresh-svg` | `false` | Commit a fresh `<name>.svg` when the committed one is stale (same-repo PRs only) |
 | `comment-author` | `github-actions[bot]` | The login whose comment is updated; set it when you pass a PAT or App token |
 | `paths` | `.openflow.json,.ofk` | Extensions (starting with `.`) or globs, comma-separated |

@@ -30,6 +30,17 @@ export function saveMode(documentId: string, mode: 'canvas' | 'map'): void {
   try { localStorage.setItem(modeKey(documentId), mode); } catch { /* storage blocked: the choice lasts this visit */ }
 }
 
+// The drawing a map was last left for: its Canvas goes back there after a reload too, not to whichever copy is newest.
+const drawingKey = (documentId: string, pageId: string): string => `ofk.map-drawing:${documentId}:${pageId}`;
+
+export function savedDrawing(documentId: string, pageId: string): string | null {
+  try { return localStorage.getItem(drawingKey(documentId, pageId)); } catch { return null; }
+}
+
+export function saveDrawing(documentId: string, pageId: string, drawingId: string): void {
+  try { localStorage.setItem(drawingKey(documentId, pageId), drawingId); } catch { /* storage blocked: this visit only */ }
+}
+
 const seenKey = (documentId: string): string => `ofk.map-seen:${documentId}`;
 
 /** True the first time a document's map is entered in this browser (then never again): its overview opens once. */
@@ -46,8 +57,8 @@ export function forgetMapMode(documentId: string): void {
   try {
     localStorage.removeItem(modeKey(documentId));
     localStorage.removeItem(seenKey(documentId));
-    const pages = openKey(documentId, '');
+    const prefixes = [openKey(documentId, ''), drawingKey(documentId, '')];
     const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i));
-    for (const key of keys) if (key?.startsWith(pages)) localStorage.removeItem(key);
+    for (const key of keys) if (key && prefixes.some((prefix) => key.startsWith(prefix))) localStorage.removeItem(key);
   } catch { /* storage blocked */ }
 }

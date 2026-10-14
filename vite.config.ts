@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // The `/*` block of public/_headers (what Cloudflare sends): dev and preview send it too, so every e2e
@@ -20,6 +20,16 @@ deployedHeaders['Content-Security-Policy'] = deployedHeaders['Content-Security-P
 // Only the version reaches the bundle (usage beacons report it); importing package.json would ship all of it.
 const { version } = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as { version: string };
 
+// The Custom provider's same-origin proxy, as nginx/ai-proxy.sh sets it up in the Docker image: only when
+// OPENFLOWKIT_AI_UPSTREAM is set, only the model list and chat, without the browser's Origin or cookies.
+const aiUpstream = process.env.OPENFLOWKIT_AI_UPSTREAM?.replace(/\/+$/, '');
+const aiProxy: Record<string, ProxyOptions> = aiUpstream ? {
+  '^/ai-proxy/(models|chat/completions)(\\?.*)?$': {
+    target: aiUpstream, changeOrigin: true, rewrite: (url) => url.replace(/^\/ai-proxy/, ''),
+    configure: (proxy) => proxy.on('proxyReq', (request) => { for (const name of ['origin', 'referer', 'cookie']) request.removeHeader(name); }),
+  },
+} : {};
+
 export default defineConfig(() => {
   return {
     define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(version) },
@@ -27,8 +37,9 @@ export default defineConfig(() => {
       port: 3000,
       host: '0.0.0.0',
       headers: deployedHeaders,
+      proxy: aiProxy,
     },
-    preview: { headers: deployedHeaders },
+    preview: { headers: deployedHeaders, proxy: aiProxy },
     plugins: [react()],
     // Workers are not in the dev server's startup scan: their deps (gifenc, mediabunny) were found on the
     // first encode, and Vite reloaded every open page mid-session (CI's motion-dialog flake).

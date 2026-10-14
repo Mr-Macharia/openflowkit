@@ -25,7 +25,7 @@ Every request the app makes, and when:
 | Answer a feedback question, or **Send feedback…** in the main menu | Your answer, and your email if you add one | `share.openflowkit.com` |
 | Copy or open an **editable copy** link | Nothing: the diagram's code rides in the link's `#fragment` | Nowhere |
 | Map a repo, or turn a repo into a diagram | Requests for the repo's file list and files (plus your GitHub token, if you gave one) | `api.github.com` and `raw.githubusercontent.com` |
-| [Connect an agent](/mcp-server/) | Tool calls and their results | The MCP server on your own machine, at `127.0.0.1` |
+| [Connect an agent](/connect-your-agent/) | Tool calls and their results | The MCP server on your own machine, at `127.0.0.1` |
 | Paste an image URL | A normal image request | That URL |
 | Open Home | A request for the repository's star count, at most once a day (no diagram data) | `api.github.com` |
 
@@ -102,7 +102,8 @@ the work.
 
 | Message or symptom | What it means |
 | --- | --- |
-| An agent says "No document: pair an editor" | The MCP server is running but no editor is connected. In the app, open **Connect agent** and click **Connect**, or have the agent use `openflow_open` on a file |
+| An agent says "No editor is paired. Ask the user to open https://app.openflowkit.com/#/connect and press Connect…" | The MCP server is running but no editor is connected. Open that link (or **Connect agent** → **Connect** in the app), or have the agent work on a file with `openflow_create` or `openflow_open`. More fixes: [Connect your agent](/connect-your-agent/#troubleshooting) |
+| The Connect agent panel says "Waiting for your agent…" | Normal until your agent starts its server: start a new agent session, or restart the app, after adding OpenFlowKit. See [Connect your agent](/connect-your-agent/) |
 | "Another tab saved first" | The same document is open in two tabs. **Reload** takes the other tab's version; **Save as copy** keeps yours as a new document |
 | The canvas asks for WebGL | Turn on hardware acceleration in the browser settings, or try another browser |
 | Ollama doesn't answer from the hosted app | Ollama rejects other origins by default. Quit the Ollama app and run `OLLAMA_ORIGINS='*' ollama serve` |

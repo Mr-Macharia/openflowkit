@@ -6,12 +6,15 @@ import {
 } from '../lib/agent.js';
 import { headlessElkLayout } from '../lib/agent.js';
 import { loadFileCapabilities } from '../lib/fileCapabilities.js';
+import { exportSvg } from '../lib/svgBeside.js';
 
 type Diagnostic = DslLintReport['diagnostics'][number];
 export interface LayoutPortLike { run(graph: unknown, signal?: AbortSignal): Promise<unknown> }
 
 export const RENDER_LIMITS = { nodes: 1000, connectors: 400 } as const;
 export const DEFAULT_DEADLINE_MS = 15_000;
+/** A preview is one frame of a drawing still being written: a slow one is stale before it lands. */
+export const PREVIEW_DEADLINE_MS = 3_000;
 
 export interface Rendered {
   readonly lint: DslLintReport;
@@ -67,4 +70,24 @@ export async function withDeadline<T>(ms: number, work: (signal: AbortSignal) =>
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface Preview { readonly svg: string; readonly nodes: number; readonly connectors: number }
+
+/**
+ * The picture of a source the model is still writing: drawn whenever anything compiles, warnings and errors included,
+ * because the end of the source is missing. The frame is keyed `frame` (its id hashes the source, so it would change
+ * every time) and every shape keeps its own id, so the card can tell which shapes are new.
+ */
+export async function previewSvg(source: string, theme: 'light' | 'dark', options: { layout?: LayoutPortLike; deadlineMs?: number } = {}): Promise<Preview | { refused: string }> {
+  const checked = await withDeadline(options.deadlineMs ?? PREVIEW_DEADLINE_MS, (signal) =>
+    renderCheck(source, 'Preview', { signal, ...(options.layout ? { elk: options.layout } : {}) }));
+  if (checked.refused) return { refused: checked.refused };
+  const page = checked.document?.pages[0];
+  const nodes = page?.nodes.filter((node) => (node as { kind: string }).kind !== 'frame') ?? [];
+  if (!checked.document || !page || nodes.length === 0) return { refused: 'Nothing to draw yet.' };
+  const frame = page.nodes.find((node) => (node as { kind: string }).kind === 'frame') as { id: string } | undefined;
+  let svg = await exportSvg(checked.document, page.id, theme);
+  if (frame) svg = svg.split(`data-node-id="${frame.id}"`).join('data-node-id="frame"');
+  return { svg, nodes: nodes.length, connectors: page.connectors.length };
 }

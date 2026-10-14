@@ -1,22 +1,39 @@
 import type { SceneDocumentV1 } from '../../domain/document/types';
-import type { V2DocumentRepository, V2Thumbnail } from '../../../services/storage/v2/v2Repository';
+import { V2_THUMBNAIL_MAX_CHARS, type V2DocumentRepository, type V2Thumbnail } from '../../../services/storage/v2/v2Repository';
 import { exportCanonicalSvg } from '../../infrastructure/export/canonicalSvg';
 import { loadIconArt } from './v2IconArt';
 
+const drawn = (page: SceneDocumentV1['pages'][number]) => page.nodes.length + page.connectors.length > 0;
+
 /**
- * First page, both themes, no background: the home card supplies its own surface.
+ * First page, both themes, no background: the home card supplies its own surface. A first page with
+ * nothing on it (a repo document's map page: its map is drawn live, not stored) gives way to the newest page that has a drawing.
  * No embedded font (a saved SVG file has one): at card size the system face reads the same,
  * and every stored preview would carry another 65 KB.
  */
-export async function buildV2Thumbnail(document: SceneDocumentV1): Promise<V2Thumbnail | null> {
-  const page = document.pages[0];
-  if (!page || page.nodes.length + page.connectors.length === 0) return null;
+export async function buildV2Thumbnail(document: SceneDocumentV1, limit = V2_THUMBNAIL_MAX_CHARS): Promise<V2Thumbnail | null> {
+  const first = document.pages[0];
+  const page = first && drawn(first) ? first : document.pages.findLast(drawn);
+  if (!page) return null;
   const iconArt = await loadIconArt(document);
-  const draw = (theme: 'light' | 'dark') =>
-    exportCanonicalSvg(document, { pageId: page.id, iconArt, theme, pixelRatio: 1, transparent: true });
-  const light = draw('light');
-  const dark = draw('dark');
-  return light && dark ? { light, dark } : null;
+  const build = (art: Record<string, string> | undefined) => (): V2Thumbnail | null => {
+    const draw = (theme: 'light' | 'dark') =>
+      exportCanonicalSvg(document, { pageId: page.id, ...(art ? { iconArt: art } : {}), theme, pixelRatio: 1, transparent: true });
+    const light = draw('light');
+    const dark = draw('dark');
+    return light && dark ? { light, dark } : null;
+  };
+  // A big map with icon art outgrows what a card may store: the same picture with plain icon plates still names every box.
+  return fitThumbnail([build(iconArt), build(undefined)], limit);
+}
+
+/** The first try whose two themes together fit `limit` (each try drawn only when the one before did not fit), else null. */
+export function fitThumbnail(tries: readonly (() => V2Thumbnail | null)[], limit: number): V2Thumbnail | null {
+  for (const attempt of tries) {
+    const thumbnail = attempt();
+    if (thumbnail && thumbnail.light.length + thumbnail.dark.length <= limit) return thumbnail;
+  }
+  return null;
 }
 
 // ponytail: a preview still pending when you go home lands after the list, so that card shows its

@@ -44,7 +44,7 @@ describe('feature inventory', () => {
   it('points every shipped feature at a file that exists', () => {
     for (const feature of features.filter(({ status }) => status === 'shipped')) {
       const path = feature.evidence.replace(/:\d+$/, '');
-      expect(path.startsWith('src/') || path.startsWith('mcp-server/') || path.startsWith('scripts/') || path.startsWith('package.json'), `${feature.id} evidence must be repo-relative`).toBe(true);
+      expect(path.startsWith('src/') || path.startsWith('mcp-server/') || path.startsWith('scripts/') || path.startsWith('action/') || path.startsWith('plugin/') || path.startsWith('package.json'), `${feature.id} evidence must be repo-relative`).toBe(true);
       expect(existsSync(resolve(REPO_ROOT, path)), `${feature.id}: ${path} does not exist`).toBe(true);
     }
   });

@@ -779,11 +779,11 @@
       "name": "Map mode",
       "status": "shipped",
       "evidence": "src/opencanvas/presentation/v2/map/useV2MapMode.ts",
-      "notes": "Canvas | Map switch in the document bar on every document (M): the architecture model as boxes inside boxes; a click opens a box in place, a click on an arrow lists its relations (or, on a repo map, its file:line evidence). The Map toolbar sets the depth (Top level, One level in, All levels) and Edit as drawing (Shift+M) copies the map to an ordinary Canvas page. Arrow keys walk between boxes. Repo maps (#/map/github/owner/repo) open in the editor, read-only.",
+      "notes": "Canvas | Map switch in the document bar on every document (M): the architecture model as boxes inside boxes; a click opens a box in place, a click on an arrow lists its relations (or, on a repo map, its file:line evidence). The Map toolbar sets the depth (Top level, One level in, All levels) and Edit as drawing (Shift+M) copies the map to a new numbered drawing page that remembers its map (Map / M goes back, the camera kept). Arrow keys walk between boxes. Repo maps (#/map/github/owner/repo) always open in Map; their Canvas opens the map's drawing, made from the map on screen the first time. Private repos read in the browser with a GitHub token (files through the API).",
       "shortcuts": [
-        "Canvas / Map",
+        "Canvas / Map (on a drawing: back to its map)",
         "Move between boxes (in Map)",
-        "Edit map as drawing (in Map)"
+        "Edit as drawing, a fresh copy (in Map)"
       ],
       "page": "map-mode"
     },
@@ -800,23 +800,23 @@
       "name": "Starter templates",
       "status": "shipped",
       "evidence": "src/agent/starterTemplates.ts",
-      "notes": "Seven canonical DSL starters shown on Home (Templates view and first run) with checked-in previews; picking one opens a new document generated from it. The MCP server lists the same seven.",
+      "notes": "Twelve canonical DSL starters shown on Home (Templates view and first run) with checked-in previews; picking one opens a new document generated from it. The MCP server lists the same twelve.",
       "page": "templates"
     },
     {
       "id": "cli",
       "name": "openflowkit CLI",
-      "status": "partial",
+      "status": "shipped",
       "evidence": "mcp-server/src/cli.ts",
-      "notes": "render, convert, validate, op, ops, discover, drift, build, map; ships in MCP server 0.2.0, which npm does not serve yet (it serves 0.1.2).",
+      "notes": "render, convert, validate, op, ops, discover, drift, build, map, mcp; on npm as openflowkit (and @openflowkit/openflowkit-mcp).",
       "page": "cli"
     },
     {
       "id": "pr-action",
       "name": "PR diagrams GitHub Action",
-      "status": "partial",
+      "status": "shipped",
       "evidence": "action/action.yml",
-      "notes": "Comments on a PR with node/connector counts, the DSL diff and drift; refreshes stale SVGs. Usable from other repos only once a release tag on main contains action/, and its default CLI needs MCP 0.2.0 on npm.",
+      "notes": "Comments on a PR with node/connector counts, the DSL diff and drift; refreshes stale SVGs. Use openflowkit/openflowkit/action@v2.1.0 or a later release tag; the default CLI is the one pinned in that tag's action.yml.",
       "page": "github-action"
     },
     {
@@ -824,7 +824,7 @@
       "name": "Remote MCP Apps endpoint",
       "status": "partial",
       "evidence": "mcp-server/src/http.ts",
-      "notes": "npm run start:http serves render_diagram and get_syntax over Streamable HTTP and stores nothing. Not deployed; Claude, ChatGPT and VS Code hosts are unverified.",
+      "notes": "Deployed at https://mcp.openflowkit.com/mcp (Cloudflare Worker, mcp-server/src/worker.ts); npm run start:http self-hosts the same. Serves render_diagram and get_syntax (plus the card's app-only preview_diagram) over Streamable HTTP on /, /mcp and /mcp/, and stores nothing; the preview tool and the extra paths ship with the next Worker deploy. Setup steps per chat app are on connect-your-agent. How each chat host renders the card is not checked here.",
       "page": "mcp-server"
     },
     {
@@ -846,9 +846,10 @@
     {
       "id": "agent-plugins",
       "name": "Claude Code and Codex plugins",
-      "status": "partial",
+      "status": "shipped",
       "evidence": "plugin/.claude-plugin/plugin.json",
-      "notes": "The MCP server plus the diagram skill, with a marketplace at .claude-plugin/marketplace.json. Installable once it is on the default branch (main) and MCP 0.2.0 is on npm."
+      "notes": "The MCP server plus the diagram skill. Claude Code: claude plugin marketplace add openflowkit/openflowkit, then claude plugin install openflowkit@openflowkit (marketplace in .claude-plugin/marketplace.json); Codex: .agents/plugins/marketplace.json.",
+      "page": "mcp-server"
     },
     {
       "id": "repo-to-diagram",
@@ -1020,7 +1021,7 @@
       "name": "MCP starter templates",
       "status": "shipped",
       "evidence": "mcp-server/src/tools/listTemplates.ts",
-      "notes": "The same seven starters Home shows (src/agent/starterTemplates.ts): c4-workspace, auth-flow, three-tier-architecture, request-sequence, order-state, event-pipeline, simple-process.",
+      "notes": "The same twelve starters Home shows (src/agent/starterTemplates.ts).",
       "page": "mcp-server"
     },
     {
@@ -1044,8 +1045,8 @@
       "name": "Agent pairing (live bridge)",
       "status": "shipped",
       "evidence": "src/opencanvas/presentation/v2/V2AgentConnect.tsx",
-      "notes": "Local long-poll bridge on a configurable port with an optional shared token.",
-      "page": "mcp-server"
+      "notes": "Local long-poll bridge on a configurable port with a per-browser token in the copied setup. Per-client setup under Your agent; #/connect opens the panel with Connect on; Waiting until the agent's server answers; one tab owns it (Use this tab); several agent sessions share one canvas through the first server.",
+      "page": "connect-your-agent"
     },
     {
       "id": "agent-panel",
@@ -1091,11 +1092,11 @@
       "page": "ai-generation"
     },
     {
-      "id": "no-telemetry",
-      "name": "No account, no telemetry in the app",
+      "id": "usage-stats",
+      "name": "No account; basic usage stats, off in Settings",
       "status": "shipped",
-      "evidence": "package.json",
-      "notes": "No analytics SDK in dependencies and no telemetry calls under src/. The docs site is separate and its analytics are opt-in at build time.",
+      "evidence": "src/services/usage/usage.ts",
+      "notes": "No account. Basic usage stats (feature counts) go to the share Worker's /e; Settings > Privacy > Share usage stats turns them off, as do Global Privacy Control, Do Not Track or blocked storage. No analytics SDK. The docs site is separate and its analytics are opt-in at build time.",
       "page": "local-first-diagramming"
     },
     {

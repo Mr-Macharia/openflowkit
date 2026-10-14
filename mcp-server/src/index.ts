@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServerWithDeps } from './server.js';
+import { CONNECT_URL } from './lib/bridge.js';
 
 async function main(): Promise<void> {
   const { server, bridge } = createServerWithDeps();
   try {
     const port = await bridge.start();
     // stderr only — stdout is the MCP protocol channel.
-    console.error(`openflowkit: local bridge listening on http://127.0.0.1:${port}`);
-    console.error('openflowkit: in the app, click "Connect agent" and pair this port.');
+    if (bridge.status().state === 'shared') {
+      console.error(`openflowkit: another OpenFlowKit MCP server owns port ${port}; this one draws on its canvas through it.`);
+    } else {
+      console.error(`openflowkit: local bridge listening on http://127.0.0.1:${port}`);
+      console.error(`openflowkit: pair a tab at ${CONNECT_URL} (press Connect).`);
+    }
   } catch (error) {
     console.error(`openflowkit: ${bridge.unpairedReason ?? `live bridge unavailable (${error instanceof Error ? error.message : String(error)}). File mode still works.`}`);
   }

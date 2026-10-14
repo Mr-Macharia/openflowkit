@@ -1,20 +1,15 @@
-import { compileWorkspace, type CompileResult } from '../../../dsl/compile';
+import { compileWorkspace } from '../../../dsl/compile';
 import { deterministicLayout } from '../../../dsl/layout';
 import {
   PRODUCTION_NODE_CATALOG,
   createProductionSceneNode,
-  type ProductionNodeCatalogEntry,
 } from '../../application/active-document/productionNodeCatalog';
-import { createDefaultSceneLayer } from '../../domain/document/defaults';
 import type { JsonObject } from '../../domain/document/json';
 import {
   SCENE_DOCUMENT_FORMAT,
   SCENE_DOCUMENT_VERSION,
-  type ConnectorEndpoint,
-  type SceneConnector,
   type SceneDocumentV1,
   type SceneNode,
-  type ScenePage,
 } from '../../domain/document/types';
 import type { Point2d, Size2d } from '../../domain/geometry/types';
 import { createChartNode } from '../../domain/nodes/chartNode';
@@ -34,235 +29,20 @@ import {
   STRESS_ICONS,
   STRESS_ICON_RESOLUTIONS,
 } from './stressSamples';
-
-const LAYER_ID = 'default';
-const PAGE_ID = 'page-everything';
-const COLUMN_WIDTH = 3400;
-const COLUMN_GAP = 64;
+import {
+  COLUMN_WIDTH,
+  LAYER_ID,
+  catalogNode,
+  packCatalogNodes,
+  compiledBlock,
+  createBuilder,
+  type StressBuilder,
+} from './stressBuilder';
+import { addConnectorDemos, addFreeEndpointDemo, addScaleBlock } from './stressConnectors';
 
 const resolveStressIcon = (id: string): { packId: string; shapeId: string } | null =>
   STRESS_ICON_RESOLUTIONS[id] ?? null;
 
-interface Packer {
-  readonly place: (size: Size2d) => Point2d;
-  readonly cursorY: number;
-}
-
-function createPacker(originX: number, originY: number, maxWidth: number, gap: number): Packer {
-  let x = originX;
-  let y = originY;
-  let rowHeight = 0;
-  return {
-    place(size) {
-      if (x > originX && x + size.width > originX + maxWidth) {
-        x = originX;
-        y += rowHeight + gap;
-        rowHeight = 0;
-      }
-      const at = { x, y };
-      x += size.width + gap;
-      rowHeight = Math.max(rowHeight, size.height);
-      return at;
-    },
-    get cursorY() {
-      return y + rowHeight;
-    },
-  };
-}
-
-interface CompiledBlock {
-  readonly frame: SceneNode;
-  readonly nodes: readonly SceneNode[];
-  readonly connectors: readonly SceneConnector[];
-}
-
-function compiledBlock(result: CompileResult): CompiledBlock {
-  return { frame: result.frame, nodes: [...result.groups, ...result.nodes], connectors: result.connectors };
-}
-
-function namespaceBlock(prefix: string, block: CompiledBlock): CompiledBlock {
-  const renamed = new Map<string, string>();
-  const rename = (id: string): string => {
-    const existing = renamed.get(id);
-    if (existing !== undefined) return existing;
-    const next = `${prefix}-${id}`;
-    renamed.set(id, next);
-    return next;
-  };
-  const renameEndpoint = (endpoint: ConnectorEndpoint): ConnectorEndpoint =>
-    endpoint.nodeId === null ? endpoint : { ...endpoint, nodeId: rename(endpoint.nodeId) };
-  const frame = { ...block.frame, id: rename(block.frame.id) };
-  return {
-    frame,
-    nodes: block.nodes.map((node) => ({
-      ...node,
-      id: rename(node.id),
-      parentId: node.parentId === null ? null : rename(node.parentId),
-    })),
-    connectors: block.connectors.map((connector) => ({
-      ...connector,
-      id: rename(connector.id),
-      source: renameEndpoint(connector.source),
-      target: renameEndpoint(connector.target),
-      labels: connector.labels.map((label) => ({ ...label, id: rename(label.id) })),
-    })),
-  };
-}
-
-function shiftPoint(point: Point2d, delta: Point2d): Point2d {
-  return { x: point.x + delta.x, y: point.y + delta.y };
-}
-
-function shiftBlock(block: CompiledBlock, delta: Point2d): CompiledBlock {
-  const shiftNode = (node: SceneNode): SceneNode => ({
-    ...node,
-    transform: { ...node.transform, translation: shiftPoint(node.transform.translation, delta) },
-  });
-  return {
-    frame: shiftNode(block.frame),
-    nodes: block.nodes.map((node) => (node.parentId === block.frame.id ? shiftNode(node) : node)),
-    connectors: block.connectors.map((connector) =>
-      connector.waypoints.length === 0
-        ? connector
-        : { ...connector, waypoints: connector.waypoints.map((point) => shiftPoint(point, delta)) }
-    ),
-  };
-}
-
-interface TextOptions {
-  readonly size?: Size2d;
-  readonly fontSize?: number;
-  readonly fontWeight?: string;
-  readonly color?: string;
-  readonly customColor?: string;
-  readonly backgroundColor?: string;
-}
-
-interface PackOptions<T> {
-  readonly sizeOf: (item: T) => Size2d;
-  readonly place: (at: Point2d, item: T) => void;
-  readonly maxWidth?: number;
-  readonly gap?: number;
-}
-
-interface StressBuilder {
-  readonly page: ScenePage;
-  readonly nodes: readonly SceneNode[];
-  readonly connectors: readonly SceneConnector[];
-  readonly cursorY: number;
-  readonly nextId: (prefix: string) => string;
-  readonly add: (node: SceneNode) => SceneNode;
-  readonly addConnector: (connector: SceneConnector) => SceneConnector;
-  readonly addText: (label: string, at: Point2d, options?: TextOptions) => SceneNode;
-  readonly heading: (label: string) => void;
-  readonly subheading: (label: string) => void;
-  readonly advance: (amount: number) => void;
-  readonly setCursor: (y: number) => void;
-  readonly pack: <T>(items: readonly T[], options: PackOptions<T>) => void;
-  readonly appendBlock: (prefix: string, block: CompiledBlock, at: Point2d) => void;
-}
-
-function createBuilder(): StressBuilder {
-  const nodes: SceneNode[] = [];
-  const connectors: SceneConnector[] = [];
-  let cursorY = 0;
-  let counter = 0;
-  const builder: StressBuilder = {
-    get page(): ScenePage {
-      return {
-        id: PAGE_ID,
-        name: 'Everything',
-        diagramKind: 'flowchart',
-        layers: [createDefaultSceneLayer()],
-        nodes,
-        connectors,
-        metadata: {},
-        extensions: {},
-      };
-    },
-    get nodes() {
-      return nodes;
-    },
-    get connectors() {
-      return connectors;
-    },
-    get cursorY() {
-      return cursorY;
-    },
-    nextId(prefix) {
-      counter += 1;
-      return `${prefix}-${counter}`;
-    },
-    add(node) {
-      const placed = { ...node, zIndex: nodes.length };
-      nodes.push(placed);
-      return placed;
-    },
-    addConnector(connector) {
-      connectors.push(connector);
-      return connector;
-    },
-    addText(label, at, options = {}) {
-      const fontSize = options.fontSize ?? 20;
-      const size = options.size ?? { width: label.length * 11 + 40, height: fontSize + 12 };
-      const base = createShapeNode(builder.page, { kind: 'text', id: builder.nextId('text'), at, size, label });
-      return builder.add({
-        ...base,
-        content: {
-          ...base.content,
-          ...(options.fontSize === undefined ? {} : { fontSize: options.fontSize }),
-          ...(options.fontWeight === undefined ? {} : { fontWeight: options.fontWeight }),
-          ...(options.color === undefined ? {} : { color: options.color }),
-          ...(options.customColor === undefined ? {} : { customColor: options.customColor }),
-          ...(options.backgroundColor === undefined ? {} : { backgroundColor: options.backgroundColor }),
-        },
-      });
-    },
-    heading(label) {
-      builder.addText(label, { x: 0, y: cursorY }, {
-        size: { width: 2200, height: 56 }, fontSize: 34, fontWeight: '700', customColor: '#0f172a',
-      });
-      cursorY += 92;
-    },
-    subheading(label) {
-      builder.addText(label, { x: 0, y: cursorY }, {
-        size: { width: 1800, height: 36 }, fontSize: 20, fontWeight: '600', customColor: '#475569',
-      });
-      cursorY += 56;
-    },
-    advance(amount) {
-      cursorY += amount;
-    },
-    setCursor(y) {
-      cursorY = y;
-    },
-    pack(items, options) {
-      const packer = createPacker(0, cursorY, options.maxWidth ?? COLUMN_WIDTH, options.gap ?? COLUMN_GAP);
-      for (const item of items) options.place(packer.place(options.sizeOf(item)), item);
-      cursorY = packer.cursorY + 140;
-    },
-    appendBlock(prefix, block, at) {
-      const placed = shiftBlock(namespaceBlock(prefix, block), at);
-      nodes.push(placed.frame);
-      nodes.push(...placed.nodes);
-      connectors.push(...placed.connectors);
-    },
-  };
-  return builder;
-}
-
-function catalogNode(builder: StressBuilder, catalogId: string, at: Point2d, content: JsonObject = {}): SceneNode {
-  return builder.add(createProductionSceneNode(catalogId, builder.nextId(catalogId), at, LAYER_ID, content));
-}
-
-function packCatalogNodes(builder: StressBuilder, entries: readonly ProductionNodeCatalogEntry[]): void {
-  builder.pack(entries, {
-    sizeOf: (entry) => entry.size,
-    place: (at, entry) => {
-      catalogNode(builder, entry.id, at);
-    },
-  });
-}
 
 function addShapeGrid(builder: StressBuilder, kinds: readonly ShapeKind[]): void {
   builder.pack(kinds, {
@@ -569,127 +349,6 @@ function addInkAndMedia(builder: StressBuilder): void {
   builder.advance(420);
 }
 
-const boundEndpoint = (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left'): ConnectorEndpoint => ({
-  nodeId,
-  portId: null,
-  anchor: { kind: 'side', side, ratio: 0.5 },
-  point: null,
-});
-
-function connector(
-  builder: StressBuilder,
-  source: ConnectorEndpoint,
-  target: ConnectorEndpoint,
-  route: SceneConnector['route'],
-  appearance: JsonObject,
-  semantics: JsonObject = {},
-  labels: readonly string[] = [],
-  waypoints: readonly Point2d[] = []
-): SceneConnector {
-  const id = builder.nextId('wire');
-  return {
-    id,
-    source,
-    target,
-    route,
-    waypoints,
-    labels: labels.map((text, index) => ({
-      id: `${id}-label-${index}`,
-      text,
-      pathRatio: labels.length === 1 ? 0.5 : (index + 1) / (labels.length + 1),
-      offset: { x: 0, y: index === 0 ? 0 : -14 },
-      metadata: {},
-    })),
-    appearance,
-    semantics,
-    metadata: {},
-    extensions: {},
-  };
-}
-
-const orthogonal: SceneConnector['route'] = { kind: 'orthogonal', ownership: 'automatic' };
-
-interface ConnectorDemo {
-  readonly caption: string;
-  readonly demos: (builder: StressBuilder, source: string, target: string, x: number, y: number) => readonly SceneConnector[];
-}
-
-const CONNECTOR_DEMOS: readonly ConnectorDemo[] = [
-  { caption: 'Direct · arrow', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), { kind: 'direct', ownership: 'automatic' }, { markerEnd: 'arrow' })] },
-  { caption: 'Orthogonal', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow' })] },
-  { caption: 'Bezier curve', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), { kind: 'bezier', ownership: 'automatic' }, { markerEnd: 'arrow' })] },
-  {
-    caption: 'Polyline · manual bends',
-    demos: (b, s, t, x, y) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), { kind: 'polyline', ownership: 'manual' }, { markerEnd: 'arrow' }, {}, [], [
-      { x: x + 205, y: y + 32 },
-      { x: x + 205, y: y + 160 },
-      { x: x + 300, y: y + 160 },
-    ])],
-  },
-  { caption: 'Dashed', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', dashPattern: 'dashed' })] },
-  { caption: 'Dotted', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', dashPattern: 'dotted' })] },
-  { caption: 'Dash-dot', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', dashPattern: 'dashdot' })] },
-  { caption: 'Thick · orange', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', strokeWidth: 4, stroke: '#ea580c' })] },
-  { caption: 'Thin · faded', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', strokeWidth: 1, opacity: 0.4 })] },
-  { caption: 'Arrow at start only', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerStart: 'arrow', markerEnd: 'none' })] },
-  { caption: 'Dots both ends', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerStart: 'dot', markerEnd: 'dot' })] },
-  { caption: 'Cross at start', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerStart: 'cross', markerEnd: 'arrow' })] },
-  { caption: 'Diamond at end', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'diamond' })] },
-  { caption: 'Corner radius 24', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow', cornerRadius: 24 })] },
-  { caption: 'Class · extends --|>', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { classRelation: '--|>' })] },
-  { caption: 'Class · composition *--', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { classRelation: '*--' })] },
-  { caption: 'Class · aggregation o--', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { classRelation: 'o--' })] },
-  { caption: 'Class · dependency ..>', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { classRelation: '..>' })] },
-  { caption: 'ER · one to many ||--o{', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { erRelation: '||--o{' })] },
-  { caption: 'ER · many to many }o--o{', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { erRelation: '}o--o{' })] },
-  { caption: 'Sequence · sync call', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { seqMessageKind: 'sync' })] },
-  { caption: 'Sequence · return', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {}, { seqMessageKind: 'return' })] },
-  { caption: 'Condition · error', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow' }, { condition: 'error' })] },
-  { caption: 'Condition · success', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, { markerEnd: 'arrow' }, { condition: 'success' })] },
-  {
-    caption: 'Label plate · styled',
-    demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), orthogonal, {
-      markerEnd: 'arrow', labelColor: '#1d4ed8', labelBackground: '#dbeafe', labelFontSize: 15, labelFontWeight: 600,
-    }, {}, ['styled label'])],
-  },
-  { caption: 'Two labels', demos: (b, s, t) => [connector(b, boundEndpoint(s, 'right'), boundEndpoint(t, 'left'), { kind: 'bezier', ownership: 'automatic' }, { markerEnd: 'arrow' }, {}, ['first', 'second'])] },
-];
-
-function addConnectorDemos(builder: StressBuilder): void {
-  const cellWidth = 560;
-  const cellHeight = 270;
-  const columns = 5;
-  CONNECTOR_DEMOS.forEach((entry, index) => {
-    const column = index % columns;
-    const rowIndex = Math.floor(index / columns);
-    const x = column * cellWidth;
-    const y = builder.cursorY + rowIndex * cellHeight;
-    const source = catalogNode(builder, 'process', { x, y }, { label: 'Source' });
-    const target = catalogNode(builder, 'process', { x: x + 260, y }, { label: 'Target' });
-    for (const wire of entry.demos(builder, source.id, target.id, x, y)) builder.addConnector(wire);
-    builder.addText(entry.caption, { x, y: y + 116 }, { size: { width: 500, height: 24 }, fontSize: 15, customColor: '#334155' });
-  });
-  const rows = Math.ceil(CONNECTOR_DEMOS.length / columns);
-  builder.setCursor(builder.cursorY + rows * cellHeight + 40);
-}
-
-function addFreeEndpointDemo(builder: StressBuilder, y: number): void {
-  const source = { x: 0, y };
-  const target = { x: 380, y: y + 90 };
-  builder.addConnector({
-    id: builder.nextId('wire-free'),
-    source: { nodeId: null, portId: null, anchor: null, point: source },
-    target: { nodeId: null, portId: null, anchor: null, point: target },
-    route: { kind: 'bezier', ownership: 'manual' },
-    waypoints: [],
-    labels: [{ id: builder.nextId('wire-free-label'), text: 'free endpoints (no nodes)', pathRatio: 0.5, offset: { x: 0, y: 0 }, metadata: {} }],
-    appearance: { markerStart: 'dot', markerEnd: 'arrow', stroke: '#7c3aed' },
-    semantics: {},
-    metadata: {},
-    extensions: {},
-  });
-  builder.addText('Free endpoints', { x: 420, y }, { size: { width: 300, height: 24 }, fontSize: 15, customColor: '#334155' });
-}
 
 function addIcons(builder: StressBuilder): void {
   builder.pack(STRESS_ICONS, {
@@ -702,34 +361,6 @@ function addIcons(builder: StressBuilder): void {
   });
 }
 
-function addScaleBlock(builder: StressBuilder, count: number): void {
-  const columns = 20;
-  const cellWidth = 220;
-  const cellHeight = 130;
-  const ids: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    const node = catalogNode(
-      builder,
-      'process',
-      { x: column * cellWidth, y: builder.cursorY + row * cellHeight },
-      { label: `Node ${index + 1}` }
-    );
-    ids.push(node.id);
-  }
-  for (let index = 0; index + 1 < ids.length; index += 1) {
-    builder.addConnector(connector(
-      builder,
-      { nodeId: ids[index] ?? null, portId: null, anchor: null, point: null },
-      { nodeId: ids[index + 1] ?? null, portId: null, anchor: null, point: null },
-      orthogonal,
-      { markerEnd: 'arrow' }
-    ));
-  }
-  const rows = Math.ceil(count / columns);
-  builder.setCursor(builder.cursorY + rows * cellHeight + 80);
-}
 
 export interface StressDocumentOptions {
   readonly documentId?: string;

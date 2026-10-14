@@ -22,7 +22,7 @@ const DIAGRAM_TYPES = Object.keys(DIAGRAM_TYPE_LABELS);
 
 const CURATED = {
   'Get started': ['introduction', 'quick-start', 'templates', 'local-first-diagramming', 'faq'],
-  'Agents & MCP': ['mcp-server', 'webmcp', 'prompting-agents', 'ai-generation', 'cli', 'github-action'],
+  'Agents & MCP': ['connect-your-agent', 'mcp-server', 'webmcp', 'prompting-agents', 'ai-generation', 'cli', 'github-action'],
   'Write diagrams': ['openflow-dsl', { 'Diagram types': DIAGRAM_TYPES }, 'mermaid-import', 'coming-from-structurizr'],
   'Draw on the canvas': ['canvas-basics', 'shapes-and-connectors', 'insert-media', 'context-menu', 'properties-panel'],
   'Architecture & maps': ['map-mode', 'architecture-c4', 'architecture-workspace'],

@@ -35,8 +35,9 @@ async function drawn(name: string, title: string, dsl: string) {
   const compiled = await compile(dsl, { layout: elkDslLayoutPort, resolveIcon: resolveDslIcon, autoIcons: true });
   const document = createEmptyV2Document(`template-${name}`, title);
   const page = document.pages[0]!;
+  // A checked-in picture is a file, not a stored card: no storage cap, so its icons always stay.
   const thumbnail = await buildV2Thumbnail({ ...document, pages: [{ ...page, diagramKind: compiled.meta.family,
-    nodes: [compiled.frame, ...compiled.groups, ...compiled.nodes], connectors: compiled.connectors }] });
+    nodes: [compiled.frame, ...compiled.groups, ...compiled.nodes], connectors: compiled.connectors }] }, Number.POSITIVE_INFINITY);
   expect(thumbnail).not.toBeNull();
   return thumbnail!;
 }

@@ -57,7 +57,7 @@ async function expectUndo(page: Page): Promise<void> {
   await page.mouse.click(canvas.x + 10, canvas.y + 100);
   await page.keyboard.press('Meta+z');
   await expect.poll(async () => (await mapState(page)).nodes).not.toContain('shop.cache');
-  await expect(page.getByText('Undid last change').first()).toBeVisible();
+  await expect(page.getByText(/^Undid /).first()).toBeVisible();
   await settled(page);
   expect((await mapState(page)).open).toEqual(expect.arrayContaining(['shop', 'shop.api']));
 }

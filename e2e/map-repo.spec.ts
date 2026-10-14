@@ -262,10 +262,29 @@ test('reopening the document later loads the map again, and the same address ope
   await expect(page.getByText('acme/shop')).toHaveCount(1);
 });
 
-test('a bad address says so @gate', async ({ page }) => {
+test('a bad address says so and gives the field back; a doubled slash is a typo; Home takes a pasted link @gate', async ({ page }) => {
   await page.goto('/#/map/github/..');
   await expect(alert(page)).toContainText('not a GitHub repo address');
-  await expect(page.getByRole('button', { name: 'Back to home' })).toHaveAttribute('data-variant', 'primary');
+  await expect(alert(page).getByRole('textbox', { name: 'Map a GitHub repo' })).toHaveValue('..');
+  await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible();
+
+  await serveGitHub(page, REPO);
+  await page.goto('/#/map/github/acme//shop');
+  await expect(page).toHaveURL(/#\/d\/map-acme_shop$/);
+  await page.waitForFunction(() => '__V2__' in window);
+  await expect.poll(async () => (await mapState(page)).nodes.length, { timeout: 20_000 }).toBeGreaterThan(0);
+
+  // Home: a GitHub link pasted anywhere (not in a field) opens its map, with no Untitled diagram on the way.
+  await page.goto('/#/home');
+  await page.waitForSelector('.ofk-home-starts, .ofk-home-chips');
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData('text/plain', 'https://github.com/acme/shop');
+    window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+  });
+  await expect(page).toHaveURL(/#\/d\/map-acme_shop$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/home/);
 });
 
 test('a rate-limited read asks for a token, sends it to the API only, and then draws the map @gate', async ({ page }) => {
@@ -279,7 +298,7 @@ test('a rate-limited read asks for a token, sends it to the API only, and then d
   });
   await page.goto('/#/map/github/acme/shop');
   await expect(alert(page)).toContainText('limiting reads');
-  await expect(alert(page)).toContainText('The CLI reads a checkout with no limit: npx openflowkit map .');
+  await expect(alert(page)).toContainText('The CLI reads a checkout with no limit: npx openflowkit map . --html map.html');
   await expect(alert(page)).not.toContainText('discover');
   expect(((await alert(page).innerText()).match(/openflowkit map/g) ?? []).length, 'the command, once').toBe(1);
   await expect(page.getByRole('button', { name: 'Try with token' })).toHaveAttribute('data-variant', 'primary');
@@ -289,6 +308,31 @@ test('a rate-limited read asks for a token, sends it to the API only, and then d
   await expect.poll(async () => (await mapState(page)).nodes, { timeout: 20_000 }).toContain('web');
   expect(seen.some((entry) => entry.url.startsWith('https://api.github.com/') && entry.auth === 'Bearer github_pat_test123')).toBe(true);
   expect(seen.filter((entry) => entry.url.startsWith('https://raw.githubusercontent.com/')).every((entry) => entry.auth === undefined)).toBe(true);
+  expect(page.url()).not.toContain('github_pat');
+});
+
+test('a private repo: not found, then a token that can read it maps it, files read through the API @gate', async ({ page }) => {
+  // GitHub without the token: the tree is a 404 and raw never serves the files. With it: the tree, and the contents API.
+  const auth = (route: { request(): { headers(): Record<string, string> } }) => route.request().headers().authorization === 'Bearer github_pat_private';
+  await page.route('https://api.github.com/repos/acme/shop/git/trees/**', (route) => auth(route)
+    ? route.fulfill({ json: { sha: 'abc', truncated: false, tree: Object.entries(REPO).map(([path, text]) => ({ path, type: 'blob', mode: '100644', sha: 'x', size: text.length })) }, headers: CORS })
+    : route.fulfill({ status: 404, json: { message: 'Not Found' }, headers: CORS }));
+  await page.route('https://raw.githubusercontent.com/acme/shop/**', (route) => route.fulfill({ status: 404, body: '404: Not Found', headers: CORS }));
+  await page.route('https://api.github.com/repos/acme/shop/contents/**', (route) => {
+    const path = decodeURIComponent(new URL(route.request().url()).pathname.replace(/^\/repos\/acme\/shop\/contents\//, ''));
+    return route.fulfill(auth(route) && REPO[path] !== undefined ? { status: 200, contentType: 'text/plain', body: REPO[path], headers: CORS } : { status: 404, json: { message: 'Not Found' }, headers: CORS });
+  });
+  await page.goto('/#/map/github/acme/shop');
+  await expect(alert(page)).toContainText('not found, or it is private');
+  await expect(alert(page)).toContainText('GitHub token');
+  await alert(page).getByRole('button', { name: 'Private repo? Use a GitHub token' }).click();
+  // The step is about the token: named so, focused, and nothing to send until one is typed.
+  const field = page.getByLabel('GitHub token', { exact: true });
+  await expect(field).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Try with token' })).toBeDisabled();
+  await field.fill('github_pat_private');
+  await page.getByRole('button', { name: 'Try with token' }).click();
+  await expect.poll(async () => (await mapState(page)).nodes, { timeout: 20_000 }).toContain('web');
   expect(page.url()).not.toContain('github_pat');
 });
 

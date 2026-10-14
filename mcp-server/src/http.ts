@@ -9,7 +9,7 @@ import { createRemoteServer } from './remote/server.js';
 import { DEFAULT_APP_ORIGIN } from './lib/openLink.js';
 import type { RemoteServerOptions } from './remote/server.js';
 import { isMain } from './lib/isMain.js';
-import { hostname, isRender, LOCAL_HOSTS, MAX_BODY_BYTES, rpcErrorBody } from './remote/guards.js';
+import { hostname, isRender, LOCAL_HOSTS, MAX_BODY_BYTES, MCP_PATHS, rpcErrorBody } from './remote/guards.js';
 
 export { MAX_BODY_BYTES } from './remote/guards.js';
 
@@ -56,7 +56,7 @@ export function createHttpServer({ viewerHtml, appOrigin = DEFAULT_APP_ORIGIN, a
       if (path === '/healthz') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
       const host = hostname(req.headers.host);
       if (!host || !allowedHosts.includes(host)) return rpcError(res, 403, `Invalid Host: ${req.headers.host ?? 'missing'}`);
-      if (path !== '/mcp') return rpcError(res, 404, 'Not found');
+      if (!MCP_PATHS.has(path)) return rpcError(res, 404, 'Not found. The MCP endpoint is /mcp.');
       // Stateless: no session to resume (GET would hold an SSE stream open forever) or end (DELETE).
       if (req.method !== 'POST') return rpcError(res, 405, 'Method not allowed', { allow: 'POST' });
       if (Number(req.headers['content-length'] ?? 0) > MAX_BODY_BYTES) return tooBig(req, res);

@@ -16,6 +16,9 @@ describe('repoMapSource', () => {
     expect(repoMapPageOf({ ...doc, metadata: { map: { page: 5 } } as never })).toBeNull();
     expect(repoMapSourceOf(out)).toEqual({ owner: 'a', repo: 'b', sha: SHA });
     expect(base.metadata).toEqual({ keep: 1 });
+    // The map page is named for what it is; the input document keeps its own name.
+    expect(out.pages[0]!.name).toBe('Repo map');
+    expect(base.pages[0]!.name).toBe(doc.pages[0]!.name);
     expect(repoMapSourceOf(withRepoMapSource(doc, { owner: 'a', repo: 'b', ref: 'dev' }))).toEqual({ owner: 'a', repo: 'b', ref: 'dev' });
   });
   it('rejects malformed metadata', () => {

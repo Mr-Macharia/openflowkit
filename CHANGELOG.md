@@ -9,7 +9,33 @@ separately; its changes are listed under *For developers* in each release.
 
 ## [Unreleased]
 
-### For developers
+### Added
+
+- **Private repos in the browser.** On the "not found, or it is private" screen, **Private repo? Use a GitHub token**
+  takes a fine-grained token with Contents read-only access; the files are then read through the GitHub API. The
+  token stays in this tab.
+- **AI proxy for self-hosted servers.** Start the Docker image with `OPENFLOWKIT_AI_UPSTREAM` set to an
+  OpenAI-compatible endpoint, and the **Custom** provider can use Base URL `/ai-proxy` to reach a model only the server
+  can see, with no CORS setup. Only the model list and chat are forwarded, replies stream, and the upstream is fixed
+  by the server. Off unless set.
+- **Connect agent: paste a prompt.** Step 1 can be a prompt you paste into your agent, which then adds OpenFlowKit
+  itself, or the command, config or one-click link as before.
+
+### Changed
+
+- **A map's drawing follows the map until you edit it.** Opening boxes on the map, then **Canvas**, redraws an
+  untouched drawing to match (one undo step). An edited drawing stays yours; when the map shows boxes it has not got,
+  **New copy** makes a fresh one.
+
+- **Map and its drawing, both ways.** On a repo map, **Canvas** (or `M`) opens an editable drawing of the map, made
+  from the map on screen the first time, in the same place. The drawing's **Canvas | Map** switch (or `M`) goes back
+  to the same map with the camera kept. **Edit as drawing** (`⇧M`) makes a fresh numbered copy; undoing a new drawing
+  returns to the map, and the repo's address always opens the map.
+- **One reveal when the editor opens.** The loader stays until the canvas, the type and the map are ready, then fades
+  into the finished editor, instead of the chrome painting piece by piece.
+- **Edit in model** is no longer offered on a repo map's boxes, which are read from the code.
+
+### For developers: MCP server and CLI 0.2.4 (on npm since 2026-10-13, tag `mcp-v0.2.4`)
 
 - **MCP server and CLI 0.2.4.** Drawn diagrams now show as a card in chat apps that support MCP Apps (Claude, Claude
   Desktop, VS Code): the picture, zoom, and Open in OpenFlowKit. Clients without MCP Apps get the same text as

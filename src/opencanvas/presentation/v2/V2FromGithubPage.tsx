@@ -9,7 +9,7 @@ import { track } from '../../../services/usage/usage';
 import type { V2StartIntent } from './v2Document';
 import { BrandLoader } from './BrandLoader';
 import { V2StateHero } from './V2StateHero';
-import { CliText, cliCommand, describeRepoError, keepToken, RepoTokenForm, storedToken, type RepoProblemView } from './v2RepoProblem';
+import { CliText, cliCommand, describeRepoError, keepToken, PrivateRepoToken, RepoTokenForm, storedToken, type RepoProblemView } from './v2RepoProblem';
 import { V2StateShell } from './V2StateShell';
 import './v2EditorPage.css';
 
@@ -112,7 +112,9 @@ export function V2FromGithubPage(): React.JSX.Element {
         <ErrorState hero={<V2StateHero kind={outcome.hero} />} title={outcome.title} description={<CliText text={outcome.detail} />}
           {...(outcome.askToken
             ? { action: <RepoTokenForm home={home(false)} onSubmit={(token) => { if (token) keepToken(token); setAttempt((count) => count + 1); }} /> }
-            : outcome.retry ? { onRetry: () => setAttempt((count) => count + 1), secondary: home(false) } : { action: home(true) })} />
+            : outcome.retry ? { onRetry: () => setAttempt((count) => count + 1), secondary: home(false) }
+              : outcome.privateToken ? { action: <PrivateRepoToken onSubmit={(token) => { if (token) keepToken(token); setAttempt((count) => count + 1); }} />, secondary: home(true) }
+                : { action: home(true) })} />
       ) : outcome?.status === 'notes' ? (
         <div className="ofk-empty" data-hero="" role="status">
           <span className="ofk-empty-icon" aria-hidden="true"><V2StateHero kind="no-canvas" /></span>

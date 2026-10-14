@@ -139,6 +139,13 @@ describe('repoLook words', () => {
     expect(look.arch.elements.find((e) => e.id === 'root#files')!.desc).toMatch(/^\d+ files?$/);
   });
 
+  it('says no line count for a file not read yet (a preview while the repo is read), never "0 lines"', () => {
+    const reading = repoLook(buildMap({ files: [{ path: 'src/a.ts', loc: 0 }, { path: 'src/b.ts', loc: 12 }], imports: [] }),
+      { swatch: paletteResolver('pastel') });
+    expect(reading.arch.elements.find((e) => e.id === 'src/a.ts')!.desc).toBeUndefined();
+    expect(reading.arch.elements.find((e) => e.id === 'src/b.ts')!.desc).toBe('12 lines');
+  });
+
   it('leaks no C4 word into any drawn field, even when the host infers icons', async () => {
     const withIcons = repoLook(model, { swatch: paletteResolver('pastel'), inferIcon: () => 'aws/lambda', resolveIcon: () => null });
     expect(withIcons.inferIcon).toBeUndefined();

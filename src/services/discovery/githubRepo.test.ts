@@ -261,8 +261,27 @@ describe('fetchRepoFiles', () => {
     expect(result.failed).toBe(1);
   });
 
-  it('a token that lists the tree but whose files 404 is a private repo the browser cannot read', async () => {
-    const get = fakeGitHub({ 'https://api.github.com/': tree(['Dockerfile', 'a/Dockerfile', 'b/Dockerfile']) });
+  it('a private repo: with a token, files raw cannot serve are read through the API, with the token, at the ref', async () => {
+    const requested: string[] = [];
+    const get = fakeGitHub({
+      'https://api.github.com/repos/acme/shop/git/trees/': tree(['Dockerfile', 'a/Dockerfile']),
+      'https://api.github.com/repos/acme/shop/contents/': raw('FROM alpine\n'),
+    }, requested);
+    const result = await fetchRepoFiles({ owner: 'acme', repo: 'shop', ref: 'main' }, { fetch: get, token: 'ghp_x' });
+    expect(result.files.map((file) => file.content)).toEqual(['FROM alpine\n', 'FROM alpine\n']);
+    expect(result.failed).toBe(0);
+    expect(requested).toContain('https://api.github.com/repos/acme/shop/contents/a/Dockerfile?ref=main');
+    // The default branch needs no ref; without a token nothing goes to the contents endpoint.
+    const head: string[] = [];
+    await fetchRepoFiles({ owner: 'acme', repo: 'shop', ref: 'HEAD' }, { fetch: fakeGitHub({ 'https://api.github.com/repos/acme/shop/git/trees/': tree(['Dockerfile']), 'https://api.github.com/repos/acme/shop/contents/': raw('x') }, head), token: 't' });
+    expect(head).toContain('https://api.github.com/repos/acme/shop/contents/Dockerfile');
+    const none: string[] = [];
+    await fetchRepoFiles({ owner: 'acme', repo: 'shop', ref: 'HEAD' }, { fetch: fakeGitHub({ 'https://api.github.com/repos/acme/shop/git/trees/': tree(['Dockerfile', 'a/Dockerfile', 'b/Dockerfile']) }, none) }).catch(() => undefined);
+    expect(none.some((url) => url.includes('/contents/'))).toBe(false);
+  });
+
+  it('a token that lists the tree but cannot read its files is a private repo the token lacks access to', async () => {
+    const get = fakeGitHub({ 'https://api.github.com/repos/acme/shop/git/trees/': tree(['Dockerfile', 'a/Dockerfile', 'b/Dockerfile']) });
     const error = await fetchRepoFiles({ owner: 'acme', repo: 'shop', ref: 'HEAD' }, { fetch: get, token: 'ghp_x' }).catch((caught: unknown) => caught) as RepoError;
     expect(error.problem).toEqual({ kind: 'private' });
     // No token: the tree of a private repo is a 404 already, so files that vanish are a plain http problem.

@@ -26,7 +26,7 @@ import { isBackdropNode, isContainerNodeKind } from '../../domain/nodes/containe
 import { isSequenceParticipant } from './sequenceNodeVisual';
 import { resolveLabelSizing } from '../../domain/node-sizing/labelWrap';
 import { measurePortableText, SUBLABEL_FONT } from '../../domain/text/measurement';
-import { decoratePixiText, isTitle, markTitle } from './pixiText';
+import { decoratePixiText, isTitle, markTitle, stripFont } from './pixiText';
 import { PixiTextPool } from './pixiTextPool';
 import { labelReadable, MIN_TITLE_SCREEN_PX, type SemanticDetailLevel } from './viewportProjection';
 import { numericColorToHex } from '../../domain/color/adaptiveColor';
@@ -68,7 +68,7 @@ export class PixiNodeRenderer {
   /** Font size per label, for the on-screen readability check. */
   private readonly labelFontByNodeId = new Map<string, number>();
   /** A node whose label names it (a title Text): the whole label stays to the title floor, its other Texts to the body floor. */
-  private readonly secondaryByNodeId = new Map<string, readonly Text[]>();
+  private readonly secondaryByNodeId = new Map<string, readonly { view: Container; font: number }[]>();
   // Label Text objects rasterize to a texture on creation (~0.5–1 ms each), so
   // a redraw reuses last draw's instances with the same text and style
   // instead of destroying and re-creating every label.
@@ -326,11 +326,16 @@ export class PixiNodeRenderer {
   /** Records a label's title font and its other Texts, once per draw, so a zoom tick only compares numbers. */
   private trackTitle(nodeId: string, label: Container): void {
     let titleFont = 0;
-    const secondary: Text[] = [];
+    const secondary: { view: Container; font: number }[] = [];
     const visit = (node: Container): void => {
       if (node instanceof Text) {
         if (isTitle(node)) titleFont = Math.max(titleFont, Number(node.style.fontSize));
-        else secondary.push(node);
+        else secondary.push({ view: node, font: Number(node.style.fontSize) });
+        return;
+      }
+      const strip = stripFont(node);
+      if (strip !== null) {
+        secondary.push({ view: node, font: strip });
         return;
       }
       for (const child of node.children) visit(child as Container);
@@ -350,7 +355,7 @@ export class PixiNodeRenderer {
       label.visible = visibleNodeIds.has(nodeId) && nodeId !== this.editingNodeId
         && labelReadable(zoom, this.labelFontByNodeId.get(nodeId) ?? FAMILY_LABEL_FONT, secondary ? MIN_TITLE_SCREEN_PX : undefined)
         && !this.freeformRenderer.isMediaLoaded(nodeId);
-      if (secondary && label.visible) for (const text of secondary) text.visible = labelReadable(zoom, Number(text.style.fontSize));
+      if (secondary && label.visible) for (const { view, font } of secondary) view.visible = labelReadable(zoom, font);
     }
   }
 

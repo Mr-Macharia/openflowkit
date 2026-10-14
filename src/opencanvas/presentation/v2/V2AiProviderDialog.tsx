@@ -7,6 +7,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { IconAlertTriangle, IconChevronDown, IconCircleCheck, IconExternalLink } from '@tabler/icons-react';
 import { AiProviderError, createProvider, keyProblem, listModels } from '../../../services/ai/provider';
+import { viaServerProxy } from '../../../services/ai/diagnosis';
 import {
   AI_PROVIDERS, RISK_DETAILS, RISK_LABELS, isConfigured, providerById, providerHint, type AiProviderDefinition,
 } from '../../../services/ai/providers';
@@ -25,7 +26,12 @@ interface V2AiProviderDialogProps {
 const TEST_TIMEOUT_MS = 30_000;
 // A local model loads into memory on its first call; on a laptop that alone can take most of a minute.
 const LOCAL_TEST_TIMEOUT_MS = 120_000;
-const isLocal = (url: string): boolean => /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url);
+// A local model (directly, or behind this server's AI proxy) can take a while to load on the first call.
+const isLocal = (url: string): boolean => /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url) || viaServerProxy(url);
+const endpointHint = (definition: AiProviderDefinition, baseUrl: string): string => viaServerProxy(baseUrl)
+  ? 'Through this server’s AI proxy: your key passes through the server that hosts OpenFlowKit, which forwards it to the model server it is set up for and keeps no copy.'
+  : definition.defaultBaseUrl ? `Default: ${definition.defaultBaseUrl}`
+    : 'Required for a custom endpoint. Self-hosted with the AI proxy on? Use /ai-proxy.';
 // Thinking models spend part of any budget before they answer; 16 tokens came
 // back empty on a valid key. This is still a fraction of a cent.
 const TEST_MAX_TOKENS = 1024;
@@ -213,7 +219,7 @@ export function V2AiProviderDialog({ open, settings, onSave, onClose }: V2AiProv
         <details key={definition.id} className="ofk-connection-details" open={endpointOpen.current.get(definition.id) || undefined}>
           <summary>Endpoint<Icon icon={IconChevronDown} /></summary>
           <div className="ofk-v2-provider-advanced">
-            <Field label="Base URL" hint={definition.defaultBaseUrl ? `Default: ${definition.defaultBaseUrl}` : 'Required for a custom endpoint.'} spellCheck={false}
+            <Field label="Base URL" hint={endpointHint(definition, connection.baseUrl)} spellCheck={false}
               value={connection.baseUrl} placeholder={definition.defaultBaseUrl || 'https://your-endpoint.example/v1'}
               onChange={(event) => patch({ baseUrl: event.target.value })} />
           </div>

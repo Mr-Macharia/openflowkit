@@ -1,61 +1,42 @@
 import { PixiDotGrid } from './PixiDotGrid';
-import { isDarkCanvas, numericColorToHex } from '../../domain/color/adaptiveColor';
 import { PixiLiveTransformPreview } from './PixiLiveTransformPreview';
-import { Application, Container, Graphics, Sprite, Texture } from 'pixi.js';
-import { screenToWorld, visibleWorldBounds, worldToScreen } from '../../domain/camera/camera';
-import {
-  recordOpenCanvasCameraPhase,
-  recordOpenCanvasRenderWork,
-} from '../../application/renderer/renderWorkMeasurement';
+import { Application, Container, Graphics } from 'pixi.js';
+import { screenToWorld, worldToScreen } from '../../domain/camera/camera';
+import { recordOpenCanvasRenderWork } from '../../application/renderer/renderWorkMeasurement';
 import type { CanvasCamera } from '../../domain/camera/types';
-import { createBounds2d, unionBounds } from '../../domain/geometry/bounds';
 import type { Bounds2d, Point2d, Size2d } from '../../domain/geometry/types';
-import { applyMatrixToPoint } from '../../domain/geometry/matrix';
-import { frameNameAt, nodeLabelBounds } from '../../domain/nodes/nodeLabelBounds';
 import type { SceneConnector, ScenePage } from '../../domain/document/types';
-import {
-  connectorEditHandles, MIN_SEGMENT_HANDLE_PX,
-  pickConnectorAtPoint,
-  pickConnectorEditHandle as pickEditHandle,
-  type ConnectorEditHandle,
-} from '../../domain/connectors/editing';
-import { getDescendantNodeIds, querySceneBounds } from '../../domain/scene/queries';
+import type { ConnectorEditHandle } from '../../domain/connectors/editing';
 import { createSceneIndex } from '../../domain/scene/spatialIndex';
-import { nodeWorldBounds } from '../../domain/scene/worldGeometry';
 import type { TransformHandle, TransformResult } from '../../domain/transforms/types';
-import { pickTransformHandle as pickHandle, PixiTransformOverlay } from './PixiTransformOverlay';
+import { PixiTransformOverlay } from './PixiTransformOverlay';
 import { PixiConnectorRenderer } from './PixiConnectorRenderer';
-import { projectPageConnectors } from '../../domain/connectors/routeProjection';
-import { CHROME_ACCENT } from './chrome';
-import { applyTextResolution, currentPixiTextResolution, textResolutionForZoom } from './pixiText';
+import { applyTextResolution, textResolutionForZoom } from './pixiText';
 import { PixiFreeformPreview, type FreeformPreviewFrame } from './PixiFreeformPreview';
-import { drawPixiNodeOutline } from './pixiNodeOutline';
-import { basicNodeDecorations } from '../../domain/nodes/basicNodeDecorations';
-import type { BasicNodeShape } from '../../domain/nodes/basicNodePresentation';
 import { PixiProposalPreview, type ProposalPreviewFrame } from './PixiProposalPreview';
-import { FLOW_SPEED, PixiFocusOverlay, type FocusFrame } from './PixiFocusOverlay';
+import { PixiFocusOverlay, type FocusFrame } from './PixiFocusOverlay';
 import { PixiContainerRenderer } from './PixiContainerRenderer';
-import { PixiMapMotion } from './PixiMapMotion';
+import type { PixiMapMotion } from './PixiMapMotion';
+import type { PixiAgentReveal } from './PixiAgentReveal';
+import type { RevealPlan } from '../../domain/animation/agentReveal';
 import type { MotionFrame } from '../../application/map/motionFrame';
 import { PixiConnectorEditOverlay } from './PixiConnectorEditOverlay';
-import {
-  inspectConnectorEdit,
-  inspectConnectorHandleScreenPoints,
-  inspectConnectorSamples,
-  type ConnectorEditDebugSnapshot,
-  type ConnectorHandleScreenPoint,
-} from './PixiConnectorInspection';
+import { inspectConnectorEdit, inspectConnectorHandleScreenPoints, inspectConnectorSamples, type ConnectorEditDebugSnapshot, type ConnectorHandleScreenPoint } from './PixiConnectorInspection';
 import { PixiNodeRenderer } from './PixiNodeRenderer';
 import { PixiSelectionOverlay, selectionWorldBounds } from './PixiSelectionOverlay';
 import { shouldRedrawNodes } from './sceneInvalidation';
-import { buildNodeStateMap } from '../../domain/scene/nodeState';
 import { type ConnectSide } from '../../domain/connectors/connectHandles';
-import {
-  projectSceneViewport,
-  viewportProjectionEquals,
-  type SemanticDetailLevel,
-  type ViewportSceneProjection,
-} from './viewportProjection';
+import { type ViewportSceneProjection } from './viewportProjection';
+import { abandonInitializedApplication, assembleStage, getNodeDebugSnapshot, getRenderDiagnostics, PIXI_HOST_STAGE_DESTROY_OPTIONS, warmShader, type PixiRenderDiagnostics } from './pixiHostStage';
+import { drawMotionFrame, endMotion, getMotionState } from './pixiHostMotion';
+import { finishReveal, revealTick, startArmedReveal, type ArmedReveal, type RevealStats, type RunningReveal } from './pixiHostReveal';
+import { drawFocus, getFocusState, syncFlow } from './pixiHostFocus';
+import { setAlignmentGuides, setMarquee, setPlacementGhost, type PlacementGhost } from './pixiHostOverlays';
+import { getContentBounds, getNodeLabelScreenBounds, getNodeScreenBounds, pickConnector, pickConnectorHandle, pickInScreenBounds, pickNode, pickTransformHandle } from './pixiHostQueries';
+import { getConnectorLabelScreenPoint, getLiveConnectorSamples, setConnectionPreview, setConnectorPreview, setTransformPreview } from './pixiHostPreview';
+import { createViewportProjection, drawConnectorEditOverlay, drawDotGrid, drawProposalPreview, drawSelection, getSelectedConnector, rebuildScene, refreshViewportProjection, settleCamera, updateLabelVisibility } from './pixiHostScene';
+
+export { PIXI_HOST_STAGE_DESTROY_OPTIONS };
 
 export type PixiRendererStatus =
   | 'unavailable'
@@ -63,22 +44,6 @@ export type PixiRendererStatus =
   | 'ready'
   | 'context-lost'
   | 'destroyed';
-
-interface PixiRenderDiagnostics {
-  readonly renderCount: number;
-  readonly renderRequests: number;
-  readonly coalescedRequests: number;
-  readonly lastRenderDurationMs: number;
-  readonly nodeCount: number;
-  readonly connectorCount: number;
-  readonly renderedNodeCount: number;
-  readonly renderedConnectorCount: number;
-  readonly detailLevel: SemanticDetailLevel;
-  readonly pendingFrame: boolean;
-  readonly continuousTickerRunning: boolean;
-  readonly proposalPreviewVisible: boolean;
-  readonly alignmentGuidesVisible: boolean;
-}
 
 interface PixiRendererHostOptions {
   readonly liveTransformPreview?: boolean;
@@ -88,95 +53,79 @@ interface PixiRendererHostOptions {
   readonly resolveAsset?: (assetId: string) => Promise<string | null>;
 }
 
-const SELECTION_STROKE = CHROME_ACCENT;
-// Short on purpose: arrows must be fully back <= 200 ms after a move ends, even when a frame takes a while.
-const ARROW_FADE_MS = 100;
-
-interface PlacementGhost {
-  readonly shape: BasicNodeShape | 'text';
-  /** World bounds of the node a click (or the current drag) would create. */
-  readonly bounds: Bounds2d;
-}
-const MARQUEE_FILL = CHROME_ACCENT;
-// Pixi 8 CanvasText can throw while returning pooled textures during stage-tree
-// destruction across overlapping React StrictMode lifecycles. The renderer owns
-// and releases GPU resources; display children can be reclaimed with the host.
-export const PIXI_HOST_STAGE_DESTROY_OPTIONS = { children: false } as const;
-
-function abandonInitializedApplication(app: Application): void {
-  app.stop();
-  const canvas = app.canvas as HTMLCanvasElement;
-  const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
-  context?.getExtension('WEBGL_lose_context')?.loseContext();
-  canvas.remove();
-}
-
+// The state below is shared with the pixiHost* helper modules (they take the host and draw, pick or animate from it).
 export class PixiRendererHost {
-  private readonly app = new Application();
-  private readonly livePreview: PixiLiveTransformPreview | null;
-  private previewResult: TransformResult | null = null;
+  readonly app = new Application();
+  readonly livePreview: PixiLiveTransformPreview | null;
+  previewResult: TransformResult | null = null;
   /** The preview is a copy (⌥-drag): the originals stay drawn, their lines stay put. */
-  private previewCopy = false;
-  private previewFrame: number | null = null;
-  private readonly world = new Container();
-  private readonly dotGrid = new PixiDotGrid();
-  private showDotGrid = false;
-  private readonly precisionGrid = new Graphics();
-  private readonly connectorRenderer = new PixiConnectorRenderer();
-  private readonly containerRenderer = new PixiContainerRenderer();
-  private readonly connectorEditOverlay = new PixiConnectorEditOverlay();
-  private readonly nodeRenderer: PixiNodeRenderer;
-  private readonly selectionOverlay = new PixiSelectionOverlay();
-  private readonly transformOverlay = new PixiTransformOverlay();
-  private readonly freeformPreview = new PixiFreeformPreview();
-  private readonly proposalPreview = new PixiProposalPreview();
-  private proposalFrame: ProposalPreviewFrame | null = null;
-  private readonly focusOverlay = new PixiFocusOverlay();
-  private focusFrame: FocusFrame | null = null;
-  private flowFrame: number | null = null;
-  private flowStart = 0;
-  private readonly marquee = new Graphics();
-  private readonly placementGhost = new Graphics();
-  private readonly connectionPreview = new PixiConnectorRenderer();
-  private readonly alignmentGuides = new Graphics();
-  private alignmentGuidesShown = false;
+  previewCopy = false;
+  previewFrame: number | null = null;
+  readonly world = new Container();
+  readonly dotGrid = new PixiDotGrid();
+  showDotGrid = false;
+  readonly precisionGrid = new Graphics();
+  readonly connectorRenderer = new PixiConnectorRenderer();
+  readonly containerRenderer = new PixiContainerRenderer();
+  readonly connectorEditOverlay = new PixiConnectorEditOverlay();
+  readonly nodeRenderer: PixiNodeRenderer;
+  readonly selectionOverlay = new PixiSelectionOverlay();
+  readonly transformOverlay = new PixiTransformOverlay();
+  readonly freeformPreview = new PixiFreeformPreview();
+  readonly proposalPreview = new PixiProposalPreview();
+  proposalFrame: ProposalPreviewFrame | null = null;
+  readonly focusOverlay = new PixiFocusOverlay();
+  focusFrame: FocusFrame | null = null;
+  flowFrame: number | null = null;
+  flowStart = 0;
+  readonly marquee = new Graphics();
+  readonly placementGhost = new Graphics();
+  readonly connectionPreview = new PixiConnectorRenderer();
+  readonly alignmentGuides = new Graphics();
+  alignmentGuidesShown = false;
   private readonly onStatusChange?: PixiRendererHostOptions['onStatusChange'];
-  private readonly connectorModelEnabled: boolean;
-  private readonly resolveAsset: PixiRendererHostOptions['resolveAsset'];
-  private camera: CanvasCamera = { x: 64, y: 64, zoom: 1 };
-  private page: ScenePage | null = null;
-  private index: ReturnType<typeof createSceneIndex> | null = null;
-  private selectedNodeIds: readonly string[] = [];
-  private primaryNodeId: string | null = null;
-  private hoveredNodeId: string | null = null;
-  private hoveredSide: ConnectSide | null = null;
-  private editable = true;
+  readonly connectorModelEnabled: boolean;
+  readonly resolveAsset: PixiRendererHostOptions['resolveAsset'];
+  camera: CanvasCamera = { x: 64, y: 64, zoom: 1 };
+  page: ScenePage | null = null;
+  index: ReturnType<typeof createSceneIndex> | null = null;
+  selectedNodeIds: readonly string[] = [];
+  primaryNodeId: string | null = null;
+  hoveredNodeId: string | null = null;
+  hoveredSide: ConnectSide | null = null;
+  editable = true;
   /** The shape a dragged connector end would bind to. */
-  private dropTargetId: string | null = null;
+  dropTargetId: string | null = null;
   /** The unselected connector under the pointer. */
-  private hoveredConnectorId: string | null = null;
+  hoveredConnectorId: string | null = null;
   /** The connector whose endpoint/segment is being dragged: its committed copy is not drawn. */
-  private previewConnectorId: string | null = null;
+  previewConnectorId: string | null = null;
   // Many connectors can be selected (marquee, ⌘A); edit handles show for one.
-  private selectedConnectorIds: readonly string[] = [];
-  private activeConnectorHandle: ConnectorEditHandle | null = null;
-  private destroyed = false;
-  private backgroundColor = 0xf8fafc;
-  private renderFrame: number | null = null;
-  private cameraDirty = false;
-  private renderCount = 0;
-  private renderRequests = 0;
-  private coalescedRequests = 0;
-  private lastRenderDurationMs = 0;
-  private viewportProjection: ViewportSceneProjection | null = null;
+  selectedConnectorIds: readonly string[] = [];
+  activeConnectorHandle: ConnectorEditHandle | null = null;
+  destroyed = false;
+  backgroundColor = 0xf8fafc;
+  renderFrame: number | null = null;
+  cameraDirty = false;
+  renderCount = 0;
+  renderRequests = 0;
+  coalescedRequests = 0;
+  lastRenderDurationMs = 0;
+  viewportProjection: ViewportSceneProjection | null = null;
+  // --- Agent reveal: an agent's change building in (armReveal). Its shapes draw in the reveal layers, not the scene, until it ends.
+  revealArmed: ArmedReveal | null = null;
+  reveal: RunningReveal | null = null;
+  revealLayers: PixiAgentReveal | null = null;
+  revealStats: RevealStats = { runs: 0, frames: 0, groups: 0, morphs: 0, durationMs: 0, cut: 0 };
+  // --- end agent reveal
   // Map mode's open/close move: a layer drawn over the page while the host's own boxes are hidden (see drawMotionFrame).
-  private motion: PixiMapMotion | null = null;
-  private motionActive = false;
-  private arrowAlpha = 1;
-  private arrowFade: number | null = null;
+  motion: PixiMapMotion | null = null;
+  motionActive = false;
+  arrowAlpha = 1;
+  arrowFade: number | null = null;
   // Frames can stop coming (a busy software GPU, a hidden tab); the fade still ends on time and the next render shows the arrows.
-  private arrowFadeDeadline: ReturnType<typeof setTimeout> | null = null;
-  private motionRenderMs: number[] = [];
+  arrowFadeDeadline: ReturnType<typeof setTimeout> | null = null;
+  motionRenderMs: number[] = [];
 
   constructor(options: PixiRendererHostOptions = {}) {
     this.resolveAsset = options.resolveAsset;
@@ -207,35 +156,8 @@ export class PixiRendererHost {
       throw new Error('Pixi renderer was destroyed during initialization.');
     }
 
-    // The first draw of a node compiles and links Pixi's batch shader (seconds under software GL) inside the frame that shows it,
-    // holding the label editor back. Draw one pixel now, while nothing waits, so that frame finds the program ready.
-    const warm = new Sprite(Texture.WHITE);
-    warm.setSize(1, 1);
-    this.app.stage.addChild(warm);
-    this.app.render();
-    warm.destroy();
-
-    this.world.addChild(
-      this.precisionGrid,
-      this.containerRenderer.graphics,
-      this.nodeRenderer.backdrop,
-      this.connectorRenderer.container,
-      this.nodeRenderer.graphics,
-      this.nodeRenderer.media,
-      this.nodeRenderer.labels,
-      this.containerRenderer.labels,
-      this.selectionOverlay.graphics,
-      this.transformOverlay.graphics,
-      this.freeformPreview.graphics,
-      this.placementGhost,
-      this.connectorEditOverlay.graphics,
-      this.connectionPreview.container,
-      this.alignmentGuides
-    );
-    if (this.livePreview) this.world.addChild(this.livePreview.container);
-    this.world.addChild(this.proposalPreview.container);
-    // The veil dims the page; the focused objects sit above it, in their own layer that follows the camera like the world.
-    this.app.stage.addChild(this.dotGrid.graphics, this.world, this.focusOverlay.veil, this.focusOverlay.content, this.marquee);
+    warmShader(this);
+    assembleStage(this);
     const canvas = this.app.canvas as HTMLCanvasElement;
     canvas.className = 'pixi-spike__canvas';
     canvas.setAttribute('aria-label', 'Diagram drawing surface');
@@ -245,35 +167,34 @@ export class PixiRendererHost {
     canvas.addEventListener('webglcontextrestored', this.handleContextRestored);
     container.appendChild(canvas);
     this.applyCamera();
-    if (this.page && this.refreshViewportProjection()) this.rebuildScene();
+    if (this.page && refreshViewportProjection(this)) rebuildScene(this);
     this.emitStatus('ready');
     return canvas;
   }
 
   setDotGrid(visible: boolean): void {
     this.showDotGrid = visible;
-    this.drawDotGrid();
+    drawDotGrid(this);
     this.requestRender();
-  }
-
-  private drawDotGrid(): void {
-    this.dotGrid.graphics.visible = this.showDotGrid;
-    if (this.showDotGrid) this.dotGrid.draw(this.camera, this.getViewportSize(), isDarkCanvas(numericColorToHex(this.backgroundColor)));
   }
 
   /** Canvas ground color; applied at mount and live afterwards. */
   setBackground(background: number): void {
     if (this.backgroundColor === background) return;
     this.backgroundColor = background;
-    this.drawDotGrid();
+    drawDotGrid(this);
     if (this.app.renderer) {
       this.app.renderer.background.color.setValue(background);
-      this.rebuildScene();
+      rebuildScene(this);
     }
   }
 
   setPage(page: ScenePage): void {
-    const redrawNodes = shouldRedrawNodes(this.page, page);
+    // Agent reveal: any new page ends a running reveal (the shapes show where they are); an armed one starts on this page.
+    const revealing = this.reveal !== null;
+    if (revealing) finishReveal(this, false);
+    const before = this.page;
+    const redrawNodes = shouldRedrawNodes(this.page, page) || revealing;
     if (this.page && this.page.id !== page.id && this.focusFrame) {
       this.focusFrame = null;
       this.focusOverlay.clear();
@@ -290,9 +211,26 @@ export class PixiRendererHost {
       this.selectedConnectorIds = this.selectedConnectorIds.filter((id) => connectorIds.has(id));
       this.activeConnectorHandle = null;
     }
-    this.viewportProjection = this.createViewportProjection();
-    this.rebuildScene(redrawNodes);
+    this.viewportProjection = createViewportProjection(this);
+    const started = startArmedReveal(this, before, page);
+    rebuildScene(this, redrawNodes || started);
+    if (started) this.revealTick(performance.now());
   }
+
+  /**
+   * Builds in the next page this host is given (an agent's commit lands a render later): `make` turns the page drawn
+   * now and that one into a plan, or null for none. View only: the page, its index and every click are the new page's.
+   */
+  armReveal(make: (before: ScenePage, after: ScenePage) => RevealPlan | null): void {
+    this.revealArmed = { make, at: performance.now() };
+  }
+
+  /** Runs so far, frames drawn, and whether one is on screen (the e2e reads it). */
+  getRevealState(): { active: boolean; runs: number; frames: number; groups: number; morphs: number; durationMs: number; cut: number } {
+    return { active: this.reveal !== null, ...this.revealStats };
+  }
+
+  readonly revealTick = (now: number): void => revealTick(this, now);
 
   // Wheel/trackpad deliver several camera updates per frame; only the world
   // transform moves per call. Dot grid, overlays, projection and label
@@ -307,461 +245,72 @@ export class PixiRendererHost {
     this.requestRender();
   }
 
-  /**
-   * One frame of Map mode's open/close move. The host's own boxes and arrows are hidden and `frame` is drawn instead,
-   * from its interpolated rects. View only: the page and the index stay the target's, so a click during the move lands
-   * on the target layout. The selection outline is hidden for the move (it would sit at the target while the boxes travel).
-   */
-  drawMotionFrame(frame: MotionFrame): void {
-    if (this.destroyed || !this.page || !this.index || !this.app.renderer) return;
-    if (!this.motion) {
-      this.motion = new PixiMapMotion(() => this.requestRender(), this.resolveAsset);
-      this.world.addChildAt(this.motion.container, this.world.getChildIndex(this.selectionOverlay.graphics));
-    }
-    if (!this.motionActive) {
-      this.motionActive = true;
-      this.motionRenderMs = [];
-      this.setSceneRenderable(false);
-      this.syncFlow();
-    }
-    this.stopArrowFade();
-    this.connectorRenderer.container.renderable = false;
-    this.motion.draw(frame, this.page, this.index, this.backgroundColor);
-    // Rendered now, in the same tick as the camera: icons are placed at once from cached textures, and the boxes and
-    // the camera of one frame reach the screen together.
-    const startedAt = performance.now();
-    this.renderNow();
-    this.motionRenderMs.push(performance.now() - startedAt);
-    if (this.renderFrame !== null) { cancelAnimationFrame(this.renderFrame); this.renderFrame = null; }
-  }
+  drawMotionFrame(frame: MotionFrame): void { drawMotionFrame(this, frame); }
+  endMotion(fadeArrows = true): void { endMotion(this, fadeArrows); }
+  getMotionState(): ReturnType<typeof getMotionState> { return getMotionState(this); }
 
-  /** The move is over: the host's own (target) boxes show again and, when it ran to its end, the arrows fade in. */
-  endMotion(fadeArrows = true): void {
-    if (!this.motionActive) return;
-    this.motionActive = false;
-    this.setSceneRenderable(true);
-    // Held back during the move: the viewport projection, labels and selection settle once, now.
-    this.cameraDirty = true;
-    if (!fadeArrows) {
-      this.stopArrowFade();
-      this.motion?.clear();
-      this.requestRender();
-      return;
-    }
-    // A fade drawn at a few frames a second is a stall, not a fade: when the move's own frames were slow, the arrows
-    // come back with the first render after it (the one that has to rasterize everything anyway).
-    const slow = (this.motionRenderMs.at(-1) ?? 0) > ARROW_FADE_MS / 2;
-    this.arrowAlpha = 0;
-    this.connectorRenderer.container.alpha = 0;
-    const startedAt = performance.now();
-    const step = (now: number): void => {
-      this.arrowAlpha = slow ? 1 : Math.min(1, Math.max(0, now - startedAt) / ARROW_FADE_MS);
-      this.connectorRenderer.container.alpha = this.arrowAlpha;
-      this.renderNow();
-      // The motion layers go after the first render that also draws the host's own boxes, so the labels it made share
-      // the textures the layers rasterized instead of making them again.
-      if (this.motion?.container.visible) this.motion.clear();
-      this.arrowFade = this.arrowAlpha < 1 ? requestAnimationFrame(step) : null;
-    };
-    this.arrowFade = requestAnimationFrame(step);
-    if (this.arrowFadeDeadline !== null) clearTimeout(this.arrowFadeDeadline);
-    this.arrowFadeDeadline = setTimeout(() => {
-      if (this.arrowFade === null) return;
-      this.stopArrowFade();
-      this.requestRender();
-    }, ARROW_FADE_MS * 3);
-  }
+  getConnectorDebugSnapshot(): ReturnType<PixiConnectorRenderer['getDebugSnapshot']> { return this.connectorRenderer.getDebugSnapshot(); }
 
-  /** Whether a move is on screen, how visible the arrows are (0 during the move, ramping to 1 after), and whether they are still coming back. */
-  getMotionState(): { fading: boolean; active: boolean; arrowAlpha: number; renderMs: { p50: number; p95: number } } {
-    const sorted = [...this.motionRenderMs].sort((a, b) => a - b);
-    const at = (p: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
-    return { fading: this.arrowFade !== null, active: this.motionActive, arrowAlpha: this.motionActive ? 0 : this.arrowAlpha, renderMs: { p50: at(0.5), p95: at(0.95) } };
-  }
+  getNodeDebugSnapshot(): ReturnType<PixiNodeRenderer['getDebugSnapshot']> { return getNodeDebugSnapshot(this); }
 
-  private stopArrowFade(): void {
-    if (this.arrowFade !== null) cancelAnimationFrame(this.arrowFade);
-    if (this.arrowFadeDeadline !== null) clearTimeout(this.arrowFadeDeadline);
-    this.arrowFade = null;
-    this.arrowFadeDeadline = null;
-    this.arrowAlpha = 1;
-    this.connectorRenderer.container.alpha = 1;
-  }
+  getConnectorLabelScreenPoint(connectorId: string): Point2d | null { return getConnectorLabelScreenPoint(this, connectorId); }
+  getConnectorSamples(connectorId: string): readonly Point2d[] | null { return inspectConnectorSamples(this.page, connectorId); }
+  getLiveConnectorSamples(connectorId: string): readonly Point2d[] | null { return getLiveConnectorSamples(this, connectorId); }
 
-  /** Hides or shows what setPage draws (boxes, titles, arrows, selection) without touching what `visible` means to their owners. */
-  private setSceneRenderable(shown: boolean): void {
-    for (const part of [this.containerRenderer.graphics, this.containerRenderer.labels, this.nodeRenderer.backdrop, this.nodeRenderer.graphics,
-      this.nodeRenderer.media, this.nodeRenderer.labels, this.connectorRenderer.container, this.selectionOverlay.graphics,
-      this.focusOverlay.veil, this.focusOverlay.content]) {
-      part.renderable = shown;
-    }
-  }
+  getConnectorEditDebugSnapshot(): ConnectorEditDebugSnapshot { return inspectConnectorEdit(this.page, this.getSelectedConnectorId(), this.activeConnectorHandle); }
+  getConnectorHandleScreenPoints(): readonly ConnectorHandleScreenPoint[] { return inspectConnectorHandleScreenPoints(this.page, this.getSelectedConnectorId(), this.camera); }
+  worldToScreen(point: Point2d): Point2d { return worldToScreen(this.camera, point); }
+  screenToWorld(point: Point2d): Point2d { return screenToWorld(this.camera, point); }
 
-  private settleCamera(): void {
-    if (!this.cameraDirty) return;
-    this.cameraDirty = false;
-    const cameraStartedAt = performance.now();
-    const camera = this.camera;
-    this.drawDotGrid();
-    if (this.motionActive) {
-      // Mid-move the camera only moves the world: no projection change (that would rebuild the scene), no label or overlay work.
-      this.connectorRenderer.setZoom(camera.zoom);
-      const resolution = textResolutionForZoom(camera.zoom, window.devicePixelRatio || 1);
-      if (resolution !== currentPixiTextResolution()) { applyTextResolution(this.world, resolution); applyTextResolution(this.focusOverlay.content, resolution); }
-      return;
-    }
-    this.drawSelection();
-    this.connectorRenderer.setZoom(camera.zoom);
-    const textResolution = textResolutionForZoom(camera.zoom, window.devicePixelRatio || 1);
-    if (textResolution !== currentPixiTextResolution()) { applyTextResolution(this.world, textResolution); applyTextResolution(this.focusOverlay.content, textResolution); }
-    this.drawProposalPreview();
-    this.drawFocus();
+  pickNode(screenPoint: Point2d, scope: string | null = null): string | null { return pickNode(this, screenPoint, scope); }
+  pickConnector(screenPoint: Point2d): string | null { return pickConnector(this, screenPoint); }
+  pickConnectorHandle(screenPoint: Point2d): ConnectorEditHandle | null { return pickConnectorHandle(this, screenPoint); }
 
-    const overlayStartedAt = performance.now();
-    this.drawConnectorEditOverlay();
-    const overlayEndedAt = performance.now();
-    recordOpenCanvasCameraPhase(
-      performance,
-      'connectorOverlay',
-      overlayStartedAt,
-      overlayEndedAt
-    );
-
-    const projectionStartedAt = performance.now();
-    const projectionChanged = this.refreshViewportProjection();
-    const projectionEndedAt = performance.now();
-    recordOpenCanvasCameraPhase(
-      performance,
-      'projection',
-      projectionStartedAt,
-      projectionEndedAt
-    );
-
-    if (projectionChanged) {
-      const rebuildStartedAt = performance.now();
-      this.rebuildScene();
-      recordOpenCanvasCameraPhase(performance, 'rebuild', rebuildStartedAt, performance.now());
-    } else {
-      const labelsStartedAt = performance.now();
-      this.updateLabelVisibility();
-      recordOpenCanvasCameraPhase(performance, 'labels', labelsStartedAt, performance.now());
-    }
-
-    recordOpenCanvasCameraPhase(performance, 'total', cameraStartedAt, performance.now());
-  }
-
-  getConnectorDebugSnapshot(): ReturnType<PixiConnectorRenderer['getDebugSnapshot']> {
-    return this.connectorRenderer.getDebugSnapshot();
-  }
-
-  getNodeDebugSnapshot(): ReturnType<PixiNodeRenderer['getDebugSnapshot']> {
-    const recordsById = new Map(
-      [...this.nodeRenderer.getDebugSnapshot(), ...this.containerRenderer.getDebugSnapshot()].map(
-        (record) => [record.id, record]
-      )
-    );
-    return (
-      this.page?.nodes.flatMap((node) => {
-        const record = recordsById.get(node.id);
-        return record ? [record] : [];
-      }) ?? []
-    );
-  }
-
-  /** Screen point of the connector's primary label, for the label editor. */
-  getConnectorLabelScreenPoint(connectorId: string): Point2d | null {
-    // The whole page, so the editor opens where the canvas drew the label: placement depends on its neighbours.
-    const projected = this.page?.connectors.some((candidate) => candidate.id === connectorId)
-      ? projectPageConnectors(this.page).find((candidate) => candidate.id === connectorId) : null;
-    const label = projected?.labels[0];
-    return label ? this.worldToScreen(label.point) : null;
-  }
-
-  getConnectorSamples(connectorId: string): readonly Point2d[] | null {
-    return inspectConnectorSamples(this.page, connectorId);
-  }
-
-  /** Live route samples: projected against the in-flight transform preview
-   * when a drag is active, so tests can observe rerouting mid-gesture. */
-  getLiveConnectorSamples(connectorId: string): readonly Point2d[] | null {
-    if (!this.page) return null;
-    const connector = this.page.connectors.find((candidate) => candidate.id === connectorId);
-    if (!connector) return null;
-    if (!this.previewResult || this.previewCopy) return inspectConnectorSamples(this.page, connectorId);
-    const replacements = new Map(this.previewResult.nodes.map((node) => [node.id, node]));
-    const previewPage = {
-      ...this.page,
-      nodes: this.page.nodes.map((node) => replacements.get(node.id) ?? node),
-    };
-    return inspectConnectorSamples(previewPage, connectorId);
-  }
-
-  getConnectorEditDebugSnapshot(): ConnectorEditDebugSnapshot {
-    return inspectConnectorEdit(this.page, this.getSelectedConnectorId(), this.activeConnectorHandle);
-  }
-
-  getConnectorHandleScreenPoints(): readonly ConnectorHandleScreenPoint[] {
-    return inspectConnectorHandleScreenPoints(this.page, this.getSelectedConnectorId(), this.camera);
-  }
-
-  worldToScreen(point: Point2d): Point2d {
-    return worldToScreen(this.camera, point);
-  }
-
-  screenToWorld(point: Point2d): Point2d {
-    return screenToWorld(this.camera, point);
-  }
-
-  /** `scope`: a group the selection is inside; a hit within it resolves to its member, not to the group. */
-  pickNode(screenPoint: Point2d, scope: string | null = null): string | null {
-    if (!this.index) return null;
-    const point = this.screenToWorld(screenPoint);
-    // Containers are pickable too, but ordering puts them under their
-    // children so a click inside a section still finds the child first.
-    const hits = querySceneBounds(this.index, createBounds2d(point.x, point.y, 0, 0), {
-      kinds: new Set(['node', 'container']),
-    });
-    // Locked nodes stay selectable (their menu is how they get unlocked);
-    // the pointer flow refuses to move them.
-    const hit = [...hits].reverse().find((hit) => hit.visible) ?? null;
-    // A frame's name sits above its box: over it, the frame is what's under the pointer (a line drawn across it still wins).
-    const named = hit?.kind === 'node' ? null : frameNameAt(this.index, point);
-    if (named && !this.pickConnector(screenPoint)) return this.outermostGroup(named, scope);
-    if (!hit) return null;
-    // A connector drawn across a container is painted on top of it, so a click
-    // on the line belongs to the line. Without this, nothing inside a section
-    // or frame — every imported diagram — could ever select its own arrows.
-    if (hit.kind === 'container' && this.pickConnector(screenPoint)) return null;
-    return this.outermostGroup(hit.id, scope);
-  }
-
-  // ⌘G groups select as one: a click on a member picks the top-most group,
-  // or the top-most below `scope` once the selection is inside one (double-click enters).
-  private outermostGroup(nodeId: string, scope: string | null): string {
-    let result = nodeId;
-    let parentId = this.index?.nodesById.get(nodeId)?.parentId ?? null;
-    while (parentId) {
-      const parent = this.index?.nodesById.get(parentId);
-      if (!parent || parent.kind !== 'group' || parent.id === scope) break;
-      result = parent.id;
-      parentId = parent.parentId;
-    }
-    return result;
-  }
-
-  pickConnector(screenPoint: Point2d): string | null {
-    if (!this.page || !this.connectorModelEnabled) return null;
-    const states = buildNodeStateMap(this.page);
-    const editable = (nodeId: string | null): boolean => {
-      if (nodeId === null) return true;
-      const state = states.get(nodeId);
-      return state?.visible === true && state.locked === false;
-    };
-    const editablePage = {
-      ...this.page,
-      connectors: this.page.connectors.filter(
-        (connector) => editable(connector.source.nodeId) && editable(connector.target.nodeId)
-      ),
-    };
-    return pickConnectorAtPoint(editablePage, this.screenToWorld(screenPoint), 10 / this.camera.zoom);
-  }
-
-  pickConnectorHandle(screenPoint: Point2d): ConnectorEditHandle | null {
-    const connector = this.getSelectedConnector();
-    if (!this.page || !connector || !this.editable) return null;
-    return pickEditHandle(
-      connectorEditHandles(this.page, connector, MIN_SEGMENT_HANDLE_PX / this.camera.zoom),
-      this.screenToWorld(screenPoint),
-      9 / this.camera.zoom
-    );
-  }
-
-  setConnectorSelection(
-    connectorIds: readonly string[],
-    handle: ConnectorEditHandle | null = null
-  ): void {
+  setConnectorSelection(connectorIds: readonly string[], handle: ConnectorEditHandle | null = null): void {
     this.selectedConnectorIds = connectorIds;
     this.activeConnectorHandle = handle;
-    this.drawConnectorEditOverlay();
+    drawConnectorEditOverlay(this);
     this.requestRender();
   }
 
-  setConnectorPreview(connector: SceneConnector | null): void {
-    if (!this.page) return;
-    // While an end or segment is dragged, only the edited line shows; the old path would read as a second connector.
-    const previewId = connector?.id ?? null;
-    if (previewId !== this.previewConnectorId) {
-      this.previewConnectorId = previewId;
-      this.rebuildScene(false);
-    }
-    if (!connector) {
-      this.setDropTarget(null);
-      this.drawConnectorEditOverlay();
-    } else {
-      const previewPage = {
-        ...this.page,
-        connectors: this.page.connectors.map((item) =>
-          item.id === connector.id ? connector : item
-        ),
-      };
-      this.connectorEditOverlay.draw(previewPage, [connector], this.camera.zoom, this.activeConnectorHandle);
-    }
-    this.requestRender();
-  }
+  setConnectorPreview(connector: SceneConnector | null): void { setConnectorPreview(this, connector); }
 
   setSelection(nodeIds: readonly string[], primaryNodeId: string | null): void {
     this.selectedNodeIds = nodeIds;
     this.primaryNodeId = primaryNodeId;
     this.hoveredNodeId = null;
     this.hoveredSide = null;
-    if (this.refreshViewportProjection()) this.rebuildScene();
-    this.drawSelection();
-    this.drawConnectorEditOverlay();
+    if (refreshViewportProjection(this)) rebuildScene(this);
+    drawSelection(this);
+    drawConnectorEditOverlay(this);
     this.requestRender();
   }
 
-  getSelectionWorldBounds(): Bounds2d | null {
-    return this.getNodesWorldBounds(this.selectedNodeIds);
-  }
+  getSelectionWorldBounds(): Bounds2d | null { return this.getNodesWorldBounds(this.selectedNodeIds); }
+  getNodesWorldBounds(nodeIds: readonly string[]): Bounds2d | null { return this.index ? selectionWorldBounds(this.index, nodeIds) : null; }
 
-  getNodesWorldBounds(nodeIds: readonly string[]): Bounds2d | null {
-    if (!this.index) return null;
-    return selectionWorldBounds(this.index, nodeIds);
-  }
-
-  /** Alignment guide lines (world coordinates) shown while a selection moves. */
-  setAlignmentGuides(guides: { readonly x: number | null; readonly y: number | null } | null): void {
-    this.alignmentGuides.clear();
-    this.alignmentGuidesShown = Boolean(guides && (guides.x !== null || guides.y !== null));
-    if (this.alignmentGuidesShown && guides) {
-      const view = visibleWorldBounds(this.camera, this.getViewportSize());
-      const width = 1 / this.camera.zoom;
-      if (guides.x !== null) {
-        this.alignmentGuides.moveTo(guides.x, view.y).lineTo(guides.x, view.y + view.height);
-      }
-      if (guides.y !== null) {
-        this.alignmentGuides.moveTo(view.x, guides.y).lineTo(view.x + view.width, guides.y);
-      }
-      this.alignmentGuides.stroke({ color: 0x2563eb, width, alpha: 0.9 });
-    }
-    this.requestRender();
-  }
-
-  /** The connector being dragged out, routed live like it will be once committed. */
-  setConnectionPreview(connector: SceneConnector | null): void {
-    if (!connector || !this.page) {
-      this.setDropTarget(null);
-      this.connectionPreview.container.visible = false;
-    } else {
-      this.connectionPreview.draw({ ...this.page, connectors: [connector] }, true);
-      this.connectionPreview.container.visible = true;
-    }
-    this.requestRender();
-  }
-
-  pickTransformHandle(screenPoint: Point2d): TransformHandle | null {
-    const bounds = this.editable ? this.getSelectionWorldBounds() : null;
-    return bounds ? pickHandle(bounds, screenPoint, this.camera) : null;
-  }
-
-  setTransformPreview(result: TransformResult | null, copy = false): void {
-    if (this.livePreview) {
-      const started = !this.previewResult && result !== null;
-      const ended = this.previewResult !== null && !result;
-      const copyChanged = this.previewCopy !== (copy && result !== null);
-      this.previewResult = result;
-      this.previewCopy = copy && result !== null;
-      if (started || ended || copyChanged) this.rebuildScene();
-      this.selectionOverlay.graphics.visible = result === null;
-      if (!result) {
-        if (this.previewFrame !== null) cancelAnimationFrame(this.previewFrame);
-        this.previewFrame = null;
-        this.livePreview.clear();
-        this.requestRender();
-      } else if (this.previewFrame === null) {
-        this.previewFrame = requestAnimationFrame(() => {
-          this.previewFrame = null;
-          if (this.page && this.index && this.previewResult) {
-            this.livePreview?.draw(this.page, this.index, this.previewResult, this.camera.zoom, this.backgroundColor, !this.previewCopy);
-            this.renderNow();
-          }
-        });
-      }
-      return;
-    }
-    if (!result || !this.page) this.transformOverlay.clear();
-    else
-      this.transformOverlay.draw(
-        this.page,
-        result.nodes,
-        result.bounds,
-        this.camera,
-        result.snappedX,
-        result.snappedY
-      );
-    this.selectionOverlay.graphics.visible = result === null;
-    this.requestRender();
-  }
+  setAlignmentGuides(guides: { readonly x: number | null; readonly y: number | null } | null): void { setAlignmentGuides(this, guides); }
+  setConnectionPreview(connector: SceneConnector | null): void { setConnectionPreview(this, connector); }
+  pickTransformHandle(screenPoint: Point2d): TransformHandle | null { return pickTransformHandle(this, screenPoint); }
+  setTransformPreview(result: TransformResult | null, copy = false): void { setTransformPreview(this, result, copy); }
 
   /** Ghost a proposal over the page; null clears. Redrawn on page and zoom changes. */
   setProposalPreview(frame: ProposalPreviewFrame | null): void {
     this.proposalFrame = frame;
-    this.drawProposalPreview();
+    drawProposalPreview(this);
     this.requestRender();
-  }
-
-  private drawProposalPreview(): void {
-    if (this.proposalFrame && this.page) this.proposalPreview.draw(this.page, this.proposalFrame, this.camera.zoom, this.backgroundColor);
-    else this.proposalPreview.clear();
   }
 
   /** Dim everything but these objects; null clears. Flow playback + tag perspectives. */
   setFocus(frame: FocusFrame | null): void {
     this.focusFrame = frame;
-    this.drawFocus();
+    drawFocus(this);
     this.requestRender();
   }
 
-  private drawFocus(): void {
-    if (!this.page || !this.focusFrame) {
-      this.focusOverlay.clear();
-      this.syncFlow();
-      return;
-    }
-    // The SVG map dims to 0.35 opacity, so its veil is 0.65; the storyboard's stays 0.62.
-    this.focusOverlay.drawScreen(this.getViewportSize(), this.backgroundColor, this.focusFrame.tone === 'selection' ? 0.65 : 0.62);
-    this.focusOverlay.draw(this.page, this.focusFrame, this.camera.zoom, this.backgroundColor);
-    this.syncFlow();
-  }
+  getFocusState(): ReturnType<typeof getFocusState> { return getFocusState(this); }
 
-  /** What is focused now, and whether its arrows are marching (false under reduced motion, hidden tabs and mid-move). */
-  getFocusState(): { nodeIds: readonly string[]; connectorIds: readonly string[]; twoWayIds: readonly string[]; animating: boolean } | null {
-    return this.focusFrame
-      ? { nodeIds: this.focusFrame.nodeIds, connectorIds: this.focusFrame.connectorIds, twoWayIds: this.focusOverlay.twoWayIds(), animating: this.flowFrame !== null }
-      : null;
-  }
-
-  /** One rAF loop, alive only while a Map focus with arrows is on screen, the tab is visible and motion is allowed. */
-  private syncFlow(): void {
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const want = !this.destroyed && !!this.page && this.focusFrame?.tone === 'selection' && this.focusOverlay.hasFlow()
-      && !this.motionActive && !reduced && typeof document !== 'undefined' && !document.hidden;
-    if (!want) {
-      if (this.flowFrame !== null) { cancelAnimationFrame(this.flowFrame); this.flowFrame = null; this.focusOverlay.drawFlow(0); }
-      return;
-    }
-    if (this.flowFrame !== null) return;
-    this.flowStart = performance.now();
-    const tick = (now: number): void => {
-      if (document.hidden) { this.flowFrame = null; return; }
-      this.focusOverlay.drawFlow(((now - this.flowStart) / 1000) * FLOW_SPEED);
-      this.renderNow();
-      this.flowFrame = requestAnimationFrame(tick);
-    };
-    this.flowFrame = requestAnimationFrame(tick);
-  }
-
-  private readonly onVisibility = (): void => { if (!document.hidden) this.syncFlow(); };
+  private readonly onVisibility = (): void => { if (!document.hidden) syncFlow(this); };
 
   // Pixi reads the pixel ratio once, at init: a window moved between a 1x and a Retina screen kept the old one (U4-05).
   private resolutionQuery: MediaQueryList | null = null;
@@ -788,117 +337,32 @@ export class PixiRendererHost {
     this.requestRender();
   }
 
-  pickNodesInScreenBounds(screenBounds: Bounds2d): readonly string[] {
-    return this.pickInScreenBounds(screenBounds, 'node');
-  }
-
-  pickConnectorsInScreenBounds(screenBounds: Bounds2d): readonly string[] {
-    return this.pickInScreenBounds(screenBounds, 'connector');
-  }
-
-  private pickInScreenBounds(screenBounds: Bounds2d, kind: 'node' | 'connector'): readonly string[] {
-    if (!this.index) return [];
-    const topLeft = this.screenToWorld(screenBounds);
-    const bottomRight = this.screenToWorld({
-      x: screenBounds.x + screenBounds.width,
-      y: screenBounds.y + screenBounds.height,
-    });
-    const worldBounds = createBounds2d(
-      Math.min(topLeft.x, bottomRight.x),
-      Math.min(topLeft.y, bottomRight.y),
-      Math.abs(bottomRight.x - topLeft.x),
-      Math.abs(bottomRight.y - topLeft.y)
-    );
-    return querySceneBounds(this.index, worldBounds, { kinds: new Set([kind]) }).map((object) => object.id);
-  }
-
-  /** The shape a creation tool will drop, drawn under the pointer in world
-   * space; null clears. Text ghosts as its box. */
-  setPlacementGhost(ghost: PlacementGhost | null): void {
-    this.placementGhost.clear();
-    if (ghost) {
-      const zoom = this.camera.zoom;
-      const matrix = { a: 1, b: 0, c: 0, d: 1, tx: ghost.bounds.x, ty: ghost.bounds.y };
-      const size = { width: ghost.bounds.width, height: ghost.bounds.height };
-      const shape: BasicNodeShape = ghost.shape === 'text' ? 'rectangle' : ghost.shape;
-      drawPixiNodeOutline(this.placementGhost, shape, size, matrix);
-      this.placementGhost
-        .fill({ color: SELECTION_STROKE, alpha: 0.05 })
-        .stroke({ color: SELECTION_STROKE, alpha: 0.45, width: 1 / zoom });
-      for (const decoration of basicNodeDecorations(shape, size)) {
-        const points = decoration.map((point) => applyMatrixToPoint(matrix, point));
-        this.placementGhost.poly(points.flatMap((point) => [point.x, point.y]), false)
-          .stroke({ color: SELECTION_STROKE, alpha: 0.45, width: 1 / zoom });
-      }
-    }
-    this.requestRender();
-  }
-
-  setMarquee(screenBounds: Bounds2d | null): void {
-    this.marquee.clear();
-    if (screenBounds) {
-      this.marquee
-        .rect(screenBounds.x, screenBounds.y, screenBounds.width, screenBounds.height)
-        .fill({ color: MARQUEE_FILL, alpha: 0.08 })
-        .stroke({ color: SELECTION_STROKE, alpha: 0.8, width: 1 });
-    }
-    this.requestRender();
-  }
+  pickNodesInScreenBounds(screenBounds: Bounds2d): readonly string[] { return pickInScreenBounds(this, screenBounds, 'node'); }
+  pickConnectorsInScreenBounds(screenBounds: Bounds2d): readonly string[] { return pickInScreenBounds(this, screenBounds, 'connector'); }
+  setPlacementGhost(ghost: PlacementGhost | null): void { setPlacementGhost(this, ghost); }
+  setMarquee(screenBounds: Bounds2d | null): void { setMarquee(this, screenBounds); }
 
   getViewportSize(): Size2d {
     if (!this.app.renderer) return { width: 0, height: 0 };
     return { width: this.app.screen.width, height: this.app.screen.height };
   }
 
-  /** World bounds of all nodes, or of `nodeIds` only (zoom to selection). */
-  getContentBounds(nodeIds?: readonly string[]): Bounds2d | null {
-    if (!this.index) return null;
-    const only = nodeIds ? new Set(nodeIds) : null;
-    const nodeBounds = [...this.index.objectsByKey.values()]
-      .filter((object) => (object.kind === 'node' || object.kind === 'container') && (!only || only.has(object.id)))
-      .map((object) => object.bounds);
-    return nodeBounds.reduce<Bounds2d | null>(
-      (combined, bounds) => (combined ? unionBounds(combined, bounds) : bounds),
-      null
-    );
-  }
-
-  getNodeScreenBounds(nodeId: string): DOMRect | null {
-    if (!this.page || !this.index) return null;
-    const node = this.index.nodesById.get(nodeId);
-    const matrix = this.index.worldMatricesByNodeId.get(nodeId);
-    if (!node || !matrix) return null;
-    return this.screenRect(nodeWorldBounds(node, matrix));
-  }
-
-  /** Where the label editor opens: the title band of a frame, under the plate of an icon node. */
-  getNodeLabelScreenBounds(nodeId: string): DOMRect | null {
-    if (!this.page || !this.index) return null;
-    const node = this.index.nodesById.get(nodeId);
-    const matrix = this.index.worldMatricesByNodeId.get(nodeId);
-    if (!node || !matrix) return null;
-    const local = nodeLabelBounds(node);
-    const origin = applyMatrixToPoint(matrix, { x: local.x, y: local.y });
-    return this.screenRect(createBounds2d(origin.x, origin.y, local.width * matrix.a, local.height * matrix.d));
-  }
-
-  private screenRect(bounds: Bounds2d): DOMRect {
-    const topLeft = worldToScreen(this.camera, bounds);
-    return new DOMRect(topLeft.x, topLeft.y, bounds.width * this.camera.zoom, bounds.height * this.camera.zoom);
-  }
+  getContentBounds(nodeIds?: readonly string[]): Bounds2d | null { return getContentBounds(this, nodeIds); }
+  getNodeScreenBounds(nodeId: string): DOMRect | null { return getNodeScreenBounds(this, nodeId); }
+  getNodeLabelScreenBounds(nodeId: string): DOMRect | null { return getNodeLabelScreenBounds(this, nodeId); }
 
   resize(): void {
     if (this.destroyed || !this.app.renderer) return;
     this.app.resize();
-    this.drawDotGrid();
-    if (this.refreshViewportProjection()) this.rebuildScene();
-    else this.updateLabelVisibility();
+    drawDotGrid(this);
+    if (refreshViewportProjection(this)) rebuildScene(this);
+    else updateLabelVisibility(this);
     this.requestRender();
   }
 
   renderNow(): void {
     if (this.destroyed || !this.app.renderer) return;
-    this.settleCamera();
+    settleCamera(this);
     const startedAt = performance.now();
     this.app.render();
     const endedAt = performance.now();
@@ -907,19 +371,7 @@ export class PixiRendererHost {
     this.renderCount += 1;
   }
 
-  getRenderDiagnostics(): PixiRenderDiagnostics {
-    const renderedNodeCount = this.viewportProjection?.nodeIds?.size ?? this.page?.nodes.length ?? 0;
-    const renderedConnectorCount = this.viewportProjection?.connectorIds?.size
-      ?? this.page?.connectors.length ?? 0;
-    return { renderCount: this.renderCount, renderRequests: this.renderRequests,
-      coalescedRequests: this.coalescedRequests, lastRenderDurationMs: this.lastRenderDurationMs,
-      nodeCount: this.page?.nodes.length ?? 0, connectorCount: this.page?.connectors.length ?? 0,
-      renderedNodeCount, renderedConnectorCount,
-      detailLevel: this.viewportProjection?.detailLevel ?? 'full',
-      pendingFrame: this.renderFrame !== null, continuousTickerRunning: this.app.ticker.started,
-      proposalPreviewVisible: this.proposalPreview.container.visible,
-      alignmentGuidesVisible: this.alignmentGuidesShown };
-  }
+  getRenderDiagnostics(): PixiRenderDiagnostics { return getRenderDiagnostics(this); }
 
   destroy(): void {
     if (this.destroyed) return;
@@ -929,6 +381,7 @@ export class PixiRendererHost {
     if (this.arrowFadeDeadline !== null) clearTimeout(this.arrowFadeDeadline);
     if (this.arrowFade !== null) cancelAnimationFrame(this.arrowFade);
     if (this.flowFrame !== null) cancelAnimationFrame(this.flowFrame);
+    if (this.reveal) cancelAnimationFrame(this.reveal.frame);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.resolutionQuery?.removeEventListener('change', this.onResolutionChange);
     if (this.app.renderer) {
@@ -940,87 +393,13 @@ export class PixiRendererHost {
     this.emitStatus('destroyed');
   }
 
-  private rebuildScene(redrawNodes = true): void {
-    if (!this.page || !this.index) return;
-    this.drawPrecisionGrid();
-    // Preview nodes and everything under them draw in the live preview layer.
-    const excluded = new Set(this.previewCopy ? [] : this.previewResult?.nodes.flatMap((node) =>
-      [node.id, ...getDescendantNodeIds(this.index!, node.id)]));
-    const renderedNodeIds = excluded.size
-      ? new Set(this.page.nodes.filter((node) => !excluded.has(node.id)
-        && (!this.viewportProjection?.nodeIds || this.viewportProjection.nodeIds.has(node.id))).map((node) => node.id))
-      : this.viewportProjection?.nodeIds ?? null;
-    const projected = this.viewportProjection?.connectorIds ?? null;
-    const renderedConnectorIds = excluded.size || this.previewConnectorId
-      ? new Set(this.page.connectors.filter((edge) => !excluded.has(edge.source.nodeId ?? '')
-        && !excluded.has(edge.target.nodeId ?? '') && edge.id !== this.previewConnectorId
-        && (excluded.size > 0 || !projected || projected.has(edge.id))).map((edge) => edge.id))
-      : projected;
-    const detailLevel = this.viewportProjection?.detailLevel ?? 'full';
-    this.connectorRenderer.draw(this.page, this.connectorModelEnabled, renderedConnectorIds, numericColorToHex(this.backgroundColor));
-    if (redrawNodes) {
-      this.containerRenderer.draw(this.page, this.index, renderedNodeIds, this.backgroundColor);
-      this.nodeRenderer.draw(this.page, this.index, renderedNodeIds, detailLevel, this.backgroundColor);
-    }
-    this.updateLabelVisibility();
-    this.drawSelection();
-    this.drawProposalPreview();
-    this.drawFocus();
-    this.requestRender();
-  }
-
-  private drawPrecisionGrid(): void {
-    this.precisionGrid.clear();
-    if (!this.page) return;
-    const raw = this.page.extensions.openCanvasPrecision;
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
-    const settings = raw as Record<string, unknown>;
-    const gridSize = typeof settings.gridSize === 'number' && Number.isFinite(settings.gridSize)
-      ? Math.min(1000, Math.max(1, settings.gridSize)) : 20;
-    const bounds = this.getContentBounds() ?? createBounds2d(0, 0, 1000, 1000);
-    const left = Math.floor((bounds.x - 500) / gridSize) * gridSize;
-    const top = Math.floor((bounds.y - 500) / gridSize) * gridSize;
-    const right = bounds.x + bounds.width + 500;
-    const bottom = bounds.y + bounds.height + 500;
-    if (settings.gridEnabled === true) {
-      for (let x = left; x <= right; x += gridSize) this.precisionGrid.moveTo(x, top).lineTo(x, bottom);
-      for (let y = top; y <= bottom; y += gridSize) this.precisionGrid.moveTo(left, y).lineTo(right, y);
-      this.precisionGrid.stroke({ color: 0xcbd5e1, width: 1, alpha: 0.35 });
-    }
-    const guides = Array.isArray(settings.guides) ? settings.guides : [];
-    for (const guide of guides) {
-      if (!guide || typeof guide !== 'object' || Array.isArray(guide)) continue;
-      if (guide.axis === 'x' && typeof guide.position === 'number') {
-        this.precisionGrid.moveTo(guide.position, top).lineTo(guide.position, bottom);
-      } else if (guide.axis === 'y' && typeof guide.position === 'number') {
-        this.precisionGrid.moveTo(left, guide.position).lineTo(right, guide.position);
-      }
-    }
-    if (guides.length > 0) this.precisionGrid.stroke({ color: 0x2563eb, width: 1, alpha: 0.8 });
-  }
-
   /** False on a read-only page (a shared view, Map mode): selection is outlined, but no handle is drawn or can be picked. */
   setEditable(editable: boolean): void {
     if (this.editable === editable) return;
     this.editable = editable;
-    this.drawSelection();
-    this.drawConnectorEditOverlay();
+    drawSelection(this);
+    drawConnectorEditOverlay(this);
     this.requestRender();
-  }
-
-  private drawSelection(): void {
-    if (!this.index) return;
-    this.selectionOverlay.draw(
-      this.index,
-      this.selectedNodeIds,
-      this.primaryNodeId,
-      this.camera.zoom,
-      this.hoveredNodeId ? { nodeId: this.hoveredNodeId, side: this.hoveredSide } : null,
-      this.dropTargetId,
-      this.hoveredConnectorId && !this.selectedConnectorIds.includes(this.hoveredConnectorId)
-        ? this.getLiveConnectorSamples(this.hoveredConnectorId) : null,
-      this.editable
-    );
   }
 
   /** While a label is edited in the DOM the Pixi copy underneath is hidden. */
@@ -1034,7 +413,7 @@ export class PixiRendererHost {
     this.connectorRenderer.setEditingConnector(connectorId);
     // Connector labels are rebuilt, not toggled: redraw them now or the label
     // stays hidden until the next page/camera change.
-    this.rebuildScene(false);
+    rebuildScene(this, false);
     this.requestRender();
   }
 
@@ -1042,7 +421,7 @@ export class PixiRendererHost {
   setHoveredConnector(connectorId: string | null): void {
     if (this.hoveredConnectorId === connectorId) return;
     this.hoveredConnectorId = connectorId;
-    this.drawSelection();
+    drawSelection(this);
     this.requestRender();
   }
 
@@ -1050,7 +429,7 @@ export class PixiRendererHost {
   setDropTarget(nodeId: string | null): void {
     if (this.dropTargetId === nodeId) return;
     this.dropTargetId = nodeId;
-    this.drawSelection();
+    drawSelection(this);
     this.requestRender();
   }
 
@@ -1059,33 +438,13 @@ export class PixiRendererHost {
     if (this.hoveredNodeId === nodeId && this.hoveredSide === side) return;
     this.hoveredNodeId = nodeId;
     this.hoveredSide = side;
-    this.drawSelection();
+    drawSelection(this);
     this.requestRender();
-  }
-
-  private getSelectedConnectors(): readonly SceneConnector[] {
-    const selected = new Set(this.selectedConnectorIds);
-    return this.page?.connectors.filter((connector) => selected.has(connector.id)
-      && connector.metadata.hidden !== true && connector.metadata.locked !== true) ?? [];
-  }
-
-  private getSelectedConnector(): SceneConnector | null {
-    const connectors = this.getSelectedConnectors();
-    return connectors.length === 1 ? connectors[0]! : null;
   }
 
   /** The one editable connector: handles and the label editor need exactly one. */
   getSelectedConnectorId(): string | null {
-    return this.getSelectedConnector()?.id ?? null;
-  }
-
-  private drawConnectorEditOverlay(): void {
-    const connectors = this.getSelectedConnectors();
-    if (!this.page || connectors.length === 0 || !this.editable) {
-      this.connectorEditOverlay.clear();
-      return;
-    }
-    this.connectorEditOverlay.draw(this.page, connectors, this.camera.zoom, this.activeConnectorHandle);
+    return getSelectedConnector(this)?.id ?? null;
   }
 
   private applyCamera(): void {
@@ -1093,41 +452,10 @@ export class PixiRendererHost {
     this.world.scale.set(this.camera.zoom);
     this.focusOverlay.content.position.set(this.camera.x, this.camera.y);
     this.focusOverlay.content.scale.set(this.camera.zoom);
-    this.drawDotGrid();
+    drawDotGrid(this);
   }
 
-  private updateLabelVisibility(): void {
-    if (!this.index || !this.app.renderer) return;
-    // Overview draws no labels; otherwise each label shows while it is readable on screen (labelReadable).
-    if (this.viewportProjection?.detailLevel === 'overview') {
-      this.nodeRenderer.setLabelVisibility(null, this.camera.zoom);
-      this.containerRenderer.setLabelVisibility(null, this.camera.zoom);
-      return;
-    }
-    const visibleIds = new Set(
-      querySceneBounds(this.index, visibleWorldBounds(this.camera, this.getViewportSize()), {
-        kinds: new Set(['node', 'container']),
-      }).map((object) => object.id)
-    );
-    this.nodeRenderer.setLabelVisibility(visibleIds, this.camera.zoom);
-    this.containerRenderer.setLabelVisibility(visibleIds, this.camera.zoom);
-  }
-
-  private createViewportProjection(): ViewportSceneProjection | null {
-    if (!this.index) return null;
-    return projectSceneViewport(this.index, this.camera, this.getViewportSize(), {
-      retainedNodeIds: this.selectedNodeIds,
-    });
-  }
-
-  private refreshViewportProjection(): boolean {
-    const next = this.createViewportProjection();
-    if (!next || viewportProjectionEquals(this.viewportProjection, next)) return false;
-    this.viewportProjection = next;
-    return true;
-  }
-
-  private requestRender(): void {
+  requestRender(): void {
     if (this.destroyed) return;
     this.renderRequests += 1;
     if (this.renderFrame !== null) {

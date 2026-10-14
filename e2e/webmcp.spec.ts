@@ -101,6 +101,6 @@ test('get_view says what the person sees, select shows them what the agent means
 test('without WebMCP in the browser the panel says nothing about it @gate', async ({ page }) => {
   await openCanvas(page);
   await page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Connect agent', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Copy MCP configuration' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy prompt' })).toBeVisible();
   await expect(page.getByTestId('webmcp-status')).toHaveCount(0);
 });

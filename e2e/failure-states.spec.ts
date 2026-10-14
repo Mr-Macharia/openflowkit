@@ -81,17 +81,26 @@ async function closedPort(): Promise<number> {
   return port;
 }
 
-test('agent bridge with nothing listening names the port and opens the settings @gate', async ({ page }) => {
+// Nothing listening is the normal wait until the agent starts its server: neutral, never a red alert (audit F3, 2026-10-13).
+test('agent bridge with nothing listening waits for the agent instead of failing @gate', async ({ page }) => {
   const port = await closedPort();
+  // Every failed request prints its URL in the console, every few seconds while waiting: none may carry the token.
+  const bridgeUrls: string[] = [];
+  page.on('request', (request) => { if (request.url().includes(`127.0.0.1:${port}`)) bridgeUrls.push(request.url()); });
   await page.goto('/');
   await page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Connect agent', exact: true }).click();
   await page.locator('summary', { hasText: 'Connection settings' }).click();
   await page.locator('#ofk-bridge-port').fill(String(port));
   await page.locator('#ofk-bridge-port').blur();
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText(`Nothing is listening on 127.0.0.1:${port}.`, { timeout: 15_000 });
-  await expect(page.locator('details.ofk-connection-details').first()).toHaveAttribute('open', '');
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  const panel = page.getByRole('complementary', { name: 'Connect agent' });
+  await expect(panel).toHaveAttribute('data-status', 'waiting', { timeout: 15_000 });
+  await expect(panel.getByRole('status').filter({ hasText: 'Waiting for your agent…' })).toBeVisible();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  await expect.poll(() => bridgeUrls.length, { timeout: 5000 }).toBeGreaterThan(1);
+  expect(bridgeUrls.filter((url) => url.includes('token='))).toEqual([]);
+  await page.getByRole('button', { name: 'Stop waiting' }).click();
+  await expect(panel).toHaveAttribute('data-status', 'off');
 });
 
 test('opening a broken file says what opens instead @gate', async ({ page }) => {

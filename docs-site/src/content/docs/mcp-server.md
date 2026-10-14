@@ -12,7 +12,7 @@ OpenFlowKit has one set of agent tools. Pick the row for where your agent runs:
 | Your agent runs… | How to connect | What it can do |
 | --- | --- | --- |
 | **On your computer**: Claude Code, Cursor, VS Code, Claude Desktop, Windsurf | This MCP server | Everything: draws on your open canvas (one undo step per change), edits `.openflow.json` files, maps a codebase, takes screenshots |
-| **In a chat app**: claude.ai, ChatGPT | Add a custom connector with `https://mcp.openflowkit.com/mcp` | Draws a diagram in the chat as a card, with zoom and Open in OpenFlowKit |
+| **In a chat app**: claude.ai, ChatGPT | Add a custom connector with `https://mcp.openflowkit.com/mcp` ([steps](/connect-your-agent/#claudeai-and-chatgpt)) | Draws a diagram in the chat as a card, with zoom and Open in OpenFlowKit |
 | **In your browser** (experimental) | Nothing to install: [WebMCP](/webmcp/) | Reads and edits the diagram you have open |
 
 The server is a stdio process on your machine. It needs no API key of its own and returns
@@ -23,66 +23,20 @@ In file mode it is the `.openflow.json` you save, and the result carries an `ope
 that support MCP Apps (Claude Desktop, VS Code) also show a card under the tool call: the picture, zoom, and Open in
 OpenFlowKit.
 
-**In claude.ai:** Settings → Connectors → Add custom connector, paste `https://mcp.openflowkit.com/mcp`. **In ChatGPT:**
-turn on Developer Mode and create a connector with the same URL. The hosted endpoint stores nothing; it has
+**In claude.ai or ChatGPT** the hosted endpoint draws cards in the chat, not on your canvas. It stores nothing and has
 no file, live-editor or codebase tools, so use this server for those.
 
 ## Connect your client
 
-Pick your client. Every route runs the same command, `npx -y openflowkit mcp`.
-
-- **Cursor:** [Add to Cursor](https://cursor.com/en/install-mcp?name=openflowkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5mbG93a2l0IiwibWNwIl19)
-- **VS Code:** [Install in VS Code](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522openflowkit%2522%252C%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522openflowkit%2522%252C%2522mcp%2522%255D%257D)
-
-### Claude Code
-
-One line:
+Step by step for Claude Code, Claude Desktop, claude.ai, ChatGPT, Cursor, VS Code and Codex, with fixes for what goes
+wrong: [Connect your agent](/connect-your-agent/). The short version, for Claude Code:
 
 ```bash
 claude mcp add -s user openflowkit -- npx -y openflowkit mcp
 ```
 
-Or install the plugin, which adds the server and the skill together:
-
-```bash
-claude plugin marketplace add openflowkit/openflowkit
-claude plugin install openflowkit@openflowkit
-```
-
-### Codex
-
-Codex reads MCP servers from `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.openflowkit]
-command = "npx"
-args = ["-y", "openflowkit", "mcp"]
-```
-
-Or install the plugin, then pick **OpenFlowKit** in the Plugins Directory:
-
-```bash
-codex plugin marketplace add openflowkit/openflowkit
-```
-
-### Claude Desktop, Windsurf and other clients
-
-Point your client at the command. In Claude Desktop's `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "openflowkit": {
-      "command": "npx",
-      "args": ["-y", "openflowkit", "mcp"]
-    }
-  }
-}
-```
-
-Restart the client, then click **Connect agent** in the app.
-
-Node 20.11 or newer is required.
+Every other local client runs the same command, `npx -y openflowkit mcp` (Node 20.11 or newer). Then open the app and
+click **Connect agent**, or open [app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect).
 
 ## Two modes
 
@@ -90,7 +44,8 @@ Node 20.11 or newer is required.
 you see. The bridge listens on `127.0.0.1:43119` by default (change it in the Connect agent panel;
 the server reads `OPENFLOWKIT_BRIDGE_PORT`), checks the request's host and origin, and can be gated
 with a shared token (`OPENFLOWKIT_BRIDGE_TOKEN` on the server, the same token in the panel). Edits land as one undo step per
-call; `screenshot` returns a real PNG; `fit_view` moves your view.
+call; `screenshot` returns a real PNG; `fit_view` moves your view. One tab owns the connection, and several agent
+sessions can draw on it through the first server: [how pairing works](/connect-your-agent/#how-drawing-reaches-your-canvas).
 - **File** — `openflow_open` a `.openflow.json` path and the same ops run headlessly on
 that document, with `openflow_save` writing it back. There is no canvas here, so PNG/GIF/
 MP4/WebM export and `screenshot` ask you to connect the live editor; SVG, animated SVG,
@@ -115,7 +70,7 @@ created last. Page-scoped ops take a `pageId` from `list_pages`.
 | `openflow_create` | Create an empty file-mode document |
 | `openflow_open` | Load a .openflow.json from disk into file mode |
 | `openflow_save` | Write a document back to disk |
-| `render_diagram` | Remote endpoint only (`npm run start:http`): draw DSL or Mermaid inline in the chat, with an editor link |
+| `render_diagram` | Hosted endpoint only (`https://mcp.openflowkit.com/mcp`, or self-host with `npm run start:http`): draw DSL or Mermaid inline in the chat, with an editor link |
 | `server_info` | Server name, version and capabilities |
 | `validate_openflow_dsl` | Parse DSL with the real parser and return its diagnostics |
 | `whoami` | Which mode the server is in, and which documents it holds |
@@ -305,7 +260,7 @@ Takes no arguments.
 
 ## What it does not do
 
-- **No cloud, no telemetry.** The server is stdio and local; OpenFlowKit hosts no MCP endpoint.
+- **Local by default.** This server runs on your machine over stdio and calls no outside service. The hosted endpoint for chat apps (`https://mcp.openflowkit.com/mcp`) is separate, draws cards in the chat only and stores nothing.
 - **No account or key.** Your MCP client's model is the only AI involved.
 - **No raster in file mode.** PNG, GIF, MP4 and WebM need the live editor's canvas.
-- **No collaboration.** One editor pairs with the bridge at a time.
+- **One tab at a time.** One editor tab pairs with the bridge. Several agent sessions can share it, but this is not multi-person collaboration.

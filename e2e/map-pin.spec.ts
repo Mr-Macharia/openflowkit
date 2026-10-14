@@ -2,6 +2,7 @@ import { expect, test, type Page } from './test';
 import { doc, state } from './helpers';
 
 // Edit as drawing (pin): the open Map becomes an ordinary Canvas page (one insert-page, one undo step), and Canvas shows it.
+// The drawing remembers the page it came from: its Canvas | Map switch goes back to that map, and a repo map's Canvas opens it.
 interface MapState { mode: 'canvas' | 'map'; open: string[]; nodes: string[]; labels: Record<string, string> }
 const mapState = (page: Page): Promise<MapState> =>
   page.evaluate(() => (window as unknown as { __V2__: { getMapState(): MapState } }).__V2__.getMapState())
@@ -37,8 +38,8 @@ for (const how of ['the toolbar button', 'Shift+M']) {
     } else await pin(page).click();
 
     await expect.poll(async () => (await pagesOf(page)).length).toBe(4);
-    // The pinned page has no model, so no Canvas | Map switch and no Map toolbar: it is on Canvas.
-    await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveCount(0);
+    // The pinned page is on Canvas, editable; its switch goes back to the map it came from.
+    await expect(page.getByRole('button', { name: 'Canvas', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('toolbar', { name: 'Map depth', exact: true })).toHaveCount(0);
     const pinned = (await pagesOf(page)).at(-1)!;
     expect(pinned.name).toBe('Shop (drawing)');
@@ -57,8 +58,9 @@ for (const how of ['the toolbar button', 'Shift+M']) {
     await expect.poll(async () => (await pagesOf(page)).length).toBe(4);
     await page.keyboard.press('Meta+z');
     await expect.poll(async () => (await pagesOf(page)).length).toBe(3);
-    // Back on the Landscape page, whose Canvas | Map switch is there again.
-    await expect(page.getByRole('button', { name: 'Map', exact: true })).toBeVisible();
+    // Back on the page it was pinned from, in Map.
+    await expect.poll(async () => (await mapState(page)).mode).toBe('map');
+    await expect(page.getByRole('button', { name: 'Map', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
 }
 
@@ -92,6 +94,7 @@ test('a repo map pins to an editable page; the repo page stays read-only @gate',
   };
   const pagesButton = () => page.getByRole('button', { name: /^Pages/ });
   const mapSwitch = () => page.getByRole('button', { name: 'Map', exact: true });
+  const canvasSwitch = () => page.getByRole('button', { name: 'Canvas', exact: true });
   const saved = () => expect.poll(async () => ['saved', 'clean'].includes((await state(page)).save)).toBe(true);
   await mapReady();
   const before = (await pagesOf(page)).length;
@@ -100,8 +103,8 @@ test('a repo map pins to an editable page; the repo page stays read-only @gate',
   await expect.poll(async () => (await pagesOf(page)).length).toBe(before + 1);
   const pinned = (await pagesOf(page)).at(-1)!;
   expect(pinned.name).toMatch(/\(drawing\)$/);
-  // The pinned page is an ordinary Canvas page: no Map switch there.
-  await expect(mapSwitch()).toHaveCount(0);
+  // The pinned page is an ordinary Canvas page; its Map switch goes back to the repo's map.
+  await expect(canvasSwitch()).toHaveAttribute('aria-pressed', 'true');
 
   // Rename it from the Pages menu.
   await pagesButton().click();
@@ -125,13 +128,11 @@ test('a repo map pins to an editable page; the repo page stays read-only @gate',
   await expect.poll(async () => (await pagesOf(page)).at(-1)!.nodes.length).toBeLessThan(nodesBefore);
   await saved();
 
-  // It persists across a reload, which reopens the page it was left on (the pinned one); the repo's map is a page away.
+  // It persists across a reload, which reopens the page it was left on (the pinned one); the repo's map is one switch away.
   await page.reload();
   await page.waitForFunction(() => '__V2__' in window);
-  await expect(mapSwitch()).toHaveCount(0);
-  await pagesButton().click();
-  await page.getByRole('button', { name: (await pagesOf(page))[0]!.name, exact: true }).click();
-  await page.keyboard.press('Escape');
+  await expect(canvasSwitch()).toHaveAttribute('aria-pressed', 'true');
+  await mapSwitch().click();
   await mapReady();
   expect((await pagesOf(page)).length).toBe(before + 1);
   expect((await pagesOf(page)).at(-1)!.name).toBe('Overview snapshot');
@@ -148,10 +149,10 @@ test('a repo map pins to an editable page; the repo page stays read-only @gate',
   await page.keyboard.press('Escape');
   await expect(pagesDialog).toBeHidden();
 
-  // On the pinned page there is no Map switch; going back to the repo page shows its Map again.
+  // On the pinned page the switch says Canvas; going back to the repo page shows its Map again.
   await pagesButton().click();
   await page.getByRole('button', { name: 'Overview snapshot', exact: true }).click();
-  await expect(mapSwitch()).toHaveCount(0);
+  await expect(canvasSwitch()).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
   await expect(pagesDialog).toBeHidden();
   await pagesButton().click();

@@ -27,6 +27,10 @@ interface Options {
   readonly focusRef: RefObject<{ id: string | null } | null>;
   /** A depth preset landed readable on a map too big to show whole: the reader may not know there is more. */
   readonly onPartial?: () => void;
+  /** Set: the next map entered keeps the camera (back from its drawing, which has the same coordinates) while it shows any of it. */
+  readonly keepCameraRef?: RefObject<boolean>;
+  /** The renderer is mounted (its viewport has a size). A layout that lands before it waits: a camera framed in 0×0 lands nowhere. */
+  readonly ready?: boolean;
 }
 
 
@@ -40,6 +44,11 @@ const firstBox = (model: MapModel | null, rects: ReadonlyMap<string, LaidRect>):
 /** The box just grown must not sit under the panels or the floating chrome: the least pan that clears it (a box bigger than the free canvas keeps its start in). */
 const clearOfChrome = (cam: CanvasCamera, box: LaidRect, free: ReturnType<typeof clearance>): CanvasCamera => nudgeInto(box, cam, free) ?? cam;
 
+/** Whether any of `extent` (scene space) is on screen at `cam`. */
+const overlaps = (extent: { x: number; y: number; width: number; height: number }, cam: CanvasCamera, view: { width: number; height: number }): boolean =>
+  extent.x * cam.zoom + cam.x < view.width && (extent.x + extent.width) * cam.zoom + cam.x > 0
+  && extent.y * cam.zoom + cam.y < view.height && (extent.y + extent.height) * cam.zoom + cam.y > 0;
+
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
@@ -47,7 +56,7 @@ const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMe
  * index is the target and clicks land on it. From here only the picture moves, from where each box is drawn to where it
  * now belongs, and the camera lands (a new map) or follows the focus (a box just opened).
  */
-export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, cameraRef, updateCamera, markShown, focusRef, onPartial }: Options) {
+export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, cameraRef, updateCamera, markShown, focusRef, onPartial, keepCameraRef, ready = true }: Options) {
   const partialRef = useRef(onPartial);
   useEffect(() => { partialRef.current = onPartial; });
   // How often the editor page rendered: a move must not add one per frame (counted for the test hook).
@@ -91,7 +100,7 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
     if (!mapPage || mapPage === emptyPage) { player.stop(); shown.current = null; player.cur.clear(); drawn.current.clear(); focusRef.current = null; markShown('asked'); return; }
     const host = hostRef.current;
     const before = shown.current;
-    if (!host || before?.page === mapPage) return;
+    if (!host || !ready || before?.page === mapPage) return;
     // This effect is where a landed layout starts moving, or lands at once: from here the motion state tells the truth.
     markShown('landed');
     const extent = sceneExtent(mapPage);
@@ -105,6 +114,9 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
       // A map entered at an element (a drill from Canvas) frames that element; otherwise the whole map.
       const at = focusRef.current;
       focusRef.current = null;
+      const keep = keepCameraRef?.current ?? false;
+      if (keepCameraRef) keepCameraRef.current = false;
+      if (keep && !at && overlaps(extent, cameraRef.current, host.getViewportSize())) { fitted.current = null; return; }
       const whole = !(at?.id && rects.has(at.id));
       // Entering frames the map exactly as pressing its depth does.
       const cam = whole ? presetCamera(extent, clearance(host), firstBox(model, rects)) : landOn(extent, rects.get(at!.id!)!, clearance(host));
@@ -144,7 +156,7 @@ export function useMapMotion({ mapPage, emptyPage, scene, model, hostRef, camera
       // React learns the camera once, here, not once per frame.
       if (player.camera) updateCamera(player.camera);
     }, () => renders.current);
-  }, [mapPage, emptyPage, scene, model, hostRef, cameraRef, updateCamera, player, markShown, focusRef]);
+  }, [mapPage, emptyPage, scene, model, hostRef, cameraRef, updateCamera, player, markShown, focusRef, keepCameraRef, ready]);
 
   /** Zoom to fit on a map: the whole map in the canvas the panels and floating chrome leave. */
   const fit = useCallback(() => {

@@ -4,7 +4,7 @@ import type { RepoMapSource } from '../../../application/map/repoMapSource';
 import { BrandLoader } from '../BrandLoader';
 import { V2StateHero } from '../V2StateHero';
 import { V2StateShell } from '../V2StateShell';
-import { CliText, RepoTokenForm } from '../v2RepoProblem';
+import { CliText, PrivateRepoToken, RepoTokenForm } from '../v2RepoProblem';
 import { mapRepoPath, MapRepoForm } from './V2MapStart';
 import type { RepoMapState } from './useRepoMap';
 import './map.css';
@@ -13,20 +13,26 @@ import './map.css';
 interface RepoLinks { readonly shown: number; readonly total: number; readonly all: boolean; readonly onToggle: () => void }
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-export function BadRepoAddress(): React.JSX.Element {
+/** An address that names no repo: the field comes back with what was asked for, ready to fix (like "not found"). */
+export function BadRepoAddress({ initial = '' }: { readonly initial?: string } = {}): React.JSX.Element {
   const navigate = useNavigate();
   return (
     <V2StateShell testId="v2-map">
-      <ErrorState hero={<V2StateHero kind="lost-link" />} title="That is not a GitHub repo address." description="Use /map/github/<owner>/<repo>, optionally followed by /tree/<branch>."
-        action={<Button variant="primary" onClick={() => navigate('/home')}>Back to home</Button>} />
+      <ErrorState hero={<V2StateHero kind="lost-link" />} title="That is not a GitHub repo address." description="Enter owner/repo or a github.com address."
+        action={<MapRepoForm initial={initial} onMapRepo={(ref) => navigate(mapRepoPath(ref), { replace: true })} />}
+        secondary={<Button variant="secondary" onClick={() => navigate('/home')}>Back to home</Button>} />
     </V2StateShell>
   );
 }
 
-/** What the editor frame shows instead of the map while there is none to draw: reading, a problem, or an empty repo. Null once the map can show. */
-export function V2RepoMapState({ source, map }: { readonly source: RepoMapSource; readonly map: RepoMapState }): React.JSX.Element | null {
+/**
+ * What the editor frame shows instead of the map while there is none to draw: reading, a problem, or an empty repo. Null once the
+ * map can show. `onOpenDrawing`: the reader already made a drawing of this map; a failed read (offline, a limit) must not hide it.
+ */
+export function V2RepoMapState({ source, map, onOpenDrawing }: { readonly source: RepoMapSource; readonly map: RepoMapState; readonly onOpenDrawing?: (() => void) | undefined }): React.JSX.Element | null {
   const navigate = useNavigate();
-  const home = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} onClick={() => navigate('/home')}>Back to home</Button>;
+  const drawing = onOpenDrawing ? <Button variant="secondary" onClick={onOpenDrawing}>Open your drawing</Button> : null;
+  const home = (primary: boolean) => <>{drawing}<Button variant={primary && !drawing ? 'primary' : 'secondary'} onClick={() => navigate('/home')}>Back to home</Button></>;
   const name = `${source.owner}/${source.repo}`;
   const { problem } = map;
   if (map.status === 'problem' && problem) {
@@ -37,7 +43,13 @@ export function V2RepoMapState({ source, map }: { readonly source: RepoMapSource
             ? { action: <RepoTokenForm home={home(false)} onSubmit={map.submitToken} /> }
             : problem.retry ? { onRetry: map.retry, secondary: home(false) }
               // Not found is most often a typo: the address field comes back with what was asked for, ready to fix.
-              : problem.retype ? { action: <MapRepoForm initial={name} onMapRepo={(ref) => navigate(mapRepoPath(ref))} />, secondary: home(false) }
+              : problem.retype ? {
+                action: <>
+                  <MapRepoForm initial={name} onMapRepo={(ref) => navigate(mapRepoPath(ref))} />
+                  {problem.privateToken ? <PrivateRepoToken onSubmit={map.submitToken} /> : null}
+                </>,
+                secondary: home(false),
+              }
                 : { action: home(true) })} />
       </V2StateShell>
     );
@@ -91,10 +103,10 @@ export function V2RepoMapChips({ map, links }: { readonly map: RepoMapState; rea
 }
 
 /** What goes over the canvas of a repo map: the state screen while there is no map to draw, and the notes over it once there is. */
-export function V2RepoMapOverlay({ source, map, links }: { readonly source: RepoMapSource; readonly map: RepoMapState; readonly links?: RepoLinks | null }): React.JSX.Element {
+export function V2RepoMapOverlay({ source, map, links, onOpenDrawing }: { readonly source: RepoMapSource; readonly map: RepoMapState; readonly links?: RepoLinks | null; readonly onOpenDrawing?: (() => void) | undefined }): React.JSX.Element {
   return (
     <>
-      <div className="ofk-v2-map-state"><V2RepoMapState source={source} map={map} /></div>
+      <div className="ofk-v2-map-state"><V2RepoMapState source={source} map={map} onOpenDrawing={onOpenDrawing} /></div>
       <V2RepoMapChips map={map} links={links} />
     </>
   );

@@ -95,7 +95,8 @@ describe('Share', () => {
     renderShare(await codeDocument('flowchart\nA -> B\n'));
     const [viewOnly, editable] = screen.getAllByRole('radio') as HTMLInputElement[];
     expect(viewOnly!.disabled).toBe(true);
-    expect(viewOnly!.closest('label')!.textContent).toMatch(/Needs a share server/);
+    // A visitor reads plain words, not "share server" (V13).
+    expect(viewOnly!.closest('label')!.textContent).toMatch(/Not set up on this site/);
     expect(editable!.checked).toBe(true);
     expect(screen.getByRole('button', { name: 'Copy editable link' })).toBeTruthy();
   });
@@ -142,5 +143,18 @@ describe('Export', () => {
     render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={document} pageId={document.pages[0]!.id} canShare
       selectedNodeIds={[]} onClose={vi.fn()} onToast={vi.fn()} onOpenAnimation={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /link/i })).toBeNull();
+  });
+
+  it('an empty page turns Animate off with Download and Copy, so the panel never offers what cannot work', async () => {
+    const empty = createTestDocument({ nodes: [] });
+    const { unmount } = render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={empty} pageId={empty.pages[0]!.id}
+      selectedNodeIds={[]} onClose={vi.fn()} onToast={vi.fn()} onOpenAnimation={vi.fn()} />);
+    expect((screen.getByRole('button', { name: 'Download' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Animate this page…' }) as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+    const drawn = createTestDocument({ nodes: [(await compile('flowchart right\nA -> B')).frame] });
+    render(<V2ExportMenu open anchorRef={{ current: window.document.body }} document={drawn} pageId={drawn.pages[0]!.id}
+      selectedNodeIds={[]} onClose={vi.fn()} onToast={vi.fn()} onOpenAnimation={vi.fn()} />);
+    expect((screen.getByRole('button', { name: 'Animate this page…' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

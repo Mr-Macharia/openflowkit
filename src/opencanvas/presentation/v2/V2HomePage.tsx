@@ -1,79 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import {
-  IconAlertTriangle, IconArrowBackUp, IconArrowUpRight, IconBook2, IconBrandGithub, IconBulb, IconChevronDown, IconClock, IconFileImport, IconHierarchy2,
-  IconKeyboard, IconLayoutGrid, IconLayoutList, IconLock, IconMoon, IconPlus, IconSearch, IconSparkles, IconSpeakerphone, IconStar,
-  IconArchive, IconDownload, IconStarFilled, IconSun, IconTemplate, IconTrashX, IconUpload, IconX,
-} from '@tabler/icons-react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { IconAlertTriangle, IconArchive, IconStar } from '@tabler/icons-react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { HomeNotice } from './V2LegacyRoutes';
-import {
-  Button, Dialog, EmptyState, ErrorState, Icon, IconButton, Kbd, Menu, MenuItem, Segmented, SystemRoot, ToastRegion, withToast,
-  Tooltip, type IconComponent, type ToastItem,
-} from '../design-system';
-import { CommandPalette, type Command } from '../design-system/CommandPalette';
+import { Button, EmptyState, ErrorState, Icon, SystemRoot, ToastRegion, withToast, type ToastItem } from '../design-system';
+import { CommandPalette } from '../design-system/CommandPalette';
 import { createV2Repository, type V2DocumentSummary, type V2Thumbnail } from '../../../services/storage/v2/v2Repository';
 import { describeStorageFailure } from '../../../services/storage/v2/v2Errors';
 import { plainImportFailure } from '../../domain/document/legacyWorkspace';
 import { readV1ImportMarker, runV1Import } from '../../../services/storage/v2/v1Import';
-import { buildV2Backup, importFiles as importDocumentFiles, readAllDocuments } from '../../../services/storage/v2/backup';
-import { downloadTextFile } from './v2Export';
-import { track } from '../../../services/usage/usage';
 import { buildV2Thumbnail } from './v2Thumbnail';
 import { STARTER_TEMPLATES } from '../../../agent/starterTemplates';
-import { ISSUE_URL } from '../../application/ai/assistantReport';
 import { forgetMapMode } from './map/mapDepth';
+import { mapRepoPath, MapRepoForm, repoToMap } from './map/V2MapStart';
+import { isEditableTarget } from './pointerOperations';
 import { forgetLastDocument, forgetPageId, mintV2Id, type V2StartIntent } from './v2Document';
-import {
-  CHIP_ICON, DiagramCard, HomeCard, HomeNoticeStrip, SkeletonCard, StartCard, StartChip, ArchivedCard, type CardSelection, type StartKind,
-} from './V2HomeCards';
+import { DiagramCard, HomeNoticeStrip, SkeletonCard, StartChip, ArchivedCard, type CardSelection } from './V2HomeCards';
 import { V2StateHero } from './V2StateHero';
 import { V2ProWaitlist, joinedProPlan } from './V2ProWaitlist';
 import { HOME_NEWS } from './homeNews';
-import { DOCS_URL, REPO_URL, formatStars, useGitHubStars } from './homeStars';
-import {
-  IMPORT_ACCEPT, arrange, copyName, gridStep, importKind, parseView, selectRange, toggleId,
-  useHomeState, type HomeSort, type HomeView,
-} from './homeLibrary';
-import { platformKeys } from './v2Shortcuts';
+import { arrange, copyName, gridStep, parseView, selectRange, toggleId, useHomeState, type HomeView } from './homeLibrary';
+import { SORTS, STARTS, VIEWS, plural, typing, viewLink } from './homeConfig';
+import { buildHomeCommands } from './homeCommands';
+import { downloadAllDiagrams, importHomeFiles, type HomeTransfer } from './homeTransfer';
+import { V2HomeSidebar } from './V2HomeSidebar';
+import { V2HomeHeader } from './V2HomeHeader';
+import { HomeDeleteDialog, HomeDropOverlay, HomeKeysDialog, HomeSelectionBar } from './V2HomeOverlays';
+import { HomeFirstRun, HomeNews, HomeNoMatch, HomeTemplateGrid } from './V2HomeViews';
 import { useV2Appearance } from './useV2Appearance';
 import { useV2Preferences } from './useV2Preferences';
 import './v2EditorPage.css';
 import './v2Home.css';
-
-// Checked-in pictures of the starter templates (homeTemplates.test.ts keeps them true):
-// home never loads the compiler or ELK to show them.
-const TEMPLATE_PICTURES = import.meta.glob<string>('./homeTemplates/*.svg', { query: '?url', import: 'default', eager: true });
-const templatePicture = (name: string, theme: 'light' | 'dark') => TEMPLATE_PICTURES[`./homeTemplates/${name}-${theme}.svg`];
-/**
- * A template near the card's shape shows whole; a long strip or a tall flow starts top left at a readable zoom (U4-20:
- * fitted, an 8:1 pipeline was a 10px sliver). Up to 2.2:1 it still fills most of the 16:10 card, readable.
- */
-const templateFit = ({ naturalWidth, naturalHeight }: HTMLImageElement): 'whole' | 'start' => {
-  const aspect = naturalWidth / Math.max(1, naturalHeight);
-  return aspect >= 0.8 && aspect <= 2.2 ? 'whole' : 'start';
-};
-
-const STARTS: readonly { kind: StartKind; title: string; chip: string; hint: string; text: string; intent?: V2StartIntent }[] = [
-  { kind: 'blank', title: 'Blank canvas', chip: 'Blank canvas', hint: 'Draw by hand', text: 'Shapes, arrows and text, by hand.' },
-  { kind: 'assistant', title: 'Describe it to AI', chip: 'Ask AI', hint: 'Describe it in words', text: 'Say what you need; review before it lands.', intent: { start: 'assistant' } },
-  { kind: 'code', title: 'Paste code or Mermaid', chip: 'From code', hint: 'Mermaid, D2, Structurizr', text: 'Text in, diagram out. D2 and Structurizr too.', intent: { start: 'code' } },
-  { kind: 'agent', title: 'Connect your agent', chip: 'Connect agent', hint: 'Claude Code, Cursor', text: 'Claude Code or Cursor draws here over MCP.', intent: { start: 'agent' } },
-];
-const NEWS_DATE = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
-const VIEWS: readonly { view: HomeView; title: string; icon: IconComponent }[] = [
-  { view: 'recents', title: 'Recents', icon: IconClock },
-  { view: 'starred', title: 'Starred', icon: IconStar },
-  { view: 'templates', title: 'Templates', icon: IconTemplate },
-  { view: 'archive', title: 'Archive', icon: IconArchive },
-];
-const SORTS: readonly { sort: HomeSort; title: string }[] = [{ sort: 'edited', title: 'Last edited' }, { sort: 'name', title: 'Name' }];
-
-/** Keys meant for a field, a menu's typeahead or a dialog are not page shortcuts. */
-const typing = (target: EventTarget | null) =>
-  target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
-    || target.closest('[role="menu"], [role="dialog"], dialog') !== null);
-const viewLink = (view: HomeView) => ({ search: view === 'recents' ? '' : `?view=${view}` });
-const plural = (count: number, one: string) => `${count} ${count === 1 ? one : `${one}s`}`;
 
 /** Home: a sidebar of views and one quiet, keyboard-first list of the diagrams in this browser. */
 export function V2HomePage(): React.JSX.Element {
@@ -97,6 +53,19 @@ export function V2HomePage(): React.JSX.Element {
     return typeof arrived?.notice === 'string' ? { tone: 'info', ...arrived, notice: arrived.notice } : null;
   });
   const [listError, setListError] = useState<ReturnType<typeof describeStorageFailure> | null>(null);
+  // A GitHub address pasted anywhere on Home (not into a field) opens its map: the shortest way to a repo's picture.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const text = event.clipboardData?.getData('text/plain').trim() ?? '';
+      const ref = /github\.com/i.test(text) ? repoToMap(text) : null;
+      if (!ref) return;
+      event.preventDefault();
+      navigate(mapRepoPath(ref));
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [navigate]);
   useEffect(() => {
     if (location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate]);
@@ -112,7 +81,6 @@ export function V2HomePage(): React.JSX.Element {
   const [dragging, setDragging] = useState(false);
   const renameRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const sortRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const renameCancelled = useRef(false);
   const failed = Object.entries(readV1ImportMarker()?.docs ?? {}).filter(([, entry]) => entry.status === 'failed');
@@ -280,41 +248,8 @@ export function V2HomePage(): React.JSX.Element {
     focusAfter(next);
   }
 
-  async function importFiles(files: readonly File[]): Promise<void> {
-    const usable = files.filter((file) => importKind(file.name));
-    if (!usable.length) {
-      toast({ tone: 'danger', title: 'Nothing here to import', description: 'OpenFlowKit imports its own .json files, and Mermaid, D2, Structurizr or OpenFlow DSL text files.' });
-      return;
-    }
-    const report = await importDocumentFiles(usable, repository, () => mintV2Id('doc'));
-    // A text diagram is drawn by the editor's compiler, so it opens there — one at a time.
-    if (report.draw) { create({ source: report.draw.source, name: report.draw.name }); return; }
-    refresh();
-    if (report.count > 0) track('created_import');
-    // The card's preview is otherwise drawn only by an editor save; they arrive after the list.
-    void (async () => {
-      for (const document of report.documents) {
-        try { await repository.saveThumbnail(document.id, await buildV2Thumbnail(document)); } catch { /* the placeholder stays */ }
-      }
-      repository.listThumbnails().then(setThumbnails, () => undefined);
-    })();
-    const description = [...(report.problems.length ? [`Couldn’t open ${report.problems.join('; ')}`.replace(/([^.])$/, '$1.')] : []), ...report.notes].join(' ');
-    toast({
-      tone: report.problems.length ? (report.count ? 'warning' : 'danger') : report.notes.length ? 'warning' : 'success',
-      title: report.count ? `Imported ${plural(report.count, 'diagram')}` : 'Nothing was imported',
-      ...(description ? { description } : {}),
-    });
-  }
-
-  async function downloadAll(): Promise<void> {
-    try {
-      const documents = await readAllDocuments(repository);
-      if (!documents.length) { toast({ tone: 'info', title: 'No diagrams to download yet' }); return; }
-      const backup = buildV2Backup(documents);
-      downloadTextFile(`openflowkit-diagrams-${backup.exportedAt.slice(0, 10)}.json`, JSON.stringify(backup), 'application/json');
-      toast({ tone: 'success', title: `Downloaded ${plural(documents.length, 'diagram')}`, description: 'One file. Import it here to bring them back.' });
-    } catch (error) { fail(error); }
-  }
+  const transfer: HomeTransfer = { repository, toast, fail, create, refresh, setThumbnails };
+  const importFiles = (files: readonly File[]) => importHomeFiles(transfer, files);
 
   const select = (id: string, range: boolean) => {
     if (range) setSelected((current) => [...new Set([...current, ...selectRange(shownIds, anchor.current, id)])]);
@@ -395,7 +330,6 @@ export function V2HomePage(): React.JSX.Element {
   const dark = appearance === 'dark';
   const unseenNews = home.newsSeen !== HOME_NEWS[0].title;
   const viewTitle = view === 'news' ? 'What’s new' : VIEWS.find((entry) => entry.view === view)!.title;
-  const stars = useGitHubStars();
   const sortTitle = SORTS.find(({ sort }) => sort === home.sort)!.title;
   // Sort and layout belong to a list of your diagrams, not to templates, the archive or the first run.
   const listing = !listError && (view === 'recents' || view === 'starred') && !firstRun;
@@ -403,46 +337,17 @@ export function V2HomePage(): React.JSX.Element {
     entry === 'recents' ? documents?.length : entry === 'starred' ? starredDocs.length : entry === 'archive' ? archive?.length : undefined;
   const selectedAllStarred = selected.length > 0 && selected.every((id) => home.starred.includes(id));
 
-  const commands = useMemo<Command[]>(() => [
-    { id: 'new', group: 'Create', label: 'New diagram', shortcut: 'N', icon: <Icon icon={IconPlus} />, run: () => create() },
-    ...STARTS.filter(({ intent }) => intent).map(({ kind, title, intent }) => ({
-      id: `start-${kind}`, group: 'Create', label: title, icon: <Icon icon={CHIP_ICON[kind]} />, run: () => create(intent),
-    })),
-    { id: 'import', group: 'Create', label: 'Import a file…', icon: <Icon icon={IconUpload} />, keywords: ['open', 'json', 'mermaid', 'd2'], run: () => fileRef.current?.click() },
-    ...VIEWS.map(({ view: target, title, icon }) => ({
-      id: `view-${target}`, group: 'Go to', label: title, icon: <Icon icon={icon} />, run: () => navigate(viewLink(target)),
-    })),
-    ...(documents ?? []).map(({ id, name }) => ({
-      id: `doc-${id}`, group: 'Diagrams', label: name, icon: <Icon icon={IconHierarchy2} />, run: () => navigate(`/d/${id}`),
-    })),
-    ...STARTER_TEMPLATES.map(({ name, title }) => ({
-      id: `template-${name}`, group: 'Templates', label: title, keywords: ['template'], icon: <Icon icon={IconTemplate} />,
-      run: () => create({ template: name }),
-    })),
-    { id: 'view-news', group: 'Go to', label: 'What’s new', icon: <Icon icon={IconSpeakerphone} />, run: () => navigate(viewLink('news')) },
-    { id: 'pro', group: 'Go to', label: 'OpenFlowKit Pro: join the waitlist', keywords: ['pricing', 'team', 'upgrade'], icon: <Icon icon={IconSparkles} />,
-      run: () => setOpen('pro') },
-    { id: 'theme', group: 'Settings', label: dark ? 'Switch to light theme' : 'Switch to dark theme', icon: <Icon icon={dark ? IconSun : IconMoon} />,
-      run: () => updatePreferences({ theme: dark ? 'light' : 'dark' }) },
-    { id: 'keys', group: 'Help', label: 'Keyboard shortcuts', shortcut: '?', icon: <Icon icon={IconKeyboard} />, run: () => setOpen('keys') },
-  ], [documents, dark, create, navigate, updatePreferences]);
 
-  const templateGrid = (
-    <ul className="ofk-home-grid ofk-home-templates" aria-label="Templates">
-      {templates.map((template) => (
-        <HomeCard key={template.name} title={template.title} meta={template.summary}
-          onOpen={() => create({ template: template.name })}
-          preview={<img className="ofk-home-preview-image" alt="" decoding="async" src={templatePicture(template.name, appearance)}
-            onLoad={(event) => { event.currentTarget.dataset.fit = templateFit(event.currentTarget); }} />} />
-      ))}
-    </ul>
-  );
-  const noMatch = (
-    <p className="ofk-home-nomatch" role="status">
-      Nothing matches “{query.trim()}”. <Button variant="quiet" onClick={() => { setQuery(''); searchRef.current?.focus(); }}>Clear search</Button>
-    </p>
-  );
+  const commands = useMemo(() => buildHomeCommands({
+    documents, dark, fileRef, create, navigate, openDialog: setOpen, setTheme: (theme) => updatePreferences({ theme }),
+  }), [documents, dark, create, navigate, updatePreferences]);
 
+  const clearSearch = () => { setQuery(''); searchRef.current?.focus(); };
+  const templateGrid = <HomeTemplateGrid templates={templates} appearance={appearance} onOpen={(name) => create({ template: name })} />;
+  const noMatch = <HomeNoMatch query={query} onClear={clearSearch} />;
+
+  // Map a repo: the address field, straight to the map (no Untitled diagram on the way).
+  const repoField = <MapRepoForm onMapRepo={(ref) => navigate(mapRepoPath(ref))} />;
   let content: React.ReactNode;
   if (listError) {
     content = (
@@ -451,39 +356,14 @@ export function V2HomePage(): React.JSX.Element {
         description={listError.message} onRetry={refresh} />
     );
   } else if (view === 'news') {
-    content = <>
-      <p className="ofk-home-lede">
-        What changed lately, newest first. <a href={`${REPO_URL}/blob/main/CHANGELOG.md`} target="_blank" rel="noreferrer">Full changelog</a>
-      </p>
-      <ol className="ofk-home-changelog">
-        {HOME_NEWS.map(({ date, title, text }, index) => (
-          <li key={title}>
-            {date !== HOME_NEWS[index - 1]?.date ? <time dateTime={date}>{NEWS_DATE.format(new Date(`${date}T12:00:00`))}</time> : <span />}
-            <div><h2>{title}</h2><p>{text}</p></div>
-          </li>
-        ))}
-      </ol>
-    </>;
+    content = <HomeNews />;
   } else if (view === 'templates') {
     content = <>
       <p className="ofk-home-lede">Real diagrams to change. No API key needed.</p>
       {templates.length ? templateGrid : noMatch}
     </>;
   } else if (firstRun) {
-    content = <>
-      <p className="ofk-home-lede">Pick a way in, or drop a file anywhere to import it. Everything stays in this browser — no account, no upload.</p>
-      <section aria-label="Start">
-        <ul className="ofk-home-starts">
-          {STARTS.map(({ kind, title, text, intent }) => (
-            <StartCard key={kind} kind={kind} title={title} text={text} onStart={() => create(intent)} />
-          ))}
-        </ul>
-      </section>
-      <section className="ofk-home-section" aria-labelledby="ofk-home-templates">
-        <h2 id="ofk-home-templates" className="ofk-home-section-title">Or start from a template</h2>
-        {templateGrid}
-      </section>
-    </>;
+    content = <HomeFirstRun repoField={repoField} templateGrid={templateGrid} onStart={create} />;
   } else {
     const empty = view === 'starred' && documents && starredDocs.length === 0
       ? <EmptyState icon={<Icon icon={IconStar} />} title="Nothing starred yet."
@@ -494,11 +374,15 @@ export function V2HomePage(): React.JSX.Element {
         : null;
     content = <>
       {view === 'recents' ? (
-        <ul className="ofk-home-chips" aria-label="Start">
-          {STARTS.map(({ kind, chip, hint, intent }) => (
-            <StartChip key={kind} kind={kind} title={chip} hint={hint} onStart={() => create(intent)} />
-          ))}
-        </ul>
+        <>
+          <ul className="ofk-home-chips" aria-label="Start">
+            {STARTS.map(({ kind, chip, hint, intent }) => (
+              <StartChip key={kind} kind={kind} title={chip} hint={hint} onStart={() => create(intent)} />
+            ))}
+          </ul>
+          {/* The repo map stays one field away for a returning visitor too (not only a paste nobody knows about). */}
+          <section className="ofk-home-map" aria-label="Map a GitHub repo">{repoField}</section>
+        </>
       ) : null}
       {view === 'archive' && archive?.length ? (
         <p className="ofk-home-lede">Off your list, kept until you delete them. Restore one to open it again.</p>
@@ -545,120 +429,16 @@ export function V2HomePage(): React.JSX.Element {
           setDragging(false);
           void importFiles([...event.dataTransfer.files]);
         }}>
-        <aside className="ofk-home-sidebar">
-          <div className="ofk-home-sidebar-top">
-            <Link to="/home" className="ofk-home-brand" aria-label="OpenFlowKit home">
-              <img src="/Logo_openflowkit.svg" alt="" width="24" height="24" />
-              <span>OpenFlowKit</span>
-            </Link>
-            <Tooltip content={dark ? 'Light theme' : 'Dark theme'}>
-              <IconButton variant="quiet" label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-                icon={<Icon icon={dark ? IconSun : IconMoon} />}
-                onClick={() => updatePreferences({ theme: dark ? 'light' : 'dark' })} />
-            </Tooltip>
-          </div>
-
-          <label className="ofk-home-search">
-            <Icon icon={IconSearch} />
-            <input ref={searchRef} type="search" placeholder={view === 'templates' ? 'Search templates' : 'Search diagrams'}
-              aria-label={view === 'templates' ? 'Search templates' : 'Search diagrams'} value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Escape') { setQuery(''); event.currentTarget.blur(); } }} />
-            <kbd aria-hidden="true">/</kbd>
-          </label>
-
-          <nav className="ofk-home-nav" aria-label="Home">
-            {VIEWS.map((entry) => (
-              <Link key={entry.view} to={viewLink(entry.view)} className="ofk-home-nav-item" data-view={entry.view}
-                aria-current={view === entry.view ? 'page' : undefined}>
-                <Icon icon={entry.icon} />
-                <span>{entry.title}</span>
-                {count(entry.view) ? <span className="ofk-home-nav-count">{count(entry.view)}</span> : null}
-              </Link>
-            ))}
-            <button type="button" className="ofk-home-nav-item ofk-home-pro" data-joined={proJoined || undefined} onClick={() => setOpen('pro')}>
-              <Icon icon={IconSparkles} />
-              <span>OpenFlowKit Pro</span>
-              <span className="ofk-home-pro-pill">{proJoined ? 'On the list' : 'Waitlist'}</span>
-            </button>
-          </nav>
-
-          {starredDocs.length > 0 ? (
-            <section className="ofk-home-sidebar-section" aria-labelledby="ofk-home-starred">
-              <h2 id="ofk-home-starred">Starred</h2>
-              <ul>
-                {starredDocs.map(({ id, name }) => (
-                  <li key={id}><Link to={`/d/${id}`} className="ofk-home-nav-item" title={name}><Icon icon={IconHierarchy2} /><span>{name}</span></Link></li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <div className="ofk-home-sidebar-foot">
-            <div className="ofk-home-local">
-              <span className="ofk-home-local-icon"><Icon icon={IconLock} /></span>
-              <p><strong>Private by default</strong>Saved in this browser. No account, no upload.</p>
-            </div>
-            <button type="button" className="ofk-home-nav-item" onClick={() => { void downloadAll(); }}>
-              <Icon icon={IconDownload} /><span>Download all diagrams</span>
-            </button>
-            <Link to={viewLink('news')} className="ofk-home-nav-item" aria-current={view === 'news' ? 'page' : undefined}>
-              <Icon icon={IconSpeakerphone} />
-              <span>What’s new</span>
-              {unseenNews ? <span className="ofk-home-dot" aria-label="New" /> : null}
-            </Link>
-            <a className="ofk-home-nav-item" href={DOCS_URL} target="_blank" rel="noreferrer">
-              <Icon icon={IconBook2} /><span>Docs</span>
-              <Icon icon={IconArrowUpRight} />
-            </a>
-            <a className="ofk-home-nav-item" href={ISSUE_URL} target="_blank" rel="noreferrer">
-              <Icon icon={IconBulb} /><span>Request a feature</span>
-              <Icon icon={IconArrowUpRight} />
-            </a>
-            <a className="ofk-home-nav-item" href={REPO_URL} target="_blank" rel="noreferrer"
-              aria-label={stars === null ? 'Star on GitHub' : `Star on GitHub, ${stars} stars`}>
-              <Icon icon={IconBrandGithub} /><span>Star on GitHub</span>
-              {stars === null ? <Icon icon={IconArrowUpRight} /> : (
-                <span className="ofk-home-stars" aria-hidden="true"><Icon icon={IconStarFilled} />{formatStars(stars)}</span>
-              )}
-            </a>
-          </div>
-        </aside>
+        <V2HomeSidebar dark={dark} view={view} query={query} searchRef={searchRef} starredDocs={starredDocs} proJoined={proJoined}
+          unseenNews={unseenNews} count={count} onQuery={setQuery} onPro={() => setOpen('pro')}
+          onToggleTheme={() => updatePreferences({ theme: dark ? 'light' : 'dark' })}
+          onDownloadAll={() => { void downloadAllDiagrams(transfer); }} />
 
         <main className="ofk-home-main">
-          <header className="ofk-home-head">
-            <h1>{firstRun ? 'Let’s draw your first diagram.' : viewTitle}</h1>
-            {listing ? (
-              <div className="ofk-home-head-tools">
-                <Button ref={sortRef} variant="quiet" className="ofk-home-sort" aria-haspopup="menu" aria-expanded={open === 'sort'}
-                  aria-label={`Sort by ${sortTitle}`} onClick={() => setOpen(open === 'sort' ? null : 'sort')}>
-                  {sortTitle} <Icon icon={IconChevronDown} />
-                </Button>
-                <Menu open={open === 'sort'} anchorRef={sortRef} onClose={() => setOpen(null)} label="Sort by" placement="bottom-end">
-                  {SORTS.map(({ sort, title }) => (
-                    <MenuItem key={sort} role="menuitemradio" checked={home.sort === sort}
-                      onSelect={() => updateHome({ sort })}>{title}</MenuItem>
-                  ))}
-                </Menu>
-                <Segmented label="Layout" value={home.layout} onChange={(layout) => updateHome({ layout })} options={[
-                  { value: 'grid', title: 'Grid', label: <><Icon icon={IconLayoutGrid} /><span className="ofk-visually-hidden">Grid</span></> },
-                  { value: 'list', title: 'List', label: <><Icon icon={IconLayoutList} /><span className="ofk-visually-hidden">List</span></> },
-                ]} />
-              </div>
-            ) : null}
-            <Tooltip content="Import .json, Mermaid, D2 or Structurizr — or drop files anywhere">
-              <Button variant="quiet" className="ofk-home-import" onClick={() => fileRef.current?.click()}>
-                <Icon icon={IconFileImport} /> <span>Import</span>
-              </Button>
-            </Tooltip>
-            <input ref={fileRef} type="file" accept={IMPORT_ACCEPT} multiple hidden aria-hidden="true" tabIndex={-1}
-              onChange={(event) => { const files = [...(event.target.files ?? [])]; event.target.value = ''; void importFiles(files); }} />
-            <Tooltip content="New diagram" shortcut="N">
-              <Button variant="primary" data-home-new disabled={listError?.blocked} onClick={() => create()}>
-                <Icon icon={IconPlus} /> New diagram
-              </Button>
-            </Tooltip>
-          </header>
+          <V2HomeHeader title={firstRun ? 'Let’s draw your first diagram.' : viewTitle} listing={listing} sortTitle={sortTitle}
+            sortOpen={open === 'sort'} home={home} fileRef={fileRef} blocked={listError?.blocked}
+            onSortOpen={(next) => setOpen(next ? 'sort' : null)} onUpdateHome={updateHome}
+            onImport={(files) => void importFiles(files)} onCreate={() => create()} />
           <div className="ofk-home-content">
             {notice ? <HomeNoticeStrip notice={notice} onDismiss={() => setNotice(null)} /> : null}
             {failed.length > 0 ? (
@@ -677,32 +457,12 @@ export function V2HomePage(): React.JSX.Element {
         </main>
 
         {selected.length ? (
-          <div className="ofk-home-selectionbar" role="toolbar" aria-label="Selection">
-            <span className="ofk-home-selectionbar-count" role="status">{selected.length} selected</span>
-            {view === 'archive' ? <>
-              <Button variant="quiet" onClick={() => void restore(selected)}><Icon icon={IconArrowBackUp} /> Restore</Button>
-              <Button variant="quiet" className="ofk-home-head-danger" onClick={() => setDeleting(selected.flatMap((id) => byId.get(id) ?? []))}>
-                <Icon icon={IconTrashX} /> Delete forever
-              </Button>
-            </> : <>
-              <Button variant="quiet" onClick={() => toggleStars(selected)}>
-                <Icon icon={selectedAllStarred ? IconStarFilled : IconStar} /> {selectedAllStarred ? 'Unstar' : 'Star'}
-              </Button>
-              <Button variant="quiet" onClick={() => void archiveIds(selected)}><Icon icon={IconArchive} /> Archive</Button>
-            </>}
-            <Tooltip content="Clear selection" shortcut="Esc">
-              <IconButton variant="quiet" label="Clear selection" icon={<Icon icon={IconX} />} onClick={() => setSelected([])} />
-            </Tooltip>
-          </div>
+          <HomeSelectionBar count={selected.length} archive={view === 'archive'} allStarred={selectedAllStarred}
+            onRestore={() => void restore(selected)} onDelete={() => setDeleting(selected.flatMap((id) => byId.get(id) ?? []))}
+            onStar={() => toggleStars(selected)} onArchive={() => void archiveIds(selected)} onClear={() => setSelected([])} />
         ) : null}
 
-        {dragging ? (
-          <div className="ofk-home-drop" aria-hidden="true">
-            <Icon icon={IconUpload} />
-            <strong>Drop to import</strong>
-            <span>OpenFlowKit .json, Mermaid, D2, Structurizr or OpenFlow DSL</span>
-          </div>
-        ) : null}
+        {dragging ? <HomeDropOverlay /> : null}
 
         <ToastRegion items={toasts} onDismiss={(id) => setToasts((current) => current.filter((item) => item.id !== id))} />
         {/* Mounted only while open: hundreds of diagrams are not hidden DOM on every render. */}
@@ -713,24 +473,8 @@ export function V2HomePage(): React.JSX.Element {
 
         {open === 'pro' ? <V2ProWaitlist open onClose={() => setOpen(null)} onJoined={() => setProJoined(true)} /> : null}
 
-        <Dialog open={open === 'keys'} onClose={() => setOpen(null)} title="Keyboard shortcuts"
-          actions={<Button variant="quiet" onClick={() => setOpen(null)}>Close</Button>}>
-          <dl className="ofk-home-keys">
-            {([
-              [['N'], 'New diagram'], [[platformKeys('⌘K')], 'Find anything'], [['/'], 'Search this view'], [['↑', '↓', '←', '→'], 'Move between diagrams'],
-              [[platformKeys('↵')], 'Open'], [['Space'], 'Select'], [[platformKeys('⇧↓')], 'Select a range'], [[platformKeys('⌘A')], 'Select all'],
-              [['S'], 'Star'], [['F2'], 'Rename'], [['Del'], 'Archive'], [['Esc'], 'Clear selection'],
-            ] as const).map(([keys, what]) => <div key={what}><dt>{what}</dt><dd><Kbd keys={keys} /></dd></div>)}
-          </dl>
-        </Dialog>
-
-        <Dialog open={deleting !== null} onClose={() => setDeleting(null)}
-          title={deleting?.length === 1 ? `Delete “${deleting[0]!.name}” forever?` : `Delete ${plural(deleting?.length ?? 0, 'diagram')} forever?`}
-          description={`${deleting?.length === 1 ? 'It’s' : 'They’re'} removed from this browser. This can’t be undone.`}
-          actions={<>
-            <Button variant="quiet" onClick={() => setDeleting(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => void confirmDelete()}>Delete forever</Button>
-          </>} />
+        <HomeKeysDialog open={open === 'keys'} onClose={() => setOpen(null)} />
+        <HomeDeleteDialog deleting={deleting} onClose={() => setDeleting(null)} onConfirm={() => void confirmDelete()} />
       </div>
     </SystemRoot>
   );

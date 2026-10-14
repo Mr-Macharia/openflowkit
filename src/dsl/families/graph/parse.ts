@@ -8,6 +8,8 @@ const GRAPH_ARROWS = new Set(['->', '-->', '<->', '<-->', '--', '<-', '<--']);
 const DIRECTIVES = new Set(['title', 'direction', 'autonumber', 'align', 'note', 'legend']);
 const RESERVED_KINDS = new Set(['person', 'system', 'container', 'component', 'store', 'queue', 'external', 'node', 'instance']);
 const RESERVED_RECORDS = new Set(['model', 'views', 'view', 'deployment', 'flow', 'step', 'goto', 'include', 'exclude', 'extends', 'rank', 'pin', 'alt', 'par']);
+/** Step words a `flow { }` block reads (grammar: `intro "text"`, `process "text"`…); elsewhere they are plain names. */
+const FLOW_STEP_WORDS = new Set(['intro', 'message', 'process', 'conclusion', 'info']);
 
 function parseReference(tokens: readonly DslToken[], diagnostics: DslDiagnostic[]): DslReference | undefined {
   const openAttributes = tokens.filter((token) => token.value === '[').length;
@@ -249,7 +251,10 @@ export function parseGraphStatements(segments: readonly DslSegment[], diagnostic
         statement = { kind: 'group', group, ...(reservedKind ? { reservedKind } : {}), statements: [], raw: joinTokens(segment.tokens), line: firstToken.line, col: firstToken.col, endCol: lastToken.endCol };
         current.push(statement);
       }
-    } else if (reservedRecords.has(keyword)) {
+    } else if (reservedRecords.has(keyword)
+      // A step only with its text after it (`process "Think"`): a bare `process` or `info [shape: circle]` is a node.
+      || (FLOW_STEP_WORDS.has(keyword) && (segment.tokens[1]?.kind === 'string' || segment.tokens[1]?.kind === 'word')
+        && stack.some(({ opener }) => opener?.kind === 'group' && opener.reservedKind === 'flow'))) {
       statement = { kind: 'reserved', keyword, value: joinTokens(segment.tokens.slice(1)), raw: joinTokens(segment.tokens), line: firstToken.line, col: firstToken.col, endCol: lastToken.endCol };
       current.push(statement);
     } else if (segment.tokens.some((token) => token.kind === 'arrow')) {

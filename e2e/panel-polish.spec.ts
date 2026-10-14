@@ -52,7 +52,7 @@ test('object actions, page menus and connection states stay usable', async ({ pa
   await page.screenshot({ animations: 'disabled', path: '/tmp/ofk-pages-polished.png' });
   await page.getByRole('button', { name: 'Close pages' }).click();
   await page.getByRole('toolbar', { name: 'Workspace', exact: true }).getByRole('button', { name: 'Connect agent', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Copy MCP configuration' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy prompt' })).toBeVisible();
   await page.getByText('Connection settings', { exact: true }).click();
   await page.getByLabel('Port', { exact: true }).fill('0');
   await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();

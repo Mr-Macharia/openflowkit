@@ -43,9 +43,9 @@ Keys are shown with `⌘`; on Windows and Linux read the same rows as `Ctrl`. Th
 | Zoom in / out | `⌘= / ⌘−` |
 | Find on canvas | `⌘F` |
 | Layers | `L / ⇧L` |
-| Canvas / Map | `M` |
+| Canvas / Map (on a drawing: back to its map) | `M` |
 | Move between boxes (in Map) | `Arrows` |
-| Edit map as drawing (in Map) | `⇧M` |
+| Edit as drawing, a fresh copy (in Map) | `⇧M` |
 | Snap bypass (hold while dragging) | `⌘` |
 | Keep proportions, one axis, 45° lines, 15° turns (hold while dragging) | `⇧` |
 | From the centre (resize, draw); a copy (move) — hold while dragging | `⌥` |

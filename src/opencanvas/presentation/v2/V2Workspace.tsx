@@ -167,7 +167,8 @@ const coarsePointer = (): boolean =>
 // The assistant needs a provider key and the agent an MCP client, so both are a second step for a first visit.
 const WELCOME_ACTIONS = [MODES[2], MODES[0], MODES[3]];
 
-export function V2CanvasWelcome({ onOpen }: { onOpen: (mode: V2WorkspaceMode) => void }) {
+/** `blankDocument`: no page holds anything, so the document is no stop worth going Back to once a repo map opens from here. */
+export function V2CanvasWelcome({ onOpen, blankDocument = false }: { onOpen: (mode: V2WorkspaceMode) => void; blankDocument?: boolean }) {
   const navigate = useNavigate();
   return (
     <V2Welcome
@@ -184,7 +185,8 @@ export function V2CanvasWelcome({ onOpen }: { onOpen: (mode: V2WorkspaceMode) =>
       below={<>
         <Link className="ofk-v2-welcome-templates" to={{ pathname: '/home', search: '?view=templates' }}>or start from a template →</Link>
         <p className="ofk-v2-welcome-or" aria-hidden="true">or</p>
-        <MapRepoForm onMapRepo={(repo) => navigate(mapRepoPath(repo))} />
+        {/* A blank document is not a stop on the way: Back from the map goes to where the reader came from. */}
+        <MapRepoForm onMapRepo={(repo) => navigate(mapRepoPath(repo), { replace: blankDocument })} />
       </>}
     />
   );

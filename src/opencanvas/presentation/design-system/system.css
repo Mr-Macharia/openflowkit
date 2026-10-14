@@ -1492,26 +1492,59 @@ li[data-decision='rejected'] .ofk-review-label {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: var(--ofk-layer-feedback);
+  /* Over the canvas, under every toolbar and the context bar. */
+  z-index: calc(var(--ofk-layer-toolbar, 10) - 1);
   pointer-events: none;
-  transition: transform var(--ofk-motion-feedback) linear;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.ofk-agent-cursor-arrow {
+  position: absolute;
+  /* The path's tip sits at (2.5, 1.5): the origin is where the agent points. */
+  left: -2.5px;
+  top: -1.5px;
+  fill: var(--ofk-primary);
+  stroke: #fff;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.28));
 }
 .ofk-agent-cursor-pill {
+  position: absolute;
+  left: 13px;
+  top: 19px;
   display: inline-flex;
   align-items: center;
-  gap: var(--ofk-space-xs);
-  padding: 2px var(--ofk-space-sm);
+  gap: 5px;
+  padding: 3px 9px;
   border-radius: 999px;
-  background: var(--ofk-inverse);
-  color: var(--ofk-onInverse);
+  background: var(--ofk-primary);
+  color: var(--ofk-onPrimary);
   font-size: var(--ofk-type-caption);
   font-weight: var(--ofk-weight-label);
+  line-height: 16px;
   white-space: nowrap;
-  transform: translate(8px, 8px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18), 0 4px 12px rgb(0 0 0 / 0.12);
 }
-.ofk-agent-cursor-pill svg {
-  width: 12px;
-  height: 12px;
+.ofk-agent-cursor-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+.ofk-agent-cursor-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ofk-agent-dots 1.2s ease-in-out infinite;
+}
+.ofk-agent-cursor-dots i:nth-child(2) { animation-delay: 0.15s; }
+.ofk-agent-cursor-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ofk-agent-dots {
+  0%, 60%, 100% { opacity: 0.35; }
+  30% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ofk-agent-cursor-dots i { animation: none; opacity: 0.8; }
 }
 
 /* Offscreen changes */

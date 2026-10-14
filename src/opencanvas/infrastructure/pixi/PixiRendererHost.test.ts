@@ -55,6 +55,24 @@ describe('Pixi renderer host lifecycle', () => {
     vi.useRealTimers();
   });
 
+  // Review 2 #8: a reveal kept drawing its own copy of the shapes over Map's move, and over a drag (a ghost for ≤700 ms).
+  it('a Map motion frame or a transform drag ends a running reveal at once, shapes whole', () => {
+    const frames = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(1);
+    const host = new PixiRendererHost();
+    const node = createTestNode('n');
+    host.setPage(createTestDocument({ nodes: [node] }).pages[0]);
+    // A reveal needs a WebGL renderer to start; ending one only needs the host to think one runs.
+    const fakeReveal = () => ({ plan: { groups: [], durationMs: 500, trail: [], bounds: { x: 0, y: 0, width: 1, height: 1 } }, nodes: new Set(['n']), connectors: new Set(), t0: 0, frame: 1 });
+    (host as unknown as { reveal: unknown }).reveal = fakeReveal();
+    host.drawMotionFrame({} as Parameters<PixiRendererHost['drawMotionFrame']>[0]);
+    expect(host.getRevealState()).toMatchObject({ active: false, cut: 0 });
+    (host as unknown as { reveal: unknown }).reveal = fakeReveal();
+    host.setTransformPreview({ nodes: [], bounds: { x: 0, y: 0, width: 1, height: 1 } } as unknown as Parameters<PixiRendererHost['setTransformPreview']>[0]);
+    expect(host.getRevealState()).toMatchObject({ active: false, cut: 0 });
+    host.destroy();
+    frames.mockRestore();
+  });
+
   // Found 2026-10-11 (U4-05): moving the window to a Retina screen left the canvas drawn at 1x until a reload.
   it('follows a device pixel ratio change: renderer resolution, size and text resolution', () => {
     const listeners: Array<() => void> = [];

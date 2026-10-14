@@ -26,12 +26,13 @@ const options = (overrides: Partial<V2WebMcpOptions> = {}): V2WebMcpOptions => (
   screenRect: () => null, viewport: () => ({ width: 800, height: 600 }), select: vi.fn(), ...overrides,
 });
 
-/** The hook over a document that commits as a session does: the next render carries the edit. */
+/** The hook over a document that commits as a session does: the next render carries the edit, and the undo top with it. */
 function useSession(overrides: Partial<V2WebMcpOptions>, commits: DocumentCommand[]) {
   const [current, setCurrent] = useState(testDocument);
+  const [top, setTop] = useState<string | null>(null);
   return useV2WebMcp(options({
-    document: current, scene: current.pages[0]!,
-    commit: (command) => { commits.push(command); setCurrent((before) => applyDocumentCommand(before, command).document); return true; },
+    document: current, scene: current.pages[0]!, undoTopId: top,
+    commit: (command) => { commits.push(command); setTop(command.id); setCurrent((before) => applyDocumentCommand(before, command).document); return true; },
     ...overrides,
   }));
 }
@@ -68,6 +69,19 @@ describe('useV2WebMcp', () => {
     expect(tools.size).toBe(0);
   });
 
+  it('shows the change line only while that change is the undo top (an Undo hides it, a Redo brings it back)', async () => {
+    const { tools } = installModelContext();
+    const commits: DocumentCommand[] = [];
+    const { result, rerender } = renderHook((top: { undoTopId?: string | null } = {}) => useSession(top, commits));
+    await ready(result);
+    await tools.get('add_shape')!.execute({ kind: 'rectangle', id: 'n1' });
+    await waitFor(() => expect(result.current.activity).toBe('Create rectangle'));
+    rerender({ undoTopId: null });
+    expect(result.current.activity).toBeNull();
+    rerender({ undoTopId: commits[0]!.id });
+    expect(result.current.activity).toBe('Create rectangle');
+  });
+
   it('after the editor closes, a call already made does not run, and says why', async () => {
     const { tools } = installModelContext();
     const commits: DocumentCommand[] = [];
@@ -100,11 +114,12 @@ describe('useV2WebMcp', () => {
     unmount();
   });
 
-  it('get_view calls the repo map page read-only, like the edits it refuses', async () => {
+  // F02: the repo map's changes land on its drawing, so get_view does not tell the agent to give up on it.
+  it('get_view does not call the repo map page read-only: its changes land on the drawing', async () => {
     const { tools } = installModelContext();
     const { result, unmount } = renderHook(() => useV2WebMcp(options({ lockedPageId: 'page-1' })));
     await ready(result);
-    await expect(tools.get('get_view')!.execute({})).resolves.toMatchObject({ pageId: 'page-1', readOnly: true });
+    await expect(tools.get('get_view')!.execute({})).resolves.toMatchObject({ pageId: 'page-1', readOnly: false });
     unmount();
   });
 

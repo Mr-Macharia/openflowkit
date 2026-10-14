@@ -10,8 +10,15 @@ import type { SceneDocumentV1 } from '../../domain/document/types';
 import type { ElementKind } from '../../../dsl/model/types';
 import { createEmptyV2Document } from '../../presentation/v2/v2Document';
 import {
-  buildArchElementAddCommand, defaultChildKind, buildArchFlowCreateCommand, buildArchElementEditCommand, buildArchElementRemoveCommand,
-  buildArchRelationCommands, buildArchUnplaceCommand, buildWorkspacePagesCommand, firstViewLanding,
+  buildArchElementAddCommand,
+  defaultChildKind,
+  buildArchFlowCreateCommand,
+  buildArchElementEditCommand,
+  buildArchElementRemoveCommand,
+  buildArchRelationCommands,
+  buildArchUnplaceCommand,
+  buildWorkspacePagesCommand,
+  firstViewLanding,
 } from './architectureCommands';
 
 const WORKSPACE = `architecture

@@ -1,5 +1,9 @@
 import { createTransformSnapshot } from '../../domain/transforms/transformSelection';
 import { V2LaserTrail } from './V2LaserTrail';
+import { useV2CanvasWheel } from './useV2CanvasWheel';
+import { openCanvasContextMenu } from './v2CanvasContextMenu';
+import { editorStyle } from './v2EditorStyle';
+import { useV2ContextBarKeepOff } from './useV2ContextBarKeepOff';
 import type { IconChoice } from '../../domain/nodes/iconNode';
 import {
   useEffect,
@@ -9,33 +13,27 @@ import {
   useState,
   type ReactNode,
   type RefObject,
-  type WheelEvent as ReactWheelEvent,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, ErrorState } from '../design-system';
 import { V2StateHero } from './V2StateHero';
 import type { DocumentCommand } from '../../domain/commands/types';
-import type { SceneNode, ScenePage } from '../../domain/document/types';
-import { pointAtPolylineRatio } from '../../domain/geometry/polyline';
+import type { ScenePage } from '../../domain/document/types';
 import type { Point2d } from '../../domain/geometry/types';
 import type { CanvasCamera } from '../../domain/camera/types';
 import {
-  clearSelection,
   replaceSelection,
   type CanvasSelection,
 } from '../../application/selection/selection';
-import { worldToScreen, panCamera, zoomCameraAt, normalizeWheelDelta } from '../../domain/camera/camera';
+import { pointAtPolylineRatio } from '../../domain/geometry/polyline';
+import { worldToScreen } from '../../domain/camera/camera';
 import { detectWebGlCapability } from '../../infrastructure/pixi/capabilities';
 import {
   PixiRendererHost,
   type PixiRendererStatus,
 } from '../../infrastructure/pixi/PixiRendererHost';
 import { OpenCanvasTextEditorOverlay } from './OpenCanvasTextEditorOverlay';
-import { resolveNodeStyle, type NodeStyle } from '../../domain/nodes/nodeStyle';
-import { resolveWidgetInks, widgetBackdrop, widgetLabelBox } from '../../domain/nodes/widgetNodePresentation';
-import { connectorLabelOnCanvas, connectorLabelPlate, resolveConnectorLabelStyle } from '../../domain/connectors/labelStyle';
-import { projectPageConnectors } from '../../domain/connectors/routeProjection';
-import { semanticDetailLevel } from '../../infrastructure/pixi/viewportProjection';
+import { connectorLabelOnCanvas, resolveConnectorLabelStyle } from '../../domain/connectors/labelStyle';
 import { selectionAnnouncement } from './selectionAnnouncement';
 import { V2ContextBar, contextBarEdges, contextBarStyle, sameRect, unionScreenBounds } from './V2ContextBar';
 import type { ContextMenuTarget } from './V2ContextMenu';
@@ -126,8 +124,6 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
 
   // No React state per move: the renderer preview goes through refs, and the
   // context bar fades out for the gesture (it would cover what you align against).
-  // Safari trackpad pinch: gesturestart anchors, gesturechange scales from it.
-  const pinchRef = useRef<{ zoom: number; anchor: Point2d } | null>(null);
   // Latest React-rendered bar anchor; a gesture's end restores the bar to exactly
   // this when no re-render follows (anchor truly unchanged).
   const anchorForRestoreRef = useRef<DOMRect | null>(null);
@@ -199,48 +195,12 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
     if (canvas) canvas.style.cursor = '';
   }, [props.page, props.tool, viewport, cancelGesture]);
 
-  // Browser zoom never leaks from the editor: plain wheel over the canvas
-  // pans, ⌘/Ctrl+wheel (pinch) anywhere in the editor is ours, and Safari's
-  // proprietary gesture events (trackpad pinch) zoom at the pointer too.
   const { sectionRef, cameraRef, updateCamera } = props;
-  useEffect(() => {
-    const root = sectionRef.current?.closest<HTMLElement>('.ofk-v2');
-    if (!root) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey || event.target instanceof HTMLCanvasElement) event.preventDefault();
-    };
-    const onGestureStart = (event: Event) => {
-      event.preventDefault();
-      const gesture = event as unknown as { scale?: unknown; clientX?: unknown; clientY?: unknown };
-      const bounds = sectionRef.current?.getBoundingClientRect();
-      const anchor = bounds && Number.isFinite(gesture.clientX) && Number.isFinite(gesture.clientY)
-        ? { x: (gesture.clientX as number) - bounds.left, y: (gesture.clientY as number) - bounds.top }
-        : { x: bounds ? bounds.width / 2 : 0, y: bounds ? bounds.height / 2 : 0 };
-      pinchRef.current = { zoom: cameraRef.current.zoom, anchor };
-    };
-    const onGestureChange = (event: Event) => {
-      event.preventDefault();
-      const started = pinchRef.current;
-      const scale = (event as unknown as { scale?: unknown }).scale;
-      if (!started || typeof scale !== 'number' || !(scale > 0)) return;
-      updateCamera(zoomCameraAt(cameraRef.current, started.anchor, started.zoom * scale));
-    };
-    const onGestureEnd = (event: Event) => {
-      event.preventDefault();
-      pinchRef.current = null;
-    };
-    root.addEventListener('wheel', onWheel, { passive: false });
-    root.addEventListener('gesturestart', onGestureStart);
-    root.addEventListener('gesturechange', onGestureChange);
-    root.addEventListener('gestureend', onGestureEnd);
-    return () => {
-      root.removeEventListener('wheel', onWheel);
-      root.removeEventListener('gesturestart', onGestureStart);
-      root.removeEventListener('gesturechange', onGestureChange);
-      root.removeEventListener('gestureend', onGestureEnd);
-    };
-  }, [sectionRef, cameraRef, updateCamera]);
+  const handleWheel = useV2CanvasWheel(sectionRef, cameraRef, updateCamera);
 
+  // What the canvas shows now (in Map, the map's scene, not the document's page): the renderer draws it once it has started.
+  const shownPageRef = useRef(props.page);
+  useEffect(() => { shownPageRef.current = props.page; });
   const statusCallbackRef = useRef(props.onStatusChange);
   statusCallbackRef.current = props.onStatusChange;
   useEffect(() => {
@@ -265,8 +225,8 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
       .mount(viewport)
       .then(() => {
         if (disposed) return;
-        const page = props.pageRef.current;
-        if (page) host.setPage(page);
+        // Not pageRef (the document's page, what edits address): a map laid out before the renderer started would be replaced by it.
+        host.setPage(shownPageRef.current);
       })
       .catch((error: unknown) => {
         if (disposed) return;
@@ -324,29 +284,11 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
     props.hostRef.current?.setConnectorSelection(props.selectedConnectorIds, null);
   }, [props.selection, props.selectedConnectorIds, props.hostRef, props.page, status]);
 
+  const selectionIds = props.selection.nodeIds;
+  const selectedConnectorId = props.selectedConnectorId;
   // Context bar anchor follows selection, page geometry and camera; the state
   // only changes when the union actually moves.
   const [contextAnchor, setContextAnchor] = useState<DOMRect | null>(null);
-  // The bar can hold focus when it disappears (Escape clears the selection).
-  // Focus would fall to body and every shortcut would go dead; hand it back.
-  const barVisible = Boolean(contextAnchor) || Boolean(props.selectedConnectorId);
-  const barRef = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const bar = props.sectionRef.current
-      ?.querySelector<HTMLElement>('[data-context-bar]') ?? null;
-    const previous = barRef.current;
-    barRef.current = bar;
-    if (bar || !previous) return;
-    // The bar just went away. If it held focus, that focus is now on body or
-    // on a detached button: hand the keyboard back to the canvas.
-    const active = document.activeElement;
-    const focusSurvived = Boolean(active && active !== document.body && active.isConnected
-      && !previous.contains(active));
-    if (focusSurvived) return;
-    props.sectionRef.current?.focus({ preventScroll: true });
-  }, [barVisible, props.sectionRef]);
-  const selectionIds = props.selection.nodeIds;
-  const selectedConnectorId = props.selectedConnectorId;
   useEffect(() => {
     if (props.editing || props.readOnly
       || (selectionIds.length === 0 && !selectedConnectorId)) {
@@ -377,30 +319,9 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
     setContextAnchor((current) => (current && next && sameRect(current, next) ? current : next));
   }, [selectionIds, selectedConnectorId, props.editing, props.readOnly, props.hostRef,
     props.camera, props.page, viewportSize]);
-
-  // The page's connectors as drawn, only while a selection has a bar to place; the camera does not change them.
-  const hasBar = contextAnchor !== null && selectionIds.length > 0;
-  const pageProjection = useMemo(() => (hasBar ? projectPageConnectors(props.page) : []), [hasBar, props.page]);
-  // Label plates of the connectors touching the selection, in screen space: the bar keeps off them.
-  const labelPlates = useMemo(() => {
-    // Below full detail the canvas draws no connector labels, so there is nothing to keep off.
-    if (!contextAnchor || selectionIds.length === 0 || semanticDetailLevel(props.camera.zoom) !== 'full') return [];
-    const selected = new Set(selectionIds);
-    const touching = new Map(props.page.connectors.filter((connector) => connector.labels.length > 0
-      && (selected.has(connector.source.nodeId ?? '') || selected.has(connector.target.nodeId ?? '')))
-      .map((connector) => [connector.id, connector]));
-    // The whole page: a label sits where it does because of its neighbours, so a subset would put it elsewhere.
-    return pageProjection.filter((projected) => touching.has(projected.id)).flatMap((projected) => {
-      const style = resolveConnectorLabelStyle(touching.get(projected.id)!);
-      return projected.labels.map(({ text, point }) => {
-        const plate = connectorLabelPlate(text, style, point);
-        const from = worldToScreen(props.camera, { x: plate.x, y: plate.y });
-        const to = worldToScreen(props.camera, { x: plate.x + plate.width, y: plate.y + plate.height });
-        return new DOMRect(from.x, from.y, to.x - from.x, to.y - from.y);
-      });
-    });
-  }, [contextAnchor, selectionIds, pageProjection, props.page, props.camera]);
-
+  const labelPlates = useV2ContextBarKeepOff({
+    page: props.page, camera: props.camera, sectionRef: props.sectionRef, contextAnchor, selectionIds, selectedConnectorId,
+  });
   // Shapes in the band the bar could take, above or below the selection: the bar keeps off them too,
   // so it never sits on a neighbour or on the shapes a selected line joins. Containers hold everything; skipped.
   const avoid = useMemo(() => {
@@ -433,29 +354,6 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
   const unavailableReason = mountError ?? capability.reason ?? null;
   const navigate = useNavigate();
 
-  // I-12: wheel/trackpad pans; ⌘/Ctrl+wheel (and pinch, which browsers
-  // report as ctrlKey) zooms at the pointer — the Figma/tldraw convention.
-  function handleWheel(event: ReactWheelEvent<HTMLElement>): void {
-    const camera = props.cameraRef.current;
-    if (!event.ctrlKey && !event.metaKey) {
-      if (event.target instanceof HTMLCanvasElement) {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        const delta = normalizeWheelDelta(event, { width: bounds.width, height: bounds.height });
-        props.updateCamera(panCamera(camera, { x: -delta.x, y: -delta.y }));
-      }
-      return;
-    }
-    // Pinch/⌘-wheel zooms from anywhere over the canvas area, including the
-    // floating context bar; the browser-zoom listener above already swallowed it.
-
-    const bounds = event.currentTarget.getBoundingClientRect();
-    props.updateCamera(zoomCameraAt(
-      camera,
-      { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-      camera.zoom * Math.exp(-event.deltaY * 0.01)
-    ));
-  }
-
   const editingNode = props.editing && props.page.nodes.find((node) => node.id === props.editing?.nodeId);
   const editingStyle = editingNode ? editorStyle(editingNode, props.page, numericColorToHex(props.backgroundColor)) : null;
   const editingConnector = props.connectorEditing
@@ -477,31 +375,7 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
       onPointerLeave={pointer.handlePointerLeave}
       onDoubleClick={pointer.handleDoubleClick}
       onWheel={handleWheel}
-      onContextMenu={(event) => {
-        const host = props.hostRef.current;
-        if (!host || props.editing || props.connectorEditing) return;
-        event.preventDefault();
-        const rect = event.currentTarget.getBoundingClientRect();
-        const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-        const at = { x: event.clientX, y: event.clientY };
-        const nodeId = host.pickNode(point);
-        if (nodeId) {
-          if (!props.selection.nodeIds.includes(nodeId)) {
-            props.applyConnectorSelection([]);
-            props.applySelection(replaceSelection([nodeId]));
-          }
-          props.onContextMenu({ kind: 'nodes', ...at });
-          return;
-        }
-        const connectorId = host.pickConnector(point);
-        if (connectorId) {
-          props.applySelection(clearSelection());
-          props.applyConnectorSelection([connectorId]);
-          props.onContextMenu({ kind: 'connector', id: connectorId, ...at });
-          return;
-        }
-        props.onContextMenu({ kind: 'canvas', ...at });
-      }}
+      onContextMenu={(event) => openCanvasContextMenu(event, props.hostRef.current, props)}
     >
       <div ref={setViewport} className="ofk-v2-viewport" data-testid="v2-viewport" />
       {props.tool === 'laser' ? <V2LaserTrail sectionRef={props.sectionRef} /> : null}
@@ -589,13 +463,4 @@ export function V2CanvasHost(props: V2CanvasHostProps): React.JSX.Element {
       </p>
     </section>
   );
-}
-
-/** The label editor's type: a widget's label is drawn in its own ink (white in a tooltip), not the node's text colour. */
-function editorStyle(node: SceneNode, page: ScenePage, canvasColor: string): NodeStyle {
-  const style = resolveNodeStyle(node, canvasColor);
-  const box = widgetLabelBox(node);
-  if (!box) return style;
-  const parentOf = (id: string) => page.nodes.find((candidate) => candidate.id === id);
-  return { ...style, textColor: resolveWidgetInks(node, style, widgetBackdrop(node, parentOf, canvasColor))[box.ink].color };
 }

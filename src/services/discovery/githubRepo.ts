@@ -1,7 +1,8 @@
-// Reads a public GitHub repo in the browser for discovery: one git-trees call (and one commits call when pinned)
+// Reads a GitHub repo in the browser for discovery: one git-trees call (and one commits call when pinned)
 // (CORS *, 60/h per IP without a token) for the file list, then
 // raw.githubusercontent.com (CORS *, not counted against that limit) for only
-// the files discovery reads. Nothing is cloned; nothing leaves the browser.
+// the files discovery reads. With a token, a file raw cannot serve (a private repo: raw never sees the token) is read
+// through the API's contents endpoint instead, one call each. Nothing is cloned; nothing leaves the browser.
 import { acceptsArchitectureFile, definesUnit } from '../../dsl/discovery/discovery';
 import type { ScannedFile } from '../../dsl/discovery/rules';
 
@@ -17,7 +18,7 @@ export type RepoProblem =
   | { readonly kind: 'rate-limited'; readonly resetAt: Date | null }
   /** A secondary limit or a raw-download 429: a token does not help, waiting does (`retryAfter` seconds when GitHub said). */
   | { readonly kind: 'slow-down'; readonly retryAfter: number | null }
-  /** A token listed the tree but the files 404: raw downloads never carry the token, so a private repo cannot be read here. */
+  /** A token listed the tree but cannot read the files (it lacks Contents access to this repo). */
   | { readonly kind: 'private' }
   | { readonly kind: 'empty' }
   | { readonly kind: 'offline' }
@@ -119,7 +120,7 @@ export interface FetchRepoOptions {
   readonly signal?: AbortSignal;
   /** Per-request timeout, reported as offline. */
   readonly timeoutMs?: number;
-  /** A GitHub token: sent as a Bearer header to the API host only, never to raw file downloads. */
+  /** A GitHub token: sent as a Bearer header to the API host only, never to raw file downloads (a file raw cannot serve is asked of the API). */
   readonly token?: string;
   /**
    * Resolve the ref to its commit first (one more API call) and read the tree and files at it, so links saved from
@@ -185,7 +186,14 @@ export async function fetchRepoFiles(ref: RepoRef, options: FetchRepoOptions = {
       const path = chosen[next++]!;
       let received: ScannedFile | null = null;
       try {
-        const response = await call(`${hosts.raw}/${repoPath}/${refPath}/${path.split('/').map(encodeURIComponent).join('/')}`);
+        const filePath = path.split('/').map(encodeURIComponent).join('/');
+        let response = await call(`${hosts.raw}/${repoPath}/${refPath}/${filePath}`);
+        // A private repo's files are a 404 on raw, which never gets the token: the API serves them to it (the raw media type).
+        const viaApi = response.status === 404 && token !== null;
+        if (viaApi) {
+          const atRef = at === 'HEAD' ? '' : `?ref=${encodeURIComponent(at)}`;
+          response = await call(`${hosts.api}/repos/${repoPath}/contents/${filePath}${atRef}`, { headers: { Accept: 'application/vnd.github.raw' } });
+        }
         if (response.ok) {
           received = { path, content: await response.text() };
           files.push(received);
@@ -194,7 +202,7 @@ export async function fetchRepoFiles(ref: RepoRef, options: FetchRepoOptions = {
           // A file that vanished or won't load is counted: discovery works on what it can read.
           failed++;
           if (response.status === 404) notFound++;
-          lastFailure = rateLimit(response, 'raw') ?? new RepoError({ kind: 'http', status: response.status }, `GitHub answered ${response.status}. Try again in a minute.`);
+          lastFailure = rateLimit(response, viaApi ? 'api' : 'raw', token !== null) ?? new RepoError({ kind: 'http', status: response.status }, `GitHub answered ${response.status}. Try again in a minute.`);
         }
       } catch (error) {
         // The network is gone or the caller left: nothing more to fetch. Anything else costs one file.
@@ -217,7 +225,7 @@ export async function fetchRepoFiles(ref: RepoRef, options: FetchRepoOptions = {
   if (stopped !== null) throw stopped;
   // Pinned, the token must also have resolved the commit: then the repo is surely there and only the downloads are refused.
   if (token && (!options.pinCommit || commit) && notFound * 2 > chosen.length) {
-    throw new RepoError({ kind: 'private' }, `${ref.owner}/${ref.repo} looks private: the token lists its files, but the browser downloads files without it.`);
+    throw new RepoError({ kind: 'private' }, `The token lists ${ref.owner}/${ref.repo}'s files but cannot read them: give it Contents read access to this repo.`);
   }
   if (failed * 2 > chosen.length && lastFailure) throw lastFailure;
   return {

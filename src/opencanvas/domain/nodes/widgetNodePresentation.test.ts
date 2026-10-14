@@ -4,8 +4,17 @@ import { resolveNodeStyle } from './nodeStyle';
 import { createWidgetNode } from './widgetNode';
 import { createPresetFrame } from './framePreset';
 import {
-  WIDGET_KINDS, WIDGETS, describeWidget, estimateTextWidth, resolveWidgetInks, resolveWidgetPresentation,
-  widgetBackdrop, widgetItems, widgetLabelBox, wrapText, type WidgetPrimitive,
+  WIDGET_KINDS,
+  WIDGETS,
+  describeWidget,
+  estimateTextWidth,
+  resolveWidgetInks,
+  resolveWidgetPresentation,
+  widgetBackdrop,
+  widgetItems,
+  widgetLabelBox,
+  wrapText,
+  type WidgetPrimitive,
 } from './widgetNodePresentation';
 
 const page: ScenePage = {

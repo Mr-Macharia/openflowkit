@@ -1,7 +1,11 @@
 // The diagram card: what an MCP Apps host (Claude, ChatGPT, VS Code) draws inline next to a tool result.
 // Local and remote servers hand the viewer (src/viewer/viewer.html) the same shape, so it looks the same everywhere.
+import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { openUrl } from './openLink.js';
+import { toolError } from './errors.js';
+import { previewSvg, type LayoutPortLike } from '../remote/render.js';
 
 export const VIEWER_URI = 'ui://openflowkit/viewer.html';
 export const VIEWER_MIME = 'text/html;profile=mcp-app';
@@ -38,7 +42,15 @@ export interface Card {
   readonly connectors: number;
   readonly diagnostics: CardInput['diagnostics'];
   readonly losses: readonly string[];
+  /**
+   * When and in what order the server drew it: the viewer greys out every card older than the newest one in the
+   * conversation (Claude's "instance supersession" pattern). Server-minted, so a reloaded transcript keeps the order.
+   */
+  readonly createdAt: number;
+  readonly seq: number;
 }
+
+let cardSeq = 0;
 
 export function diagramCard({ svg, appOrigin, losses, ...rest }: CardInput): Card {
   const link = openUrl(rest.dsl, appOrigin);
@@ -47,7 +59,7 @@ export function diagramCard({ svg, appOrigin, losses, ...rest }: CardInput): Car
   const picture = svg !== null && bytes <= MAX_CARD_SVG_BYTES
     ? { svg }
     : { noPreview: svg === null ? 'No preview is available for this diagram.' : `The picture is ${Math.round(bytes / 1024)} KB, too large to show here.` };
-  return { ...rest, ...picture, openUrl: link, losses: allLosses };
+  return { ...rest, ...picture, openUrl: link, losses: allLosses, createdAt: Date.now(), seq: ++cardSeq };
 }
 
 /**
@@ -60,9 +72,50 @@ export function clientShowsApps(capabilities: { extensions?: Record<string, unkn
   return Boolean(ui) && typeof ui === 'object' && (!Array.isArray(ui.mimeTypes) || ui.mimeTypes.includes(VIEWER_MIME));
 }
 
-/** The `ui://` page hosts fetch to draw the card; the local and remote servers serve the same file. */
-export function registerViewer(server: McpServer, viewerHtml: () => string | Promise<string>): void {
+export const PREVIEW_TOOL = 'preview_diagram';
+/** Hosts keep an app-only tool out of the model's tool list and let only the card call it (MCP Apps `visibility`). */
+export const PREVIEW_TOOL_META = { ui: { resourceUri: VIEWER_URI, visibility: ['app'] } };
+const MAX_PREVIEW_SOURCE_BYTES = 100 * 1024;
+
+export interface ViewerOptions {
+  /** The preview's layout engine; default the headless ELK. Tests inject one. */
+  readonly layout?: LayoutPortLike;
+  readonly deadlineMs?: number;
+}
+
+/**
+ * The `ui://` page hosts fetch to draw the card, and the app-only tool it calls to draw the diagram while the model is
+ * still writing it. The local and remote servers serve the same file and the same tool.
+ */
+export function registerViewer(server: McpServer, viewerHtml: () => string | Promise<string>, options: ViewerOptions = {}): void {
   server.registerResource('viewer', VIEWER_URI, { title: 'Diagram viewer', mimeType: VIEWER_MIME, _meta: VIEWER_RESOURCE_META }, async (uri) => ({
     contents: [{ uri: uri.href, mimeType: VIEWER_MIME, text: await viewerHtml(), _meta: VIEWER_RESOURCE_META }],
   }));
+  const preview = server.registerTool(PREVIEW_TOOL, {
+    title: 'Preview a diagram being written',
+    description: 'Used by the diagram card to draw while a diagram is being written. Not for the model: call render_diagram or create_diagram.',
+    inputSchema: {
+      source: z.string().min(1).max(MAX_PREVIEW_SOURCE_BYTES),
+      theme: z.enum(['light', 'dark']).optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: PREVIEW_TOOL_META,
+  }, async ({ source, theme }): Promise<CallToolResult> => {
+    try {
+      if (Buffer.byteLength(source, 'utf8') > MAX_PREVIEW_SOURCE_BYTES) return toolError('source is over 100 KB');
+      const drawn = await previewSvg(source, theme ?? 'light', options);
+      if ('refused' in drawn) return toolError(drawn.refused);
+      if (Buffer.byteLength(drawn.svg, 'utf8') > MAX_CARD_SVG_BYTES) return toolError('The preview is too large to show.');
+      return { content: [{ type: 'text', text: `${drawn.nodes} nodes, ${drawn.connectors} connectors` }], structuredContent: { ...drawn } };
+    } catch (error) {
+      return toolError(error instanceof Error ? error.message : String(error));
+    }
+  });
+  // A host without MCP Apps would put this tool in front of the model, so a server that met its client (local, stdio)
+  // takes it away from one that did not say it shows apps. A stateless remote server never meets its client and keeps it.
+  const previous = server.server.oninitialized;
+  server.server.oninitialized = () => {
+    previous?.();
+    if (!clientShowsApps(server.server.getClientCapabilities())) preview.disable();
+  };
 }
