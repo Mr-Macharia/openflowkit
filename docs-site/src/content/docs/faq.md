@@ -1,6 +1,6 @@
 ---
 title: FAQ
-description: Privacy, offline use, file formats, Mermaid, Structurizr and D2, browser support, where your data lives, backups, and the errors people hit most.
+description: Privacy, offline use, file formats, Mermaid, Structurizr and D2, browser support, connecting an agent, private repos, map drawings, self-hosted AI, backups, and the errors people hit most.
 ---
 
 ## What is OpenFlowKit?
@@ -97,6 +97,32 @@ The app itself is free. The assistant works with Gemini, OpenAI, Claude, Groq, N
 Mistral, OpenRouter, Ollama, or any OpenAI-compatible endpoint, using your own key, so the
 provider bills you directly. The MCP server needs no key at all: your MCP client's model does
 the work.
+
+## How do I connect Claude Code, Cursor or another agent?
+
+Open **Connect agent** in the editor (or [app.openflowkit.com/#/connect](https://app.openflowkit.com/#/connect)) and pick
+your agent. Copy the **Prompt** and paste it into the agent: it adds OpenFlowKit itself. Or run the command yourself,
+for Claude Code `claude mcp add -s user openflowkit -- npx -y openflowkit mcp`. Restart the agent and the panel
+connects on its own. claude.ai and ChatGPT take the hosted connector `https://mcp.openflowkit.com/mcp` instead; it
+draws diagram cards in the chat, not on your canvas. Every client: [Connect your agent](/connect-your-agent/).
+
+## Can I map a private GitHub repo?
+
+Yes. Open the repo's map; on the "not found, or it is private" screen choose **Private repo? Use a GitHub token** and
+paste a fine-grained token with Contents read-only access. It stays in that tab. Or map a local checkout:
+`npx openflowkit map . --html map.html`. See [Map mode](/map-mode/).
+
+## Why didn't my drawing change when I opened more boxes on the map?
+
+A repo map's drawing (its **Canvas**) is a copy you can edit. Until you edit it, it follows the map: open boxes, press
+**Canvas**, and it is redrawn to match. Once you have edited it, it stays yours, and a note offers **New copy** when
+the map shows boxes it has not got. See [A map's drawing](/map-mode/#a-maps-drawing).
+
+## Can a self-hosted copy use a model only my server can reach?
+
+Yes. Start the Docker image with `OPENFLOWKIT_AI_UPSTREAM` set to an OpenAI-compatible URL (Ollama's `/v1`, vLLM,
+LiteLLM), then set the Custom provider's Base URL to `/ai-proxy`. No CORS setup; replies stream. See
+[AI proxy for the Custom provider](/self-hosting/#ai-proxy-for-the-custom-provider).
 
 ## Troubleshooting
 

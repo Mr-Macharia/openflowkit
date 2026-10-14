@@ -4,6 +4,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { unified } from '@astrojs/markdown-remark';
 import { remarkOpenflowExamples } from './src/plugins/remark-openflow-examples.mjs';
+import { CURATED, DIAGRAM_TYPE_LABELS, SUBLINE, TAGLINE } from './src/docsIndex.mjs';
 
 // The sidebar mirrors the file system, so a page can never be orphaned: every
 // markdown file under src/content/docs/ appears exactly once, titled by its
@@ -12,23 +13,6 @@ import { remarkOpenflowExamples } from './src/plugins/remark-openflow-examples.m
 // page that is still being written. A nested object is a sub-group.
 const DOCS_DIR = fileURLToPath(new URL('./src/content/docs', import.meta.url));
 
-// Inside "Diagram types" the group already says what they are: Flowchart, not Flowchart diagrams.
-const DIAGRAM_TYPE_LABELS = {
-  'diagram-flowchart': 'Flowchart', 'diagram-architecture': 'Architecture', 'diagram-sequence': 'Sequence',
-  'diagram-state': 'State', 'diagram-erd': 'ERD', 'diagram-class': 'Class', 'diagram-mindmap': 'Mind map',
-  'diagram-gitgraph': 'Git graph', 'diagram-chart': 'Chart', 'diagram-wireframe': 'Wireframe',
-};
-const DIAGRAM_TYPES = Object.keys(DIAGRAM_TYPE_LABELS);
-
-const CURATED = {
-  'Get started': ['introduction', 'quick-start', 'templates', 'local-first-diagramming', 'faq'],
-  'Agents & MCP': ['connect-your-agent', 'mcp-server', 'webmcp', 'prompting-agents', 'ai-generation', 'cli', 'github-action'],
-  'Write diagrams': ['openflow-dsl', { 'Diagram types': DIAGRAM_TYPES }, 'mermaid-import', 'coming-from-structurizr'],
-  'Draw on the canvas': ['canvas-basics', 'shapes-and-connectors', 'insert-media', 'context-menu', 'properties-panel'],
-  'Architecture & maps': ['map-mode', 'architecture-c4', 'architecture-workspace'],
-  'Share & export': ['exporting', 'animated-export', 'share-links'],
-  Reference: ['openflow-dsl-reference', 'keyboard-shortcuts', 'settings', 'theming', 'self-hosting'],
-};
 const OPEN = new Set(['Get started', 'Agents & MCP', 'Write diagrams']);
 
 const slugs = readdirSync(DOCS_DIR).filter((file) => /\.mdx?$/.test(file)).map((file) => file.replace(/\.mdx?$/, ''));
@@ -55,8 +39,6 @@ const sidebar = [
     : []),
 ];
 
-const TAGLINE = 'Architecture diagrams you draw, write as code, or hand to your agent.';
-const SUBLINE = 'Free, open source and local-first. Paste a GitHub repo and get its map, every arrow cited to a line of code.';
 const SITE = 'https://docs.openflowkit.com';
 
 export default defineConfig({
@@ -77,6 +59,8 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: `${SITE}/og.png` } },
+        // Agents and answer engines: the whole docs as one index (src/pages/llms.txt.ts).
+        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
       ],
       // The header carries "Open app" and GitHub on every width, the footer the
       // site's links; the 404 is src/pages/404.astro.
