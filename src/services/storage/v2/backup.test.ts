@@ -5,6 +5,7 @@ import { UNTITLED_DOCUMENT_NAME } from '@/opencanvas/domain/document/defaults';
 import { FLOW_PERSISTENCE_DB_NAME } from '../indexedDbSchema';
 import { V2_BACKUP_FORMAT, buildV2Backup, importFiles, readAllDocuments, importSummary } from './backup';
 import { createV2Repository } from './v2Repository';
+import drawio from '../../dsl/fixtures/drawio/flow.drawio?raw';
 
 const repository = () => createV2Repository(indexedDB);
 let counter = 0;
@@ -72,6 +73,19 @@ describe('importFiles', () => {
   it('hands one text file back to draw, named after the file', async () => {
     const report = await importFiles([fileOf('a -> b', 'flow.mmd')], repository(), mint);
     expect(report.draw).toEqual({ source: 'a -> b', name: 'flow' });
+  });
+
+  it('saves a draw.io file as a diagram named after it, and says what did not come across', async () => {
+    const report = await importFiles([fileOf(drawio, 'checkout.drawio')], repository(), mint);
+    expect(report).toMatchObject({ count: 1, problems: [], draw: null });
+    expect(report.documents[0]).toMatchObject({ id: 'new-1', name: 'checkout' });
+    expect(report.documents[0]!.pages).toHaveLength(2);
+    expect(report.notes).toEqual(['checkout.drawio: 1 thing didn’t come across: Services: “Worker”: draw.io’s “mxgraph.aws4.lambda_function” shape is drawn as a box.']);
+  });
+
+  it('says why a broken draw.io file did not open', async () => {
+    const report = await importFiles([fileOf('<mxfile><diagram>', 'broken.drawio')], repository(), mint);
+    expect(report).toMatchObject({ count: 0, problems: ['broken.drawio: It isn’t a readable draw.io file (<diagram> is never closed).'] });
   });
 
   it('opens none of several text files, and says to open them one at a time', async () => {

@@ -1,0 +1,124 @@
+import type { JsonObject } from '../../opencanvas/domain/document/json';
+import type { ShapeKind } from '../../opencanvas/domain/nodes/shapeNode';
+import { decodeEntities } from './xmlReader';
+
+// draw.io's cell `style` ("rounded=1;fillColor=#dae8fc;ellipse") read into the
+// shapes and paint keys OpenFlowKit draws. What has no counterpart is named, so
+// the importer can say so.
+
+export type DrawioStyle = Readonly<Record<string, string>>;
+
+/** `ellipse;fillColor=#fff` → `{ ellipse: '', fillColor: '#fff' }`. A bare first word is the cell's base shape. */
+export function parseDrawioStyle(style: string | undefined): DrawioStyle {
+  const parsed: Record<string, string> = {};
+  for (const part of (style ?? '').split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const equals = trimmed.indexOf('=');
+    if (equals === -1) parsed[trimmed] = '';
+    else parsed[trimmed.slice(0, equals)] = trimmed.slice(equals + 1);
+  }
+  return parsed;
+}
+
+/** The shape a cell names: `shape=` wins over a bare word (`ellipse`, `rhombus`, `text`, `swimlane`). */
+export function drawioShapeName(style: DrawioStyle): string {
+  if (style.shape) return style.shape;
+  return Object.keys(style).find((key) => style[key] === '') ?? '';
+}
+
+const SHAPES: Readonly<Record<string, ShapeKind>> = {
+  '': 'rectangle', rectangle: 'rectangle', label: 'rectangle', process: 'rectangle',
+  ellipse: 'ellipse', doubleEllipse: 'ellipse', rhombus: 'diamond', triangle: 'triangle',
+  hexagon: 'hexagon', parallelogram: 'parallelogram', trapezoid: 'trapezoid',
+  cylinder: 'cylinder', cylinder2: 'cylinder', cylinder3: 'cylinder', datastore: 'cylinder',
+  cloud: 'cloud', document: 'document', umlActor: 'actor', actor: 'actor', step: 'chevron',
+  note: 'page', folder: 'folder', cube: 'cube', star: 'star', callout: 'speech-bubble',
+  cross: 'plus', singleArrow: 'arrow-right', mxgraph_basic_heart: 'heart',
+};
+
+/** The library shape a draw.io vertex becomes, and its own name when it had to become a box. */
+export function drawioShape(style: DrawioStyle, width: number, height: number): { readonly kind: ShapeKind; readonly unknown?: string } {
+  const name = drawioShapeName(style);
+  if (name === 'text') return { kind: 'text' };
+  const kind = SHAPES[name.replace(/\./g, '_')];
+  if (!kind) return { kind: 'rectangle', unknown: name };
+  if (kind === 'rectangle' && style.rounded === '1') return { kind: 'rounded' };
+  if (kind === 'ellipse' && Math.abs(width - height) < 1) return { kind: 'circle' };
+  return { kind };
+}
+
+/** `#AbC` / `#aabbcc` as our lower-case hex; `none` is transparent; draw.io's `default` and anything else is unset. */
+export function drawioColor(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'none') return 'transparent';
+  return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(value) ? value.toLowerCase() : undefined;
+}
+
+const finite = (value: string | undefined): number | undefined => {
+  if (value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/** Paint and type a vertex carries, in our appearance keys; unset keys are left out so the app's defaults apply. */
+export function drawioNodeAppearance(style: DrawioStyle): JsonObject {
+  const appearance: Record<string, string | number> = {};
+  const fill = drawioColor(style.fillColor);
+  const stroke = drawioColor(style.strokeColor);
+  const text = drawioColor(style.fontColor);
+  if (fill) appearance.fill = fill;
+  if (stroke) appearance.stroke = stroke;
+  if (text && text !== 'transparent') appearance.textColor = text;
+  const strokeWidth = finite(style.strokeWidth);
+  if (strokeWidth !== undefined) appearance.strokeWidth = strokeWidth;
+  const fontSize = finite(style.fontSize);
+  if (fontSize !== undefined && fontSize > 0) appearance.fontSize = fontSize;
+  // fontStyle is a bit mask: 1 bold, 2 italic, 4 underline.
+  const fontStyle = finite(style.fontStyle) ?? 0;
+  if (fontStyle & 1) appearance.fontWeight = 700;
+  if (fontStyle & 2) appearance.fontStyle = 'italic';
+  if (fontStyle & 4) appearance.textDecoration = 'underline';
+  if (style.dashed === '1') appearance.strokeStyle = 'dashed';
+  const opacity = finite(style.opacity);
+  if (opacity !== undefined && opacity < 100) appearance.opacity = Math.max(0, opacity) / 100;
+  return appearance;
+}
+
+/** Arrow head names draw.io writes, as the marker words our connectors draw; `none` is no marker. */
+function marker(value: string | undefined, fallback: string | null): string | null {
+  const name = value ?? fallback;
+  if (name === null || name === 'none' || name === '') return null;
+  if (name === 'oval') return 'circle';
+  if (name.startsWith('diamond')) return 'diamond';
+  if (name === 'cross') return 'cross';
+  return 'arrow';
+}
+
+/** An edge's paint and heads. draw.io ends an edge with an arrow unless `endArrow=none`. */
+export function drawioConnectorAppearance(style: DrawioStyle): JsonObject {
+  const appearance: Record<string, string | number> = {};
+  const end = marker(style.endArrow, 'classic');
+  const start = marker(style.startArrow, null);
+  if (end) appearance.markerEnd = end;
+  if (start) appearance.markerStart = start;
+  const stroke = drawioColor(style.strokeColor);
+  if (stroke && stroke !== 'transparent') appearance.stroke = stroke;
+  const strokeWidth = finite(style.strokeWidth);
+  if (strokeWidth !== undefined) appearance.strokeWidth = strokeWidth;
+  if (style.dashed === '1') appearance.dashPattern = 'dashed';
+  const opacity = finite(style.opacity);
+  if (opacity !== undefined && opacity < 100) appearance.opacity = Math.max(0, opacity) / 100;
+  return appearance;
+}
+
+/** A label as plain text: draw.io's `html=1` labels lose their markup, keeping line breaks. */
+export function drawioLabel(value: string | undefined, style: DrawioStyle): string {
+  if (!value) return '';
+  if (style.html !== '1') return value.trim();
+  const text = value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(div|p|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '');
+  return decodeEntities(text).replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}

@@ -11,6 +11,9 @@ separately; its changes are listed under *For developers* in each release.
 
 ### Added
 
+- **Import draw.io files.** Home's **Import** and the editor's **Open file…** take `.drawio` and `.xml` files from
+  draw.io: every page comes across with its shapes where they were, plus containers, layers and connectors with their
+  labels and arrows. Anything that can't come across is listed, never dropped silently.
 - **Private repos in the browser.** On the "not found, or it is private" screen, **Private repo? Use a GitHub token**
   takes a fine-grained token with Contents read-only access; the files are then read through the GitHub API. The
   token stays in this tab.

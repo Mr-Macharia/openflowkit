@@ -1,0 +1,290 @@
+import { UNTITLED_DOCUMENT_NAME } from '../../opencanvas/domain/document/defaults';
+import type { JsonObject } from '../../opencanvas/domain/document/json';
+import {
+  SCENE_DOCUMENT_FORMAT, SCENE_DOCUMENT_VERSION,
+  type ConnectorEndpoint, type ConnectorLabel, type SceneConnector, type SceneDocumentV1, type SceneLayer, type SceneNode, type ScenePage,
+} from '../../opencanvas/domain/document/types';
+import type { Point2d } from '../../opencanvas/domain/geometry/types';
+import { createShapeNode } from '../../opencanvas/domain/nodes/shapeNode';
+import { validateSceneDocumentV1 } from '../../opencanvas/domain/document/validation';
+import {
+  drawioConnectorAppearance, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle, type DrawioStyle,
+} from './drawioStyle';
+import { parseXml, type XmlElement } from './xmlReader';
+
+// A draw.io file (`.drawio`, or its `.xml` export) as an OpenFlowKit document.
+// draw.io keeps exact positions, so this builds the scene directly instead of
+// going through DSL and the layout. Each page of the file is a page here.
+// What has no counterpart is listed in `losses`, never silently dropped.
+
+export type DrawioImport =
+  | { readonly document: SceneDocumentV1; readonly losses: readonly string[] }
+  | { readonly error: string };
+
+/** True when `text` is a draw.io file: an `<mxfile>` or a bare `<mxGraphModel>`. */
+export function looksLikeDrawio(text: string): boolean {
+  return /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:mxfile|mxGraphModel)\b/.test(text);
+}
+
+interface Geometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly points: readonly Point2d[];
+  readonly sourcePoint: Point2d | null;
+  readonly targetPoint: Point2d | null;
+}
+
+interface Cell {
+  readonly id: string;
+  readonly parent: string | null;
+  readonly value: string;
+  readonly style: DrawioStyle;
+  readonly vertex: boolean;
+  readonly edge: boolean;
+  readonly source: string | null;
+  readonly target: string | null;
+  readonly visible: boolean;
+  readonly geometry: Geometry | null;
+}
+
+const num = (value: string | undefined, fallback = 0): number => {
+  const parsed = Number(value);
+  return value !== undefined && Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const pointOf = (element: XmlElement): Point2d => ({ x: num(element.attributes.x), y: num(element.attributes.y) });
+
+function readGeometry(element: XmlElement | undefined): Geometry | null {
+  if (!element) return null;
+  const { attributes } = element;
+  const named = (as: string) => element.children.find((child) => child.name === 'mxPoint' && child.attributes.as === as);
+  const source = named('sourcePoint');
+  const target = named('targetPoint');
+  const points = element.children.find((child) => child.name === 'Array' && child.attributes.as === 'points');
+  return {
+    x: num(attributes.x), y: num(attributes.y), width: num(attributes.width), height: num(attributes.height),
+    points: points ? points.children.filter((child) => child.name === 'mxPoint').map(pointOf) : [],
+    sourcePoint: source ? pointOf(source) : null,
+    targetPoint: target ? pointOf(target) : null,
+  };
+}
+
+/** `<mxCell>`, or a `<UserObject>` / `<object>` wrapping one: the wrapper holds the id and the label. */
+function readCell(element: XmlElement): Cell | null {
+  const wrapped = element.name === 'UserObject' || element.name === 'object';
+  const cell = wrapped ? element.children.find((child) => child.name === 'mxCell') : element.name === 'mxCell' ? element : undefined;
+  const id = wrapped ? element.attributes.id : cell?.attributes.id;
+  if (!cell || !id) return null;
+  const { attributes } = cell;
+  return {
+    id,
+    parent: attributes.parent ?? null,
+    value: (wrapped ? element.attributes.label : attributes.value) ?? '',
+    style: parseDrawioStyle(attributes.style),
+    vertex: attributes.vertex === '1',
+    edge: attributes.edge === '1',
+    source: attributes.source ?? null,
+    target: attributes.target ?? null,
+    visible: attributes.visible !== '0',
+    geometry: readGeometry(cell.children.find((child) => child.name === 'mxGeometry')),
+  };
+}
+
+/** A compressed page: base64 of raw-deflated, URI-encoded XML. */
+async function inflatePage(text: string): Promise<string> {
+  const bytes = Uint8Array.from(atob(text.replace(/\s+/g, '')), (char) => char.charCodeAt(0));
+  const stream = new Response(bytes).body!.pipeThrough(new DecompressionStream('deflate-raw'));
+  return decodeURIComponent(await new Response(stream).text());
+}
+
+async function pageModel(diagram: XmlElement): Promise<XmlElement | { error: string }> {
+  const model = diagram.children.find((child) => child.name === 'mxGraphModel');
+  if (model) return model;
+  if (!diagram.text.trim()) return { error: 'a page is empty' };
+  let xml: string;
+  try {
+    xml = await inflatePage(diagram.text);
+  } catch {
+    return { error: 'a page is compressed in a way OpenFlowKit can’t read' };
+  }
+  const parsed = parseXml(xml);
+  if ('error' in parsed) return { error: `a page isn’t readable XML (${parsed.error})` };
+  return parsed.root;
+}
+
+const CONTAINER_KIND: Readonly<Record<string, string>> = { swimlane: 'swimlane', group: 'group', table: 'section' };
+
+class PageBuilder {
+  readonly cells = new Map<string, Cell>();
+  readonly layers: SceneLayer[] = [];
+  readonly nodes: SceneNode[] = [];
+  readonly connectors: SceneConnector[] = [];
+  private readonly nodeIds = new Set<string>();
+
+  constructor(cells: readonly Cell[], private readonly loss: (message: string) => void) {
+    for (const cell of cells) this.cells.set(cell.id, cell);
+  }
+
+  build(): void {
+    const root = [...this.cells.values()].find((cell) => cell.parent === null || !this.cells.has(cell.parent));
+    const layerCells = [...this.cells.values()].filter((cell) => cell !== root && cell.parent === root?.id && !cell.vertex && !cell.edge);
+    for (const [index, cell] of layerCells.entries()) {
+      this.layers.push({
+        id: `layer:${cell.id}`, name: cell.value.trim() || (index === 0 ? 'Default' : `Layer ${index + 1}`),
+        visible: cell.visible, locked: cell.style.locked === '1',
+      });
+    }
+    if (!this.layers.length) this.layers.push({ id: 'layer:default', name: 'Default', visible: true, locked: false });
+    for (const layer of layerCells) this.addChildren(layer.id, null, `layer:${layer.id}`);
+    for (const cell of this.cells.values()) if (cell.edge) this.addConnector(cell);
+  }
+
+  private childrenOf(id: string): Cell[] {
+    return [...this.cells.values()].filter((cell) => cell.parent === id);
+  }
+
+  private addChildren(parentCellId: string, parentNodeId: string | null, layerId: string): void {
+    for (const cell of this.childrenOf(parentCellId)) {
+      if (cell.vertex) this.addNode(cell, parentNodeId, layerId);
+    }
+  }
+
+  private labelOf(cell: Cell): string {
+    return drawioLabel(cell.value, cell.style) || cell.id;
+  }
+
+  private addNode(cell: Cell, parentId: string | null, layerId: string): void {
+    const geometry = cell.geometry;
+    if (!geometry) { this.loss(`“${this.labelOf(cell)}”: a shape without a position was left out`); return; }
+    const { x, y } = geometry;
+    const width = Math.max(1, geometry.width || 120);
+    const height = Math.max(1, geometry.height || 60);
+    const style = cell.style;
+    const name = drawioShapeName(style);
+    const label = drawioLabel(cell.value, style);
+    const hasChildren = this.childrenOf(cell.id).some((child) => child.vertex);
+    const page: ScenePage = { id: '', name: '', diagramKind: 'flowchart', layers: this.layers, nodes: this.nodes, connectors: [], metadata: {}, extensions: {} };
+    const base = { parentId, layerId, zIndex: this.nodes.length };
+    if (style.rotation && num(style.rotation) !== 0) this.loss(`“${this.labelOf(cell)}”: rotation was dropped`);
+    if (name === 'image' || style.image) this.loss(`“${this.labelOf(cell)}”: images don’t come across; it is drawn as a box`);
+    if (CONTAINER_KIND[name] || style.container === '1' || hasChildren) {
+      this.nodes.push({
+        id: cell.id, kind: CONTAINER_KIND[name] ?? 'section', ...base,
+        transform: { translation: { x, y }, rotationRadians: 0, scale: { x: 1, y: 1 } },
+        size: { width, height },
+        content: { label },
+        appearance: drawioNodeAppearance(style),
+        ports: [], metadata: {}, extensions: {},
+      });
+    } else {
+      const shape = drawioShape(style, width, height);
+      if (shape.unknown && name !== 'image') this.loss(`“${this.labelOf(cell)}”: draw.io’s “${shape.unknown}” shape is drawn as a box`);
+      this.nodes.push({
+        ...createShapeNode(page, { kind: shape.kind, id: cell.id, at: { x, y }, size: { width, height }, label, appearance: drawioNodeAppearance(style) }),
+        ...base,
+      });
+    }
+    this.nodeIds.add(cell.id);
+    this.addChildren(cell.id, cell.id, layerId);
+  }
+
+  /** Where a cell's own coordinates start on the page: the sum of its container vertices' positions. */
+  private originOf(cellId: string | null): Point2d {
+    let x = 0;
+    let y = 0;
+    let id = cellId;
+    const seen = new Set<string>();
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      const cell = this.cells.get(id);
+      if (!cell?.vertex || !cell.geometry) break;
+      x += cell.geometry.x;
+      y += cell.geometry.y;
+      id = cell.parent;
+    }
+    return { x, y };
+  }
+
+  private addConnector(cell: Cell): void {
+    const number = this.connectors.length + 1;
+    const origin = this.originOf(cell.parent);
+    const toPage = (point: Point2d): Point2d => ({ x: point.x + origin.x, y: point.y + origin.y });
+    const endpoint = (nodeId: string | null, point: Point2d | null | undefined): ConnectorEndpoint | null => {
+      if (nodeId && this.nodeIds.has(nodeId)) return { nodeId, portId: null, anchor: null, point: null };
+      return point ? { nodeId: null, portId: null, anchor: null, point: toPage(point) } : null;
+    };
+    const source = endpoint(cell.source, cell.geometry?.sourcePoint);
+    const target = endpoint(cell.target, cell.geometry?.targetPoint);
+    const label = drawioLabel(cell.value, cell.style);
+    if (!source || !target) {
+      this.loss(`${label ? `connector “${label}”` : `connector ${number}`}: it has a loose end, so it was left out`);
+      return;
+    }
+    const style = cell.style;
+    const orthogonal = /orthogonal|elbow|isometric|entityRelation/i.test(style.edgeStyle ?? '');
+    const points = (cell.geometry?.points ?? []).map(toPage);
+    if (orthogonal && points.length) this.loss(`connector ${number}: its bends are re-routed`);
+    const waypoints = orthogonal ? [] : points;
+    const labels: ConnectorLabel[] = label ? [{ id: `${cell.id}:label`, text: label, pathRatio: 0.5, offset: { x: 0, y: 0 }, metadata: {} }] : [];
+    // A label dragged along an edge is its own vertex, parented to the edge; x runs -1 (source) to 1 (target).
+    for (const child of this.childrenOf(cell.id)) {
+      const text = drawioLabel(child.value, child.style);
+      if (!child.vertex || !text) continue;
+      const ratio = Math.min(1, Math.max(0, ((child.geometry?.x ?? 0) + 1) / 2));
+      labels.push({ id: `${child.id}:label`, text, pathRatio: ratio, offset: { x: 0, y: 0 }, metadata: {} });
+    }
+    this.connectors.push({
+      id: cell.id, source, target,
+      route: {
+        kind: orthogonal ? 'orthogonal' : style.curved === '1' ? 'bezier' : waypoints.length ? 'polyline' : 'direct',
+        ownership: waypoints.length ? 'imported-fixed' : 'automatic',
+      },
+      waypoints, labels,
+      appearance: drawioConnectorAppearance(style),
+      semantics: {}, metadata: {}, extensions: {},
+    });
+  }
+}
+
+function pageCells(model: XmlElement): Cell[] {
+  const root = model.children.find((child) => child.name === 'root');
+  return (root?.children ?? []).map(readCell).filter((cell): cell is Cell => cell !== null);
+}
+
+function summarize(losses: readonly string[]): string[] {
+  return [...new Set(losses)];
+}
+
+/** Every page of a draw.io file as one OpenFlowKit document under `id`. */
+export async function drawioToDocument(text: string, id: string, now = new Date().toISOString()): Promise<DrawioImport> {
+  const parsed = parseXml(text);
+  if ('error' in parsed) return { error: `It isn’t a readable draw.io file (${parsed.error}).` };
+  const { root } = parsed;
+  const diagrams = root.name === 'mxfile' ? root.children.filter((child) => child.name === 'diagram') : root.name === 'mxGraphModel' ? [root] : [];
+  if (!diagrams.length) return { error: 'It has no draw.io pages in it.' };
+  const losses: string[] = [];
+  const pages: ScenePage[] = [];
+  for (const [index, diagram] of diagrams.entries()) {
+    const model = diagram.name === 'mxGraphModel' ? diagram : await pageModel(diagram);
+    const pageName = diagram.attributes.name?.trim() || `Page ${index + 1}`;
+    if ('error' in model) { losses.push(`“${pageName}”: ${model.error}, so it was left out`); continue; }
+    const builder = new PageBuilder(pageCells(model), (message) => losses.push(diagrams.length > 1 ? `${pageName}: ${message}` : message));
+    builder.build();
+    pages.push({
+      id: `${id}:page-${index + 1}`, name: pageName, diagramKind: 'flowchart',
+      layers: builder.layers, nodes: builder.nodes, connectors: builder.connectors, metadata: {}, extensions: {},
+    });
+  }
+  if (!pages.length) return { error: `None of its pages could be read: ${losses.join('; ')}` };
+  if (pages.every((page) => page.nodes.length === 0 && page.connectors.length === 0)) return { error: 'It has no shapes or connectors in it.' };
+  const metadata: JsonObject = { importedFrom: 'drawio' };
+  const document: SceneDocumentV1 = {
+    format: SCENE_DOCUMENT_FORMAT, schemaVersion: SCENE_DOCUMENT_VERSION, id, name: UNTITLED_DOCUMENT_NAME,
+    createdAt: now, updatedAt: now, pages, metadata, extensions: {},
+  };
+  const validated = validateSceneDocumentV1(document);
+  if (validated.success !== true) return { error: `It couldn’t be turned into a diagram: ${validated.issues[0]?.message ?? 'unknown issue'}` };
+  return { document: validated.document, losses: summarize(losses) };
+}
