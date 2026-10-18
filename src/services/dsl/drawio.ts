@@ -52,6 +52,9 @@ interface Cell {
   readonly source: string | null;
   readonly target: string | null;
   readonly visible: boolean;
+  /** A `<UserObject>`/`<object>` wrapper's own data (`status="New"`), which `%status%` in a label stands for. */
+  readonly data: Readonly<Record<string, string>>;
+  readonly placeholders: boolean;
   readonly geometry: Geometry | null;
 }
 
@@ -97,6 +100,8 @@ function readCell(element: XmlElement): Cell | null {
     source: attributes.source ?? null,
     target: attributes.target ?? null,
     visible: attributes.visible !== '0',
+    data: wrapped ? element.attributes : {},
+    placeholders: wrapped && element.attributes.placeholders === '1',
     geometry: readGeometry(cell.children.find((child) => child.name === 'mxGeometry')),
   };
 }
@@ -203,16 +208,45 @@ class PageBuilder {
     }
   }
 
+  /**
+   * A cell's label as draw.io shows it: with `placeholders=1`, `%name%` is the `name` the cell's own data holds,
+   * else its nearest container's (a kanban card's `%status%` is its column's `status`); one nobody holds stays.
+   */
+  private valueOf(cell: Cell): string {
+    if (!cell.placeholders) return cell.value;
+    return cell.value.replace(/%([A-Za-z_][\w.-]*)%/g, (written, name: string) => {
+      const seen = new Set<string>();
+      for (let at: Cell | undefined = cell; at && !seen.has(at.id); at = at.parent ? this.cells.get(at.parent) : undefined) {
+        seen.add(at.id);
+        if (name !== 'label' && name !== 'placeholders' && at.data[name] !== undefined) return at.data[name]!;
+      }
+      return written;
+    });
+  }
+
+  /** `fillColor=swimlane` is draw.io for "my lane's colour": the nearest container's fill that names one. */
+  private inherited(cell: Cell): DrawioStyle {
+    if (cell.style.fillColor !== 'swimlane') return cell.style;
+    const seen = new Set<string>([cell.id]);
+    for (let at = cell.parent ? this.cells.get(cell.parent) : undefined; at && !seen.has(at.id); at = at.parent ? this.cells.get(at.parent) : undefined) {
+      seen.add(at.id);
+      const fill = at.style.fillColor;
+      if (fill && fill !== 'swimlane') return { ...cell.style, fillColor: fill };
+    }
+    const { fillColor: _swimlane, ...rest } = cell.style;
+    return rest;
+  }
+
   private labelOf(cell: Cell): string {
-    return drawioLabel(cell.value, cell.style) || cell.id;
+    return drawioLabel(this.valueOf(cell), cell.style) || cell.id;
   }
 
   private addNode(cell: Cell, parentId: string | null, layerId: string): void {
     const geometry = cell.geometry;
     if (!geometry) { this.loss(`“${this.labelOf(cell)}”: a shape without a position was left out`); return; }
-    const style = cell.style;
+    const style = this.inherited(cell);
     const name = drawioShapeName(style);
-    const label = drawioLabel(cell.value, style);
+    const label = drawioLabel(this.valueOf(cell), style);
     const { x, y } = this.placed(cell, geometry);
     let width = Math.max(1, geometry.width || 120);
     let height = Math.max(1, geometry.height || 60);
@@ -231,14 +265,21 @@ class PageBuilder {
     const imageUrl = drawioImageUrl(style);
     if ((name === 'image' || style.image) && !imageUrl) this.libraryImages += 1;
     if (CONTAINER_KIND[name] || style.container === '1' || hasChildren) {
+      // Our container draws a title band over its top; a draw.io lane with a hairline header (a kanban column)
+      // or none at all has its shapes up there, so the band is hidden and the title set just above the lane.
+      const thin = name === 'swimlane' && num(style.startSize, 23) < 12;
       this.nodes.push({
         id: cell.id, kind: CONTAINER_KIND[name] ?? 'section', ...base,
         transform,
         size: { width, height },
-        content: { label },
+        content: { label, ...(thin || !label ? { showHeader: false } : {}) },
         appearance: drawioNodeAppearance(style),
         ports: [], metadata: {}, extensions: {},
       });
+      if (thin && label) {
+        const above = { ...geometry, x, y: y - num(style.spacing, 2) - 1, width, height: 1, relative: false };
+        this.addText({ ...cell, id: `${cell.id}:label`, geometry: above, style: { ...style, verticalAlign: 'bottom', whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
+      }
     } else {
       const shape = drawioShape(style, width, height);
       if (shape.unknown && name !== 'image' && !imageUrl) this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
@@ -344,7 +385,7 @@ class PageBuilder {
     };
     const source = endpoint(cell.source, cell.geometry?.sourcePoint);
     const target = endpoint(cell.target, cell.geometry?.targetPoint);
-    const label = drawioLabel(cell.value, cell.style);
+    const label = drawioLabel(this.valueOf(cell), cell.style);
     if (!source || !target) {
       this.loss(`${label ? `connector “${label}”` : `connector ${number}`}: it has a loose end, so it was left out`);
       return;
@@ -357,7 +398,7 @@ class PageBuilder {
     const labels: ConnectorLabel[] = label ? [{ id: `${cell.id}:label`, text: label, pathRatio: 0.5, offset: { x: 0, y: 0 }, metadata: {} }] : [];
     // A label dragged along an edge is its own vertex, parented to the edge; x runs -1 (source) to 1 (target).
     for (const child of this.childrenOf(cell.id)) {
-      const text = drawioLabel(child.value, child.style);
+      const text = drawioLabel(this.valueOf(child), child.style);
       if (!child.vertex || !text) continue;
       const ratio = Math.min(1, Math.max(0, ((child.geometry?.x ?? 0) + 1) / 2));
       labels.push({ id: `${child.id}:label`, text, pathRatio: ratio, offset: { x: 0, y: 0 }, metadata: {} });

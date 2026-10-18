@@ -169,6 +169,27 @@ describe('drawioToDocument', () => {
     expect(losses).toEqual(['2 pictures come from draw.io’s own image library, so they are drawn as a box']);
   });
 
+  it('fills %placeholders% from the cell or its container, and titles a hairline lane above it', async () => {
+    const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
+    const { document } = await open(model(
+      '<object label="TO DO" status="New" id="lane"><mxCell style="swimlane;startSize=1;html=0;fillColor=#A0522D;" vertex="1" parent="1"><mxGeometry x="0" y="40" width="180" height="400" as="geometry"/></mxCell></object>'
+      + '<object label="Task 1&lt;br&gt;%status%" placeholders="1" id="card"><mxCell style="html=1;fillColor=swimlane;" vertex="1" parent="lane"><mxGeometry x="20" y="21" width="140" height="80" as="geometry"/></mxCell></object>'
+      + '<object label="Task 2 %owner% %missing%" owner="Ann" placeholders="1" id="own"><mxCell style="html=1;" vertex="1" parent="lane"><mxGeometry x="20" y="121" width="140" height="80" as="geometry"/></mxCell></object>'
+      + '<object label="%status%" status="kept" id="off"><mxCell vertex="1" parent="1"><mxGeometry x="300" width="80" height="40" as="geometry"/></mxCell></object>',
+    ));
+    const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
+    expect(byId.get('card')!.content.label).toBe('Task 1\nNew');
+    // `fillColor=swimlane` takes the lane's colour.
+    expect(byId.get('card')!.appearance.fill).toBe('#a0522d');
+    expect(byId.get('own')!.content.label).toBe('Task 2 Ann %missing%');
+    expect(byId.get('off')!.content.label).toBe('%status%');
+    // The lane draws no band over its cards; its title sits just above it.
+    expect(byId.get('lane')).toMatchObject({ kind: 'swimlane', content: { label: 'TO DO', showHeader: false } });
+    const title = byId.get('lane:label')!;
+    expect(title).toMatchObject({ kind: 'text', content: { label: 'TO DO' } });
+    expect(title.transform.translation.y + title.size.height).toBeCloseTo(40 - 2);
+  });
+
   it('refuses what it cannot read, saying why', async () => {
     expect(await drawioToDocument('<mxfile><diagram>', 'doc', NOW)).toEqual({ error: 'It isn’t a readable draw.io file (<diagram> is never closed).' });
     expect(await drawioToDocument('<mxfile></mxfile>', 'doc', NOW)).toEqual({ error: 'It has no draw.io pages in it.' });
