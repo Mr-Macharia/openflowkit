@@ -135,6 +135,23 @@ function marker(value: string | undefined, fallback: string | null): string | nu
   return 'arrow';
 }
 
+/** draw.io's entity-relation ends, as the cardinality symbols Mermaid writes on each side of `--`. */
+const ER_ENDS: Readonly<Record<string, readonly [source: string, target: string]>> = {
+  ERmandOne: ['||', '||'], ERone: ['||', '||'], ERzeroToOne: ['|o', 'o|'],
+  ERoneToMany: ['}|', '|{'], ERmany: ['}|', '|{'], ERzeroToMany: ['}o', 'o{'],
+};
+
+/**
+ * An edge whose both ends are draw.io's crow's-foot kind, as the relation token our entity diagrams draw
+ * (`}|--||`): one many-or-more end, one exactly-one end. Null unless both ends are entity-relation ends.
+ */
+export function drawioErRelation(style: DrawioStyle): string | null {
+  const source = ER_ENDS[style.startArrow ?? ''];
+  const target = ER_ENDS[style.endArrow ?? ''];
+  if (!source || !target) return null;
+  return `${source[0]}${style.dashed === '1' ? '..' : '--'}${target[1]}`;
+}
+
 /** An edge's paint and heads. draw.io ends an edge with an arrow unless `endArrow=none`. */
 export function drawioConnectorAppearance(style: DrawioStyle): JsonObject {
   const appearance: Record<string, string | number> = {};

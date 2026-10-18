@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  drawioColor, drawioConnectorAppearance, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle,
+  drawioColor, drawioConnectorAppearance, drawioErRelation, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle,
 } from './drawioStyle';
 
 describe('draw.io styles', () => {
@@ -60,6 +60,13 @@ describe('draw.io styles', () => {
     expect(drawioConnectorAppearance(parseDrawioStyle('endArrow=none;startArrow=oval;dashed=1;strokeColor=#f00'))).toEqual({
       markerStart: 'circle', dashPattern: 'dashed', stroke: '#f00',
     });
+  });
+
+  it('reads crow’s-foot ends as the relation our entity diagrams draw', () => {
+    expect(drawioErRelation(parseDrawioStyle('startArrow=ERoneToMany;endArrow=ERmandOne'))).toBe('}|--||');
+    expect(drawioErRelation(parseDrawioStyle('startArrow=ERzeroToOne;endArrow=ERzeroToMany;dashed=1'))).toBe('|o..o{');
+    expect(drawioErRelation(parseDrawioStyle('startArrow=ERmandOne'))).toBeNull();
+    expect(drawioErRelation({})).toBeNull();
   });
 
   it('reads an html label as plain text with its line breaks', () => {

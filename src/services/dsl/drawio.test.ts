@@ -190,6 +190,24 @@ describe('drawioToDocument', () => {
     expect(title.transform.translation.y + title.size.height).toBeCloseTo(40 - 2);
   });
 
+  it('reads an entity table: title in its own band, rows set left, crow’s-foot ends', async () => {
+    const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
+    const table = (id: string, x: number) => `<mxCell id="${id}" value="Section" style="swimlane;startSize=22;" vertex="1" parent="1"><mxGeometry x="${x}" y="100" width="140" height="110" as="geometry"/></mxCell>`
+      + `<mxCell id="${id}r1" value="Row 1" style="text;whiteSpace=wrap;spacingLeft=4;" vertex="1" parent="${id}"><mxGeometry y="22" width="140" height="26" as="geometry"/></mxCell>`;
+    const { document } = await open(model(table('a', 0) + table('b', 300)
+      + '<mxCell id="rel" value="relation" style="startArrow=ERoneToMany;endArrow=ERmandOne;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell>'));
+    const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
+    expect(byId.get('a')).toMatchObject({ kind: 'swimlane', content: { showHeader: false } });
+    // The title is centred in draw.io's 22px band, not under our 40px one.
+    const title = byId.get('a:label')!;
+    expect(title.transform.translation.y + title.size.height / 2).toBeCloseTo(100 + 11);
+    // A row starts at the table's left edge and its own top, hugging its words.
+    const row = byId.get('ar1')!;
+    expect(row.transform.translation).toEqual({ x: 0, y: 22 });
+    expect(row.size.width).toBeLessThan(140);
+    expect(document.pages[0]!.connectors[0]).toMatchObject({ semantics: { erRelation: '}|--||' } });
+  });
+
   it('refuses what it cannot read, saying why', async () => {
     expect(await drawioToDocument('<mxfile><diagram>', 'doc', NOW)).toEqual({ error: 'It isn’t a readable draw.io file (<diagram> is never closed).' });
     expect(await drawioToDocument('<mxfile></mxfile>', 'doc', NOW)).toEqual({ error: 'It has no draw.io pages in it.' });

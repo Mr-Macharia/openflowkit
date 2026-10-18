@@ -8,10 +8,11 @@ import type { Point2d } from '../../opencanvas/domain/geometry/types';
 import { createImageNode } from '../../opencanvas/domain/nodes/imageNode';
 import { createShapeNode } from '../../opencanvas/domain/nodes/shapeNode';
 import { measurePortableText } from '../../opencanvas/domain/text/measurement';
+import { CONTAINER_TITLE_HEIGHT } from '../../opencanvas/domain/nodes/nodeLabelBounds';
 import { DEFAULT_NODE_SIZING_POLICY } from '../../opencanvas/domain/node-sizing/model';
 import { validateSceneDocumentV1 } from '../../opencanvas/domain/document/validation';
 import {
-  drawioColor, drawioConnectorAppearance, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle, type DrawioStyle,
+  drawioColor, drawioConnectorAppearance, drawioErRelation, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle, type DrawioStyle,
 } from './drawioStyle';
 import { parseXml, type XmlElement } from './xmlReader';
 
@@ -267,7 +268,11 @@ class PageBuilder {
     if (CONTAINER_KIND[name] || style.container === '1' || hasChildren) {
       // Our container draws a title band over its top; a draw.io lane with a hairline header (a kanban column)
       // or none at all has its shapes up there, so the band is hidden and the title set just above the lane.
-      const thin = name === 'swimlane' && num(style.startSize, 23) < 12;
+      // Our container draws a 40px title band over its top. A draw.io lane's own band (`startSize`, 23 unless
+      // set) is often thinner — an entity table's 22px header over its first row, a kanban column's hairline —
+      // so then ours is hidden and the title set in draw.io's band, or just above the lane when it is a hairline.
+      const band = num(style.startSize, 23);
+      const thin = name === 'swimlane' && band < CONTAINER_TITLE_HEIGHT;
       this.nodes.push({
         id: cell.id, kind: CONTAINER_KIND[name] ?? 'section', ...base,
         transform,
@@ -277,13 +282,19 @@ class PageBuilder {
         ports: [], metadata: {}, extensions: {},
       });
       if (thin && label) {
-        const above = { ...geometry, x, y: y - num(style.spacing, 2) - 1, width, height: 1, relative: false };
-        this.addText({ ...cell, id: `${cell.id}:label`, geometry: above, style: { ...style, verticalAlign: 'bottom', whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
+        const title = band < 12
+          ? { geometry: { ...geometry, x, y: y - num(style.spacing, 2) - 1, width, height: 1, relative: false }, verticalAlign: 'bottom' }
+          : { geometry: { ...geometry, x, y, width, height: band, relative: false }, verticalAlign: 'middle' };
+        this.addText({ ...cell, id: `${cell.id}:label`, geometry: title.geometry, style: { ...style, verticalAlign: title.verticalAlign, whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
       }
     } else {
       const shape = drawioShape(style, width, height);
       if (shape.unknown && name !== 'image' && !imageUrl) this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
-      if (shape.kind === 'text' && !imageUrl) { this.addText(cell, label, base, rotation); return; }
+      if (shape.kind === 'text' && !imageUrl) {
+        // draw.io's `text` style sets its words top-left unless the cell says otherwise.
+        this.addText({ ...cell, style: { align: 'left', verticalAlign: 'top', ...style } }, label, base, rotation);
+        return;
+      }
       // A label set outside its shape (a checkbox's beside it, an icon's below) becomes its own text there;
       // a picture's always does, since our image node draws no label.
       const outside = OUTSIDE[style.labelPosition ?? ''] ?? OUTSIDE[`v-${style.verticalLabelPosition ?? ''}`]
@@ -328,8 +339,15 @@ class PageBuilder {
     const widest = style.whiteSpace === 'wrap' ? Math.max(...label.split(/\s+/).map((word) => measure(word).width)) : measured.width;
     // A text node wraps 8px inside each side. ponytail: the portable measure runs a few percent under the
     // canvas font, hence the 5% — measure with the canvas font if labels still break.
-    const width = Math.max(1, box.width, Math.ceil(widest * 1.05) + 20);
-    const height = Math.max(box.height, Math.ceil(measured.height) + 4);
+    const fit = (measuredWidth: number) => Math.ceil(measuredWidth * 1.05) + 20;
+    // Our text node centres its words, so text set against a side hugs them instead of filling draw.io's box;
+    // wrapped text that won't fit one line keeps the box's width.
+    const side = style.align === 'left' || style.align === 'right';
+    const width = Math.max(1, side
+      ? (style.whiteSpace === 'wrap' ? Math.max(fit(widest), Math.min(box.width, fit(measured.width))) : fit(measured.width))
+      : Math.max(box.width, fit(widest)));
+    const hug = style.verticalAlign === 'top' || style.verticalAlign === 'bottom';
+    const height = hug ? Math.ceil(measured.height) + 4 : Math.max(box.height, Math.ceil(measured.height) + 4);
     const x = style.align === 'left' ? box.x : style.align === 'right' ? box.x + box.width - width : box.x + (box.width - width) / 2;
     const y = style.verticalAlign === 'top' ? box.y : style.verticalAlign === 'bottom' ? box.y + box.height - height : box.y + (box.height - height) / 2;
     const color = drawioColor(style.fontColor);
@@ -411,7 +429,7 @@ class PageBuilder {
       },
       waypoints, labels,
       appearance: drawioConnectorAppearance(style),
-      semantics: {}, metadata: {}, extensions: {},
+      semantics: drawioErRelation(style) ? { erRelation: drawioErRelation(style)! } : {}, metadata: {}, extensions: {},
     });
   }
 }
