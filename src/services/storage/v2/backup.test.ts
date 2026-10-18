@@ -80,7 +80,7 @@ describe('importFiles', () => {
     expect(report).toMatchObject({ count: 1, problems: [], draw: null });
     expect(report.documents[0]).toMatchObject({ id: 'new-1', name: 'checkout' });
     expect(report.documents[0]!.pages).toHaveLength(2);
-    expect(report.notes).toEqual(['checkout.drawio: 1 thing didn’t come across: Services: “Worker”: draw.io’s “mxgraph.aws4.lambda_function” shape is drawn as a box.']);
+    expect(report.notes).toEqual(['checkout.drawio: 1 thing didn’t come across: Services: draw.io’s “mxgraph.aws4.lambda_function” shape is drawn as a box.']);
   });
 
   it('says why a broken draw.io file did not open', async () => {

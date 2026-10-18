@@ -28,7 +28,7 @@ export function drawioShapeName(style: DrawioStyle): string {
 }
 
 const SHAPES: Readonly<Record<string, ShapeKind>> = {
-  '': 'rectangle', rectangle: 'rectangle', label: 'rectangle', process: 'rectangle',
+  '': 'rectangle', rect: 'rectangle', rectangle: 'rectangle', label: 'rectangle', process: 'rectangle',
   ellipse: 'ellipse', doubleEllipse: 'ellipse', rhombus: 'diamond', triangle: 'triangle',
   hexagon: 'hexagon', parallelogram: 'parallelogram', trapezoid: 'trapezoid',
   cylinder: 'cylinder', cylinder2: 'cylinder', cylinder3: 'cylinder', datastore: 'cylinder',

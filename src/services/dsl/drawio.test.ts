@@ -72,7 +72,7 @@ describe('drawioToDocument', () => {
     expect(byId.get('note')).toMatchObject({ kind: 'text', layerId: 'layer:2', content: { label: 'TODO' } });
     // A bend inside a container is container space in draw.io, page space here.
     expect(services.connectors[0]!.waypoints).toEqual([{ x: 240, y: 220 }]);
-    expect(losses).toContain('Services: “Worker”: draw.io’s “mxgraph.aws4.lambda_function” shape is drawn as a box');
+    expect(losses).toContain('Services: draw.io’s “mxgraph.aws4.lambda_function” shape is drawn as a box');
   });
 
   it('reads compressed pages the way draw.io writes them', async () => {
@@ -87,16 +87,42 @@ describe('drawioToDocument', () => {
   it('says what came across badly instead of dropping it silently', async () => {
     const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
     const { losses } = await open(model(
-      '<mxCell id="a" value="A" style="rotation=45;" vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell>'
+      '<mxCell id="a" value="A" vertex="1" parent="1"><mxGeometry width="80" height="40" as="geometry"/></mxCell>'
       + '<mxCell id="b" value="B" vertex="1" parent="1"><mxGeometry x="200" width="80" height="40" as="geometry"/></mxCell>'
       + '<mxCell id="e" value="nowhere" edge="1" parent="1" source="a"><mxGeometry relative="1" as="geometry"/></mxCell>'
       + '<mxCell id="o" edge="1" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="5" y="5"/></Array></mxGeometry></mxCell>',
     ));
     expect(losses).toEqual([
-      '“A”: rotation was dropped',
       'connector “nowhere”: it has a loose end, so it was left out',
-      'connector 1: its bends are re-routed',
+      '1 right-angle connector is re-routed, so its bends may move',
     ]);
+  });
+
+  it('turns shapes about their centre, lets unwrapped labels spill as draw.io does, and names each unknown shape once', async () => {
+    const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
+    const { document, losses } = await open(model(
+      '<mxCell id="bar" value="80x40" style="shape=rect;rotation=270;" vertex="1" parent="1"><mxGeometry x="100" y="100" width="200" height="40" as="geometry"/></mxCell>'
+      + '<mxCell id="t" value="Desired &#xa;functionality" style="text;align=center" vertex="1" parent="1"><mxGeometry x="100" y="300" width="30" height="20" as="geometry"/></mxCell>'
+      + '<mxCell id="w" value="Wrapped text" style="text;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="30" height="20" as="geometry"/></mxCell>'
+      + '<mxCell id="c1" style="shape=mxgraph.cabinets.cb_1p;" vertex="1" parent="1"><mxGeometry width="10" height="10" as="geometry"/></mxCell>'
+      + '<mxCell id="c2" style="shape=mxgraph.cabinets.cb_1p;" vertex="1" parent="1"><mxGeometry width="10" height="10" as="geometry"/></mxCell>',
+    ));
+    const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
+    const bar = byId.get('bar')!;
+    expect(bar).toMatchObject({ content: { shape: 'rectangle' }, size: { width: 200, height: 40 } });
+    expect(bar.transform.rotationRadians).toBeCloseTo((3 * Math.PI) / 2);
+    // Its centre stays at (200, 120): the corner, turned 270°, sits at (180, 220).
+    expect(bar.transform.translation.x).toBeCloseTo(180);
+    expect(bar.transform.translation.y).toBeCloseTo(220);
+    // A tiny text cell grows to its words around the same centre, at draw.io's 12px.
+    const text = byId.get('t')!;
+    expect(text).toMatchObject({ kind: 'text', content: { label: 'Desired \nfunctionality', fontSize: 12 } });
+    expect(text.size.width).toBeGreaterThan(60);
+    expect(text.transform.translation.x + text.size.width / 2).toBeCloseTo(115);
+    // A wrapping one keeps its width unless a single word is wider.
+    expect(byId.get('w')!.size.width).toBeGreaterThan(30);
+    expect(byId.get('w')!.size.width).toBeLessThan(text.size.width);
+    expect(losses).toEqual(['draw.io’s “mxgraph.cabinets.cb_1p” shape is drawn as a box (2 shapes)']);
   });
 
   it('refuses what it cannot read, saying why', async () => {
