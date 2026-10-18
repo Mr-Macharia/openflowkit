@@ -5,12 +5,13 @@ import {
   type ConnectorEndpoint, type ConnectorLabel, type SceneConnector, type SceneDocumentV1, type SceneLayer, type SceneNode, type ScenePage,
 } from '../../opencanvas/domain/document/types';
 import type { Point2d } from '../../opencanvas/domain/geometry/types';
+import { createImageNode } from '../../opencanvas/domain/nodes/imageNode';
 import { createShapeNode } from '../../opencanvas/domain/nodes/shapeNode';
 import { measurePortableText } from '../../opencanvas/domain/text/measurement';
 import { DEFAULT_NODE_SIZING_POLICY } from '../../opencanvas/domain/node-sizing/model';
 import { validateSceneDocumentV1 } from '../../opencanvas/domain/document/validation';
 import {
-  drawioColor, drawioConnectorAppearance, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle, type DrawioStyle,
+  drawioColor, drawioConnectorAppearance, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle, type DrawioStyle,
 } from './drawioStyle';
 import { parseXml, type XmlElement } from './xmlReader';
 
@@ -164,6 +165,8 @@ class PageBuilder {
   /** draw.io shape name → how many cells of it became a box, said once per name. */
   private readonly unknownShapes = new Map<string, number>();
   private rerouted = 0;
+  /** Pictures from draw.io's own image library: only its servers have them. */
+  private libraryImages = 0;
 
   constructor(cells: readonly Cell[], private readonly loss: (message: string) => void) {
     for (const cell of cells) this.cells.set(cell.id, cell);
@@ -182,6 +185,9 @@ class PageBuilder {
     for (const layer of layerCells) this.addChildren(layer.id, null, `layer:${layer.id}`);
     for (const cell of this.cells.values()) if (cell.edge) this.addConnector(cell);
     if (this.rerouted) this.loss(this.rerouted === 1 ? '1 right-angle connector is re-routed, so its bends may move' : `${this.rerouted} right-angle connectors are re-routed, so their bends may move`);
+    if (this.libraryImages) {
+      this.loss(`${this.libraryImages === 1 ? '1 picture comes' : `${this.libraryImages} pictures come`} from draw.io’s own image library, so ${this.libraryImages === 1 ? 'it is' : 'they are'} drawn as a box`);
+    }
     for (const [name, count] of this.unknownShapes) {
       this.loss(`draw.io’s “${name}” shape is drawn as a box${count > 1 ? ` (${count} shapes)` : ''}`);
     }
@@ -222,7 +228,8 @@ class PageBuilder {
     const rotation = ((num(style.rotation) + turn) * Math.PI) / 180;
     const translation = rotation ? turnedCorner(at.x, at.y, width, height, rotation) : at;
     const transform = { translation, rotationRadians: rotation, scale: { x: 1, y: 1 } };
-    if (name === 'image' || style.image) this.loss(`“${this.labelOf(cell)}”: images don’t come across; it is drawn as a box`);
+    const imageUrl = drawioImageUrl(style);
+    if ((name === 'image' || style.image) && !imageUrl) this.libraryImages += 1;
     if (CONTAINER_KIND[name] || style.container === '1' || hasChildren) {
       this.nodes.push({
         id: cell.id, kind: CONTAINER_KIND[name] ?? 'section', ...base,
@@ -234,14 +241,20 @@ class PageBuilder {
       });
     } else {
       const shape = drawioShape(style, width, height);
-      if (shape.unknown && name !== 'image') this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
-      if (shape.kind === 'text') { this.addText(cell, label, base, rotation); return; }
-      // A label set outside its shape (a checkbox's beside it, an icon's below) becomes its own text there.
-      const outside = OUTSIDE[style.labelPosition ?? ''] ?? OUTSIDE[`v-${style.verticalLabelPosition ?? ''}`] ?? null;
-      const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at, size: { width, height }, label: outside ? '' : label, appearance: drawioNodeAppearance(style) });
-      // Without `whiteSpace=wrap` draw.io lets a label run past its box; the fixed policy draws it the same way.
-      const content = style.whiteSpace === 'wrap' ? node.content : { ...node.content, sizingPolicy: SPILL };
-      this.nodes.push({ ...node, ...base, transform, content });
+      if (shape.unknown && name !== 'image' && !imageUrl) this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
+      if (shape.kind === 'text' && !imageUrl) { this.addText(cell, label, base, rotation); return; }
+      // A label set outside its shape (a checkbox's beside it, an icon's below) becomes its own text there;
+      // a picture's always does, since our image node draws no label.
+      const outside = OUTSIDE[style.labelPosition ?? ''] ?? OUTSIDE[`v-${style.verticalLabelPosition ?? ''}`]
+        ?? (imageUrl && label ? OUTSIDE['v-bottom']! : null);
+      if (imageUrl) {
+        this.nodes.push({ ...createImageNode(page, { id: cell.id, at, size: { width, height }, label: label || 'Image', url: imageUrl }), ...base, transform });
+      } else {
+        const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at, size: { width, height }, label: outside ? '' : label, appearance: drawioNodeAppearance(style) });
+        // Without `whiteSpace=wrap` draw.io lets a label run past its box; the fixed policy draws it the same way.
+        const content = style.whiteSpace === 'wrap' ? node.content : { ...node.content, sizingPolicy: SPILL };
+        this.nodes.push({ ...node, ...base, transform, content });
+      }
       if (outside && label) {
         const gap = num(style.spacing, 2) + num(style[outside.spacing]);
         const box = { ...geometry, x, y, width, height, relative: false };

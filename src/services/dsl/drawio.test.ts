@@ -155,6 +155,20 @@ describe('drawioToDocument', () => {
     expect(under.transform.translation.y).toBeCloseTo(342);
   });
 
+  it('brings pictures across as images, and says which ones only draw.io has', async () => {
+    const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
+    const { document, losses } = await open(model(
+      '<mxCell id="logo" value="Logo" style="shape=image;image=data:image/svg+xml,PHN2Zy8+;verticalLabelPosition=bottom;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="40" height="40" as="geometry"/></mxCell>'
+      + '<mxCell id="lib" style="image;image=img/lib/ibm/vpc/Router.svg;" vertex="1" parent="1"><mxGeometry x="100" y="10" width="40" height="40" as="geometry"/></mxCell>'
+      + '<mxCell id="lib2" style="image;image=img/lib/clip_art/Cloud.svg;" vertex="1" parent="1"><mxGeometry x="200" y="10" width="40" height="40" as="geometry"/></mxCell>',
+    ));
+    const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
+    expect(byId.get('logo')).toMatchObject({ kind: 'image', content: { imageUrl: 'data:image/svg+xml;base64,PHN2Zy8+' } });
+    expect(byId.get('logo:label')).toMatchObject({ kind: 'text', content: { label: 'Logo' } });
+    expect(byId.get('lib')).toMatchObject({ content: { shape: 'rectangle' } });
+    expect(losses).toEqual(['2 pictures come from draw.io’s own image library, so they are drawn as a box']);
+  });
+
   it('refuses what it cannot read, saying why', async () => {
     expect(await drawioToDocument('<mxfile><diagram>', 'doc', NOW)).toEqual({ error: 'It isn’t a readable draw.io file (<diagram> is never closed).' });
     expect(await drawioToDocument('<mxfile></mxfile>', 'doc', NOW)).toEqual({ error: 'It has no draw.io pages in it.' });

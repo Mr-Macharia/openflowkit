@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  drawioColor, drawioConnectorAppearance, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle,
+  drawioColor, drawioConnectorAppearance, drawioImageUrl, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle,
 } from './drawioStyle';
 
 describe('draw.io styles', () => {
@@ -20,7 +20,20 @@ describe('draw.io styles', () => {
     expect(shape('shape=mxgraph.bootstrap.rrect;')).toEqual({ kind: 'rounded' });
     expect(shape('shape=mxgraph.bootstrap.checkbox;')).toEqual({ kind: 'rectangle' });
     expect(shape('text;')).toEqual({ kind: 'text' });
+    expect(shape('shape=mxgraph.flowchart.decision;')).toEqual({ kind: 'diamond' });
+    expect(shape('shape=mxgraph.flowchart.on-page_reference;')).toEqual({ kind: 'circle' });
     expect(shape('shape=mxgraph.aws4.lambda_function;')).toEqual({ kind: 'rectangle', unknown: 'mxgraph.aws4.lambda_function' });
+  });
+
+  it('finds the picture a cell shows, if a browser can load it', () => {
+    const image = (value: string) => drawioImageUrl(parseDrawioStyle(`shape=image;image=${value}`));
+    // A style can't hold `;`, so draw.io leaves `;base64` off embedded pictures; a browser needs it back.
+    expect(image('data:image/svg+xml,PHN2Zy8+')).toBe('data:image/svg+xml;base64,PHN2Zy8+');
+    expect(image('data:image/png,iVBOR')).toBe('data:image/png;base64,iVBOR');
+    expect(image('data:image/svg+xml,%3Csvg%2F%3E')).toBe('data:image/svg+xml,%3Csvg%2F%3E');
+    expect(image('https://example.com/a.png')).toBe('https://example.com/a.png');
+    expect(image('img/lib/ibm/vpc/Router.svg')).toBeNull();
+    expect(drawioImageUrl({})).toBeNull();
   });
 
   it('keeps hex colours, makes none transparent, and drops the rest', () => {

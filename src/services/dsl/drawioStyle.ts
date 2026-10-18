@@ -38,6 +38,15 @@ const SHAPES: Readonly<Record<string, ShapeKind>> = {
   // draw.io's Bootstrap wireframe set: plain and rounded boxes, a bare label, form controls.
   mxgraph_bootstrap_rect: 'rectangle', mxgraph_bootstrap_rrect: 'rounded', mxgraph_bootstrap_anchor: 'rectangle',
   mxgraph_bootstrap_checkbox: 'rectangle', mxgraph_bootstrap_radioButton: 'circle',
+  // draw.io's flowchart, basic and arrow sets repeat shapes we have under other names.
+  mxgraph_flowchart_process: 'rectangle', mxgraph_flowchart_predefined_process: 'rectangle',
+  mxgraph_flowchart_decision: 'diamond', mxgraph_flowchart_terminator: 'capsule', mxgraph_flowchart_data: 'parallelogram',
+  mxgraph_flowchart_document: 'document', 'mxgraph_flowchart_on-page_reference': 'circle',
+  mxgraph_flowchart_start_1: 'ellipse', mxgraph_flowchart_start_2: 'circle',
+  mxgraph_basic_star: 'star', mxgraph_basic_octagon: 'octagon',
+  mxgraph_basic_oval_callout: 'speech-bubble', mxgraph_basic_roundRectCallout: 'speech-bubble',
+  mxgraph_basic_rectCallout: 'speech-bubble', mxgraph_basic_rounded_rectangular_callout: 'speech-bubble',
+  mxgraph_arrows2_arrow: 'arrow-right', mxgraph_arrows2_stylisedArrow: 'arrow-right',
 };
 
 /** Shapes draw.io draws with no outline and no fill: only their label shows. */
@@ -52,6 +61,21 @@ export function drawioShape(style: DrawioStyle, width: number, height: number): 
   if (kind === 'rectangle' && style.rounded === '1') return { kind: 'rounded' };
   if (kind === 'ellipse' && Math.abs(width - height) < 1) return { kind: 'circle' };
   return { kind };
+}
+
+/**
+ * The picture a cell shows, as a URL our image node can load: one embedded in the file or on the web.
+ * draw.io writes embedded pictures as `data:image/svg+xml,<base64>`, without the `;base64` a browser needs.
+ * A picture from draw.io's own library (`img/lib/…`) is only on draw.io's servers, so it is null.
+ */
+export function drawioImageUrl(style: DrawioStyle): string | null {
+  const value = style.image;
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  const embedded = /^data:(image\/[a-z0-9.+-]+)(;base64)?,(.*)$/is.exec(value);
+  if (!embedded) return null;
+  const [, type, base64, data] = embedded;
+  return base64 || !/^[A-Za-z0-9+/=\s]+$/.test(data!) ? value : `data:${type};base64,${data}`;
 }
 
 /** `#AbC` / `#aabbcc` as our lower-case hex; `none` is transparent; draw.io's `default` and anything else is unset. */
