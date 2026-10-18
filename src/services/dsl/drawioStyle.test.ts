@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import {
+  drawioColor, drawioConnectorAppearance, drawioLabel, drawioNodeAppearance, drawioShape, drawioShapeName, parseDrawioStyle,
+} from './drawioStyle';
+
+describe('draw.io styles', () => {
+  it('reads a style string, a bare word being the base shape', () => {
+    const style = parseDrawioStyle('ellipse;fillColor=#FFF;;whiteSpace=wrap');
+    expect(style).toEqual({ ellipse: '', fillColor: '#FFF', whiteSpace: 'wrap' });
+    expect(drawioShapeName(style)).toBe('ellipse');
+    expect(drawioShapeName(parseDrawioStyle('rounded=1;shape=cylinder3'))).toBe('cylinder3');
+  });
+
+  it('turns draw.io shapes into ours, and names the ones it cannot', () => {
+    const shape = (style: string, width = 80, height = 40) => drawioShape(parseDrawioStyle(style), width, height);
+    expect(shape('rounded=1;')).toEqual({ kind: 'rounded' });
+    expect(shape('shape=rect;')).toEqual({ kind: 'rectangle' });
+    expect(shape('rhombus;')).toEqual({ kind: 'diamond' });
+    expect(shape('ellipse;', 40, 40)).toEqual({ kind: 'circle' });
+    expect(shape('shape=mxgraph.bootstrap.rrect;')).toEqual({ kind: 'rounded' });
+    expect(shape('shape=mxgraph.bootstrap.checkbox;')).toEqual({ kind: 'rectangle' });
+    expect(shape('text;')).toEqual({ kind: 'text' });
+    expect(shape('shape=mxgraph.aws4.lambda_function;')).toEqual({ kind: 'rectangle', unknown: 'mxgraph.aws4.lambda_function' });
+  });
+
+  it('keeps hex colours, makes none transparent, and drops the rest', () => {
+    expect(drawioColor('#AbC')).toBe('#abc');
+    expect(drawioColor('none')).toBe('transparent');
+    expect(drawioColor('default')).toBeUndefined();
+    expect(drawioColor(undefined)).toBeUndefined();
+  });
+
+  it('carries paint, type and label placement; unset paint is left to the theme', () => {
+    expect(drawioNodeAppearance(parseDrawioStyle('fillColor=#dae8fc;fontStyle=3;fontSize=16;dashed=1;opacity=50'))).toEqual({
+      fill: '#dae8fc', fontWeight: 700, fontStyle: 'italic', fontSize: 16, strokeStyle: 'dashed', opacity: 0.5, textPadding: 2,
+    });
+    expect(drawioNodeAppearance(parseDrawioStyle('align=left;spacingLeft=10;verticalAlign=top'))).toEqual({
+      textAlign: 'start', textVerticalAlign: 'top', textPadding: 12,
+    });
+    // A centred label's one-sided spacing doesn't squeeze it from both sides.
+    expect(drawioNodeAppearance(parseDrawioStyle('spacingRight=30')).textPadding).toBe(2);
+    expect(drawioNodeAppearance(parseDrawioStyle('shape=mxgraph.bootstrap.anchor;fillColor=#fff'))).toMatchObject({ fill: 'transparent', stroke: 'transparent' });
+  });
+
+  it('gives edges draw.io’s arrow unless told otherwise', () => {
+    expect(drawioConnectorAppearance({})).toEqual({ markerEnd: 'arrow' });
+    expect(drawioConnectorAppearance(parseDrawioStyle('endArrow=none;startArrow=oval;dashed=1;strokeColor=#f00'))).toEqual({
+      markerStart: 'circle', dashPattern: 'dashed', stroke: '#f00',
+    });
+  });
+
+  it('reads an html label as plain text with its line breaks', () => {
+    const html = parseDrawioStyle('html=1');
+    expect(drawioLabel('<b>Take</b><br>pay&amp;ment&nbsp;now', html)).toBe('Take\npay&ment now');
+    expect(drawioLabel('<p>One</p><p>Two</p>', html)).toBe('One\nTwo');
+    expect(drawioLabel('  <b>as written</b> ', {})).toBe('<b>as written</b>');
+  });
+});

@@ -36,6 +36,9 @@ interface Geometry {
   readonly points: readonly Point2d[];
   readonly sourcePoint: Point2d | null;
   readonly targetPoint: Point2d | null;
+  /** A vertex placed by fractions of its parent's size (x 1, y 0.5 = right edge, halfway down), then `offset`. */
+  readonly relative: boolean;
+  readonly offset: Point2d;
 }
 
 interface Cell {
@@ -65,11 +68,14 @@ function readGeometry(element: XmlElement | undefined): Geometry | null {
   const source = named('sourcePoint');
   const target = named('targetPoint');
   const points = element.children.find((child) => child.name === 'Array' && child.attributes.as === 'points');
+  const offset = named('offset');
   return {
     x: num(attributes.x), y: num(attributes.y), width: num(attributes.width), height: num(attributes.height),
     points: points ? points.children.filter((child) => child.name === 'mxPoint').map(pointOf) : [],
     sourcePoint: source ? pointOf(source) : null,
     targetPoint: target ? pointOf(target) : null,
+    relative: attributes.relative === '1',
+    offset: offset ? pointOf(offset) : { x: 0, y: 0 },
   };
 }
 
@@ -128,6 +134,9 @@ const { minSize, maxSize } = DEFAULT_NODE_SIZING_POLICY;
 /** The app's default sizing policy, spelt out as JSON: a fixed box whose label is not wrapped. */
 const SPILL: JsonObject = { ...DEFAULT_NODE_SIZING_POLICY, minSize: { ...minSize }, maxSize: { ...maxSize } };
 
+/** Degrees our north-pointing triangle turns to point where draw.io's `direction` says. */
+const TRIANGLE_TURN: Readonly<Record<string, number>> = { north: 0, east: 90, south: 180, west: 270 };
+
 const CONTAINER_KIND: Readonly<Record<string, string>> = { swimlane: 'swimlane', group: 'group', table: 'section' };
 
 class PageBuilder {
@@ -182,15 +191,20 @@ class PageBuilder {
     const style = cell.style;
     const name = drawioShapeName(style);
     const label = drawioLabel(cell.value, style);
-    const { x, y } = geometry;
-    const width = Math.max(1, geometry.width || 120);
-    const height = Math.max(1, geometry.height || 60);
+    const { x, y } = this.placed(cell, geometry);
+    let width = Math.max(1, geometry.width || 120);
+    let height = Math.max(1, geometry.height || 60);
     const hasChildren = this.childrenOf(cell.id).some((child) => child.vertex);
     const page: ScenePage = { id: '', name: '', diagramKind: 'flowchart', layers: this.layers, nodes: this.nodes, connectors: [], metadata: {}, extensions: {} };
     const base = { parentId, layerId, zIndex: this.nodes.length };
     // draw.io turns a shape about its centre; ours turn about the top-left corner, so the corner moves.
-    const rotation = (num(style.rotation) * Math.PI) / 180;
-    const translation = rotation ? turnedCorner(x, y, width, height, rotation) : { x, y };
+    // draw.io's triangle points east unless `direction` says otherwise; ours points north. Turning it east or
+    // west turns its box too, so the box is drawn upright with the sides swapped.
+    const turn = name === 'triangle' ? TRIANGLE_TURN[style.direction ?? 'east'] ?? 90 : 0;
+    if (turn % 180 !== 0) [width, height] = [height, width];
+    const at = turn % 180 !== 0 ? { x: x + (height - width) / 2, y: y + (width - height) / 2 } : { x, y };
+    const rotation = ((num(style.rotation) + turn) * Math.PI) / 180;
+    const translation = rotation ? turnedCorner(at.x, at.y, width, height, rotation) : at;
     const transform = { translation, rotationRadians: rotation, scale: { x: 1, y: 1 } };
     if (name === 'image' || style.image) this.loss(`“${this.labelOf(cell)}”: images don’t come across; it is drawn as a box`);
     if (CONTAINER_KIND[name] || style.container === '1' || hasChildren) {
@@ -206,10 +220,18 @@ class PageBuilder {
       const shape = drawioShape(style, width, height);
       if (shape.unknown && name !== 'image') this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
       if (shape.kind === 'text') { this.addText(cell, label, base, rotation); return; }
-      const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at: { x, y }, size: { width, height }, label, appearance: drawioNodeAppearance(style) });
+      // A label set beside its shape (a checkbox's) becomes its own text, left of or right of the box.
+      const beside = style.labelPosition === 'right' || style.labelPosition === 'left' ? style.labelPosition : null;
+      const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at, size: { width, height }, label: beside ? '' : label, appearance: drawioNodeAppearance(style) });
       // Without `whiteSpace=wrap` draw.io lets a label run past its box; the fixed policy draws it the same way.
       const content = style.whiteSpace === 'wrap' ? node.content : { ...node.content, sizingPolicy: SPILL };
       this.nodes.push({ ...node, ...base, transform, content });
+      if (beside && label) {
+        const gap = num(style.spacingLeft) + num(style.spacing, 2);
+        const words = { ...geometry, y, height, width: 1, relative: false };
+        const anchor = beside === 'right' ? { ...words, x: x + width + gap } : { ...words, x: x - gap - 1 };
+        this.addText({ ...cell, id: `${cell.id}:label`, geometry: anchor, style: { ...style, align: beside === 'right' ? 'left' : 'right', whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
+      }
     }
     this.nodeIds.add(cell.id);
     this.addChildren(cell.id, cell.id, layerId);
@@ -226,7 +248,7 @@ class PageBuilder {
     const fontWeight = (num(style.fontStyle) & 1) ? 700 : 500;
     const measure = (text: string) => measurePortableText(text, { fontSize, fontWeight, overflow: 'visible' });
     const measured = measure(label);
-    const box = geometry!;
+    const box = { ...geometry!, ...this.placed(cell, geometry!) };
     // Wrapped text still never splits a word in draw.io: the box is at least its longest word wide.
     const widest = style.whiteSpace === 'wrap' ? Math.max(...label.split(/\s+/).map((word) => measure(word).width)) : measured.width;
     // A text node wraps 8px inside each side. ponytail: the portable measure runs a few percent under the
@@ -250,6 +272,16 @@ class PageBuilder {
     this.nodeIds.add(cell.id);
   }
 
+  /** A vertex's top-left in its parent's space: relative ones are fractions of the parent's size plus an offset. */
+  private placed(cell: Cell, geometry: Geometry): Point2d {
+    if (!geometry.relative) return { x: geometry.x, y: geometry.y };
+    const parent = cell.parent ? this.cells.get(cell.parent)?.geometry : undefined;
+    return {
+      x: geometry.x * (parent?.width ?? 0) + geometry.offset.x,
+      y: geometry.y * (parent?.height ?? 0) + geometry.offset.y,
+    };
+  }
+
   /** Where a cell's own coordinates start on the page: the sum of its container vertices' positions. */
   private originOf(cellId: string | null): Point2d {
     let x = 0;
@@ -260,8 +292,9 @@ class PageBuilder {
       seen.add(id);
       const cell = this.cells.get(id);
       if (!cell?.vertex || !cell.geometry) break;
-      x += cell.geometry.x;
-      y += cell.geometry.y;
+      const at = this.placed(cell, cell.geometry);
+      x += at.x;
+      y += at.y;
       id = cell.parent;
     }
     return { x, y };

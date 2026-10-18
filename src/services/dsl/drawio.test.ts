@@ -125,6 +125,30 @@ describe('drawioToDocument', () => {
     expect(losses).toEqual(['draw.io’s “mxgraph.cabinets.cb_1p” shape is drawn as a box (2 shapes)']);
   });
 
+  it('places wireframe parts as draw.io does: by fraction of their parent, carets by direction, checkbox labels beside', async () => {
+    const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
+    const { document } = await open(model(
+      '<mxCell id="tab" value="People" style="shape=mxgraph.bootstrap.rect;" vertex="1" parent="1"><mxGeometry x="100" y="0" width="120" height="40" as="geometry"/></mxCell>'
+      + '<mxCell id="badge" value="84" style="shape=mxgraph.bootstrap.rrect;" vertex="1" parent="tab"><mxGeometry x="1" y="0.5" width="25" height="16" relative="1" as="geometry"><mxPoint x="-30" y="-8" as="offset"/></mxGeometry></mxCell>'
+      + '<mxCell id="caret" style="shape=triangle;direction=south;" vertex="1" parent="1"><mxGeometry x="10" y="100" width="10" height="5" as="geometry"/></mxCell>'
+      + '<mxCell id="play" style="triangle;" vertex="1" parent="1"><mxGeometry x="10" y="200" width="10" height="20" as="geometry"/></mxCell>'
+      + '<mxCell id="box" value="Top Management" style="shape=mxgraph.bootstrap.checkbox;labelPosition=right;align=left;spacingLeft=5;" vertex="1" parent="1"><mxGeometry x="70" y="300" width="14" height="14" as="geometry"/></mxCell>',
+    ));
+    const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
+    // x 1, y 0.5 of a 120×40 tab, then the offset: (120 - 30, 20 - 8), in the tab's own space.
+    expect(byId.get('badge')).toMatchObject({ parentId: 'tab', transform: { translation: { x: 90, y: 12 } } });
+    expect(byId.get('caret')!.transform.rotationRadians).toBeCloseTo(Math.PI);
+    expect(byId.get('caret')!.size).toEqual({ width: 10, height: 5 });
+    // draw.io's default triangle points east: ours, turned a quarter, in a box with its sides swapped.
+    const play = byId.get('play')!;
+    expect(play.size).toEqual({ width: 20, height: 10 });
+    expect(play.transform.rotationRadians).toBeCloseTo(Math.PI / 2);
+    expect(byId.get('box')).toMatchObject({ content: { label: '' }, size: { width: 14, height: 14 } });
+    const label = byId.get('box:label')!;
+    expect(label).toMatchObject({ kind: 'text', content: { label: 'Top Management' } });
+    expect(label.transform.translation.x).toBeCloseTo(70 + 14 + 7);
+  });
+
   it('refuses what it cannot read, saying why', async () => {
     expect(await drawioToDocument('<mxfile><diagram>', 'doc', NOW)).toEqual({ error: 'It isn’t a readable draw.io file (<diagram> is never closed).' });
     expect(await drawioToDocument('<mxfile></mxfile>', 'doc', NOW)).toEqual({ error: 'It has no draw.io pages in it.' });

@@ -35,7 +35,13 @@ const SHAPES: Readonly<Record<string, ShapeKind>> = {
   cloud: 'cloud', document: 'document', umlActor: 'actor', actor: 'actor', step: 'chevron',
   note: 'page', folder: 'folder', cube: 'cube', star: 'star', callout: 'speech-bubble',
   cross: 'plus', singleArrow: 'arrow-right', mxgraph_basic_heart: 'heart',
+  // draw.io's Bootstrap wireframe set: plain and rounded boxes, a bare label, form controls.
+  mxgraph_bootstrap_rect: 'rectangle', mxgraph_bootstrap_rrect: 'rounded', mxgraph_bootstrap_anchor: 'rectangle',
+  mxgraph_bootstrap_checkbox: 'rectangle', mxgraph_bootstrap_radioButton: 'circle',
 };
+
+/** Shapes draw.io draws with no outline and no fill: only their label shows. */
+const BARE = new Set(['mxgraph.bootstrap.anchor']);
 
 /** The library shape a draw.io vertex becomes, and its own name when it had to become a box. */
 export function drawioShape(style: DrawioStyle, width: number, height: number): { readonly kind: ShapeKind; readonly unknown?: string } {
@@ -64,12 +70,22 @@ const finite = (value: string | undefined): number | undefined => {
 /** Paint and type a vertex carries, in our appearance keys; unset keys are left out so the app's defaults apply. */
 export function drawioNodeAppearance(style: DrawioStyle): JsonObject {
   const appearance: Record<string, string | number> = {};
-  const fill = drawioColor(style.fillColor);
-  const stroke = drawioColor(style.strokeColor);
+  // Paint the cell doesn't set is left to the theme, which pairs fill and ink in light and dark alike.
+  const bare = BARE.has(drawioShapeName(style));
+  const fill = bare ? 'transparent' : drawioColor(style.fillColor);
+  const stroke = bare ? 'transparent' : drawioColor(style.strokeColor);
   const text = drawioColor(style.fontColor);
   if (fill) appearance.fill = fill;
   if (stroke) appearance.stroke = stroke;
   if (text && text !== 'transparent') appearance.textColor = text;
+  if (style.align === 'left') appearance.textAlign = 'start';
+  if (style.align === 'right') appearance.textAlign = 'end';
+  if (style.verticalAlign === 'top' || style.verticalAlign === 'bottom') appearance.textVerticalAlign = style.verticalAlign;
+  // draw.io insets a label by `spacing` (2) plus each side's own; ours has one inset for every side, so it takes
+  // the side the label is set against (a centred label's one-sided `spacingRight` would squeeze it from both).
+  const side = style.align === 'left' ? finite(style.spacingLeft) : style.align === 'right' ? finite(style.spacingRight) : 0;
+  const inset = (finite(style.spacing) ?? 2) + (side ?? 0);
+  appearance.textPadding = Math.min(32, Math.max(0, inset));
   const strokeWidth = finite(style.strokeWidth);
   if (strokeWidth !== undefined) appearance.strokeWidth = strokeWidth;
   const fontSize = finite(style.fontSize);
