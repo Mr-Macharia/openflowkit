@@ -125,14 +125,15 @@ describe('drawioToDocument', () => {
     expect(losses).toEqual(['draw.io’s “mxgraph.cabinets.cb_1p” shape is drawn as a box (2 shapes)']);
   });
 
-  it('places wireframe parts as draw.io does: by fraction of their parent, carets by direction, checkbox labels beside', async () => {
+  it('places wireframe parts as draw.io does: by fraction of their parent, carets by direction, checkbox labels beside, icon labels below', async () => {
     const model = (cells: string) => `<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel>`;
     const { document } = await open(model(
       '<mxCell id="tab" value="People" style="shape=mxgraph.bootstrap.rect;" vertex="1" parent="1"><mxGeometry x="100" y="0" width="120" height="40" as="geometry"/></mxCell>'
       + '<mxCell id="badge" value="84" style="shape=mxgraph.bootstrap.rrect;" vertex="1" parent="tab"><mxGeometry x="1" y="0.5" width="25" height="16" relative="1" as="geometry"><mxPoint x="-30" y="-8" as="offset"/></mxGeometry></mxCell>'
       + '<mxCell id="caret" style="shape=triangle;direction=south;" vertex="1" parent="1"><mxGeometry x="10" y="100" width="10" height="5" as="geometry"/></mxCell>'
       + '<mxCell id="play" style="triangle;" vertex="1" parent="1"><mxGeometry x="10" y="200" width="10" height="20" as="geometry"/></mxCell>'
-      + '<mxCell id="box" value="Top Management" style="shape=mxgraph.bootstrap.checkbox;labelPosition=right;align=left;spacingLeft=5;" vertex="1" parent="1"><mxGeometry x="70" y="300" width="14" height="14" as="geometry"/></mxCell>',
+      + '<mxCell id="box" value="Top Management" style="shape=mxgraph.bootstrap.checkbox;labelPosition=right;align=left;spacingLeft=5;" vertex="1" parent="1"><mxGeometry x="70" y="300" width="14" height="14" as="geometry"/></mxCell>'
+      + '<mxCell id="icon" value="Finance" style="ellipse;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="300" y="300" width="40" height="40" as="geometry"/></mxCell>',
     ));
     const byId = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
     // x 1, y 0.5 of a 120×40 tab, then the offset: (120 - 30, 20 - 8), in the tab's own space.
@@ -147,6 +148,11 @@ describe('drawioToDocument', () => {
     const label = byId.get('box:label')!;
     expect(label).toMatchObject({ kind: 'text', content: { label: 'Top Management' } });
     expect(label.transform.translation.x).toBeCloseTo(70 + 14 + 7);
+    // An icon's label below it: centred under the icon, its top just past the icon's bottom.
+    const under = byId.get('icon:label')!;
+    expect(byId.get('icon')!.content.label).toBe('');
+    expect(under.transform.translation.x + under.size.width / 2).toBeCloseTo(320);
+    expect(under.transform.translation.y).toBeCloseTo(342);
   });
 
   it('refuses what it cannot read, saying why', async () => {

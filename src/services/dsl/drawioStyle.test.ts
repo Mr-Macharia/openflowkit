@@ -53,6 +53,8 @@ describe('draw.io styles', () => {
     const html = parseDrawioStyle('html=1');
     expect(drawioLabel('<b>Take</b><br>pay&amp;ment&nbsp;now', html)).toBe('Take\npay&ment now');
     expect(drawioLabel('<p>One</p><p>Two</p>', html)).toBe('One\nTwo');
+    expect(drawioLabel('Central<div>Management</div><div>Service</div>', html)).toBe('Central\nManagement\nService');
+    expect(drawioLabel('One<br><br>Two', html)).toBe('One\n\nTwo');
     expect(drawioLabel('  <b>as written</b> ', {})).toBe('<b>as written</b>');
   });
 });

@@ -134,6 +134,22 @@ const { minSize, maxSize } = DEFAULT_NODE_SIZING_POLICY;
 /** The app's default sizing policy, spelt out as JSON: a fixed box whose label is not wrapped. */
 const SPILL: JsonObject = { ...DEFAULT_NODE_SIZING_POLICY, minSize: { ...minSize }, maxSize: { ...maxSize } };
 
+interface Outside {
+  readonly side: 'left' | 'right' | 'top' | 'bottom';
+  /** The style key draw.io widens that gap with. */
+  readonly spacing: string;
+  /** How the words sit against the shape: away from it, centred along it. */
+  readonly style: DrawioStyle;
+}
+
+/** draw.io's `labelPosition` (beside) and `verticalLabelPosition` (above, below; `v-` here) as where our text goes. */
+const OUTSIDE: Readonly<Record<string, Outside>> = {
+  right: { side: 'right', spacing: 'spacingLeft', style: { align: 'left', verticalAlign: 'middle' } },
+  left: { side: 'left', spacing: 'spacingRight', style: { align: 'right', verticalAlign: 'middle' } },
+  'v-bottom': { side: 'bottom', spacing: 'spacingTop', style: { align: 'center', verticalAlign: 'top' } },
+  'v-top': { side: 'top', spacing: 'spacingBottom', style: { align: 'center', verticalAlign: 'bottom' } },
+};
+
 /** Degrees our north-pointing triangle turns to point where draw.io's `direction` says. */
 const TRIANGLE_TURN: Readonly<Record<string, number>> = { north: 0, east: 90, south: 180, west: 270 };
 
@@ -220,17 +236,22 @@ class PageBuilder {
       const shape = drawioShape(style, width, height);
       if (shape.unknown && name !== 'image') this.unknownShapes.set(shape.unknown, (this.unknownShapes.get(shape.unknown) ?? 0) + 1);
       if (shape.kind === 'text') { this.addText(cell, label, base, rotation); return; }
-      // A label set beside its shape (a checkbox's) becomes its own text, left of or right of the box.
-      const beside = style.labelPosition === 'right' || style.labelPosition === 'left' ? style.labelPosition : null;
-      const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at, size: { width, height }, label: beside ? '' : label, appearance: drawioNodeAppearance(style) });
+      // A label set outside its shape (a checkbox's beside it, an icon's below) becomes its own text there.
+      const outside = OUTSIDE[style.labelPosition ?? ''] ?? OUTSIDE[`v-${style.verticalLabelPosition ?? ''}`] ?? null;
+      const node = createShapeNode(page, { kind: shape.kind, id: cell.id, at, size: { width, height }, label: outside ? '' : label, appearance: drawioNodeAppearance(style) });
       // Without `whiteSpace=wrap` draw.io lets a label run past its box; the fixed policy draws it the same way.
       const content = style.whiteSpace === 'wrap' ? node.content : { ...node.content, sizingPolicy: SPILL };
       this.nodes.push({ ...node, ...base, transform, content });
-      if (beside && label) {
-        const gap = num(style.spacingLeft) + num(style.spacing, 2);
-        const words = { ...geometry, y, height, width: 1, relative: false };
-        const anchor = beside === 'right' ? { ...words, x: x + width + gap } : { ...words, x: x - gap - 1 };
-        this.addText({ ...cell, id: `${cell.id}:label`, geometry: anchor, style: { ...style, align: beside === 'right' ? 'left' : 'right', whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
+      if (outside && label) {
+        const gap = num(style.spacing, 2) + num(style[outside.spacing]);
+        const box = { ...geometry, x, y, width, height, relative: false };
+        const anchor = {
+          right: { ...box, x: x + width + gap, width: 1 },
+          left: { ...box, x: x - gap - 1, width: 1 },
+          bottom: { ...box, y: y + height + gap, height: 1 },
+          top: { ...box, y: y - gap - 1, height: 1 },
+        }[outside.side];
+        this.addText({ ...cell, id: `${cell.id}:label`, geometry: anchor, style: { ...style, ...outside.style, whiteSpace: '' } }, label, { ...base, zIndex: this.nodes.length }, 0);
       }
     }
     this.nodeIds.add(cell.id);

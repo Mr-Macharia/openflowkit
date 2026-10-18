@@ -132,9 +132,12 @@ export function drawioConnectorAppearance(style: DrawioStyle): JsonObject {
 export function drawioLabel(value: string | undefined, style: DrawioStyle): string {
   if (!value) return '';
   if (style.html !== '1') return value.trim();
+  // A block (`Global<div>Partnerships</div>`) starts and ends a line: its edges mark a break, and the run of
+  // marks between two blocks is one break. `<br>` is a break of its own, so `<br><br>` keeps its blank line.
   const text = value
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(div|p|li|h[1-6])>/gi, '\n')
-    .replace(/<[^>]*>/g, '');
+    .replace(/<\/?(div|p|li|h[1-6])\b[^>]*>/gi, '\ue000')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\ue000+/g, '\n');
   return decodeEntities(text).replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
