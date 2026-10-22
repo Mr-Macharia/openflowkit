@@ -16,7 +16,7 @@ function drawCard(zoom: number): Container {
   renderer.draw(page, createSceneIndex(page));
   // Map boxes hide their 10 px header text below 60 %; the strip behind it must go too (R19).
   renderer.setLabelVisibility(new Set(['card']), zoom);
-  return renderer.labels.children[0] as Container;
+  return (renderer.labels.children[0] as Container).children[0] as Container;
 }
 
 describe('architecture card header strip', () => {
