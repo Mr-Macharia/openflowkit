@@ -11,7 +11,7 @@ import {
   projectArchitectureNodeVisual,
   type PixiArchitectureNodeVisual,
 } from './architectureNodeVisual';
-import { isSvgUrl, PixiMediaLayer } from './PixiMediaLayer';
+import { isSvgUrl, PixiMediaLayer, type PixiMediaSlot } from './PixiMediaLayer';
 import { inkMonochromeSvg, monochromeIconInk, svgDataUrl, svgFromDataUrl } from '../../domain/nodes/iconInk';
 import { architectureIconBounds, iconCardChrome, iconCardLayout } from '../../domain/nodes/iconCardLayout';
 import type { PixiNodeDebugRecord, PixiMediaState } from './pixiNodeDebug';
@@ -55,8 +55,8 @@ function iconBounds(visual: PixiArchitectureNodeVisual, node: SceneNode) {
 export class PixiArchitectureNodeRenderer {
   private readonly mediaLayer: PixiMediaLayer;
 
-  constructor(private readonly texts: PixiTextPool, onMediaReady: (nodeId: string) => void) {
-    this.mediaLayer = new PixiMediaLayer(onMediaReady);
+  constructor(private readonly texts: PixiTextPool, onMediaReady: (nodeId: string) => void, mediaSlot?: PixiMediaSlot) {
+    this.mediaLayer = new PixiMediaLayer(onMediaReady, mediaSlot);
   }
 
   get media(): Container {

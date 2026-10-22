@@ -8,7 +8,7 @@ import { smoothStroke } from '../../domain/nodes/strokeGeometry';
 import { projectFreeformNodeVisual, type PixiFreeformNodeVisual } from './freeformNodeVisual';
 import { drawPixiNodeOutline } from './pixiNodeOutline';
 import type { PixiNodeDebugRecord } from './pixiNodeDebug';
-import { PixiMediaLayer } from './PixiMediaLayer';
+import { PixiMediaLayer, type PixiMediaSlot } from './PixiMediaLayer';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
 import { createPixiText, decoratePixiText, pixiTextStyle } from './pixiText';
 import { resolveNodeStyle } from '../../domain/nodes/nodeStyle';
@@ -84,9 +84,10 @@ export class PixiFreeformNodeRenderer {
 
   constructor(
     onMediaReady: (nodeId: string) => void,
-    private readonly resolveAsset?: (assetId: string) => Promise<string | null>
+    private readonly resolveAsset?: (assetId: string) => Promise<string | null>,
+    mediaSlot?: PixiMediaSlot
   ) {
-    this.mediaLayer = new PixiMediaLayer(onMediaReady);
+    this.mediaLayer = new PixiMediaLayer(onMediaReady, mediaSlot);
   }
 
   get media(): Container {

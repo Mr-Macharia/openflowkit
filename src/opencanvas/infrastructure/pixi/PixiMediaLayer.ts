@@ -15,6 +15,9 @@ interface PixiMediaLoadRequest {
 
 const loadedTextures = new Map<string, Texture>();
 
+/** Where a node's media is placed and its paint order there; without one, the layer's own container. */
+export type PixiMediaSlot = (nodeId: string) => { readonly container: Container; readonly order: number } | undefined;
+
 /**
  * Pixi's asset resolver brace-expands `{a,b}` in URLs, so a data-URL SVG coloured by
  * CSS (`.cls-1{fill:…}`) loses its braces and paints black. Escape them first.
@@ -49,7 +52,7 @@ export class PixiMediaLayer {
   private generation = 0;
   private readonly loadedNodeIds = new Set<string>();
 
-  constructor(private readonly onReady: (nodeId: string) => void) {}
+  constructor(private readonly onReady: (nodeId: string) => void, private readonly slot?: PixiMediaSlot) {}
 
   beginDraw(): number {
     this.container.removeChildren().forEach((child) => child.destroy({ children: true }));
@@ -98,7 +101,10 @@ export class PixiMediaLayer {
     );
     sprite.alpha = request.opacity ?? 1;
     container.addChild(sprite);
-    this.container.addChild(container);
+    // Loads finish in any order: the slot's container sorts by `zIndex`, so the image keeps its shape's paint order.
+    const slot = this.slot?.(request.nodeId);
+    container.zIndex = slot?.order ?? 0;
+    (slot?.container ?? this.container).addChild(container);
     this.loadedNodeIds.add(request.nodeId);
     this.onReady(request.nodeId);
   }

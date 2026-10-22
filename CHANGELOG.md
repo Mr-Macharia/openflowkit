@@ -35,6 +35,13 @@ separately; its changes are listed under *For developers* in each release.
   into the finished editor, instead of the chrome painting piece by piece.
 - **Edit in model** is no longer offered on a repo map's boxes, which are read from the code.
 
+### Fixed
+
+- **Reorder works on the canvas** ([#92](https://github.com/openflowkit/openflowkit/issues/92)). Bring to front,
+  Send to back and the step versions changed the order but the canvas kept drawing shapes in the order they were made.
+  A shape in front now covers the text and images of the shapes behind it too, overlapping images keep their order
+  whichever loads first, and clicks and exports agree with what you see.
+
 ### For developers: MCP server and CLI 0.2.4 (on npm since 2026-10-13, tag `mcp-v0.2.4`)
 
 - **MCP server and CLI 0.2.4.** Drawn diagrams now show as a card in chat apps that support MCP Apps (Claude, Claude
