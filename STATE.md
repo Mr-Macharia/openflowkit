@@ -34,7 +34,7 @@ the exact engine pin), both plugin manifests, and the `openflowkit@x.y.z` pins (
 
 ## Next
 - PR v2 → main; then release in order: app → MCP Worker (`deploy:remote`, `smoke:remote`) → npm (bump first) →
-  docs/site. Owner calls: bridge token default, canvas relay for claude.ai (log, "decisions"), frame names (#92).
+  docs/site. Owner calls: bridge token default, canvas relay for claude.ai (log, "decisions").
 - Launch week: apply D1 migration 0004 (one usage row per person per day, nightly rollup past 100 days)
   before deploying the share Worker; origin check on `/e`.
 - After launch: npm trusted publishing, Dependabot triage, main ruleset, owner click-through (`npm run e2e:headed` first).
