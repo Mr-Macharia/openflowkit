@@ -82,6 +82,43 @@ test('z-order shortcuts restack the page, front and back included', async ({ pag
   await expect.poll(async () => stackOrder(page)).toEqual([b, c, a]);
 });
 
+// #92: Reorder moved zIndex but the canvas painted in creation order, so nothing changed on screen.
+// Same-style shapes overlapping: only paint order decides whose border shows across the overlap.
+test('Reorder from the menu changes which overlapping shape paints on top', async ({ page }) => {
+  await openCanvas(page);
+  const a = await drawShape(page, 'r', 400, 300);
+  const ra = (await rect(page, a))!;
+  const b = await drawShape(page, 'r', 400 + ra.width / 2, 300 + ra.height / 2);
+  const rb = (await rect(page, b))!;
+  const canvas = (await page.locator('[data-testid="v2-canvas"] canvas').boundingBox())!;
+  const clip = { x: canvas.x + ra.x - 8, y: canvas.y + ra.y - 8, width: rb.x + rb.width - ra.x + 16, height: rb.y + rb.height - ra.y + 16 };
+  const overlap = async () => {
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await state(page)).selectedNodes).toEqual([]);
+    await page.waitForTimeout(200);
+    return page.screenshot({ clip, animations: 'disabled' });
+  };
+  const reorder = async (id: string, item: string) => {
+    const r = (await rect(page, id))!;
+    // A corner only `id` covers, so the right-click lands on it whatever the order.
+    const at = id === a ? { x: r.x + 12, y: r.y + 12 } : { x: r.x + r.width - 12, y: r.y + r.height - 12 };
+    await page.mouse.click(canvas.x + at.x, canvas.y + at.y, { button: 'right' });
+    await expect.poll(async () => (await state(page)).selectedNodes).toEqual([id]);
+    await page.getByRole('menu', { name: 'Canvas actions' }).getByRole('menuitem', { name: 'Reorder', exact: true }).hover();
+    await page.getByRole('menu', { name: 'Reorder', exact: true }).getByRole('menuitem', { name: item }).click();
+  };
+
+  const bInFront = await overlap();
+  await reorder(b, 'Send to back');
+  await expect.poll(async () => stackOrder(page)).toEqual([b, a]);
+  const aInFront = await overlap();
+  expect(aInFront.equals(bInFront)).toBe(false);
+
+  await reorder(b, 'Bring forward');
+  await expect.poll(async () => stackOrder(page)).toEqual([a, b]);
+  expect((await overlap()).equals(bInFront)).toBe(true);
+});
+
 test('flip mirrors a multi-selection about its own bounds', async ({ page }) => {
   await openCanvas(page);
   // Flip needs none or several selected: with one blank shape, Shift+H names it

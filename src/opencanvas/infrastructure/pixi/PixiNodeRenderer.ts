@@ -138,10 +138,12 @@ export class PixiNodeRenderer {
     this.secondaryByNodeId.clear();
     const debugRecords: PixiNodeDebugRecord[] = [];
     const nodeStates = buildNodeStateMap(page);
-    const bands = page.nodes.filter((node) => !isContainerNodeKind(node.kind) && isBackdropNode(node));
-    const participants = page.nodes.filter(isSequenceParticipant);
-    const ordered = bands.length + participants.length === 0 ? page.nodes
-      : [...bands, ...participants, ...page.nodes.filter((node) => !isBackdropNode(node) && !isSequenceParticipant(node))];
+    // Paint order is zIndex (as hit-testing and export use), not array order: Reorder only changes zIndex.
+    const byZ = [...page.nodes].sort((left, right) => left.zIndex - right.zIndex);
+    const bands = byZ.filter((node) => !isContainerNodeKind(node.kind) && isBackdropNode(node));
+    const participants = byZ.filter(isSequenceParticipant);
+    const ordered = bands.length + participants.length === 0 ? byZ
+      : [...bands, ...participants, ...byZ.filter((node) => !isBackdropNode(node) && !isSequenceParticipant(node))];
     for (const node of ordered) {
       if (!nodeStates.get(node.id)?.visible) continue;
       if (renderedNodeIds && !renderedNodeIds.has(node.id)) continue;

@@ -76,7 +76,7 @@ export class PixiContainerRenderer {
     this.labelFontByNodeId.clear();
     const records: PixiNodeDebugRecord[] = [];
     const nodeStates = buildNodeStateMap(page);
-    for (const node of page.nodes) {
+    for (const node of [...page.nodes].sort((left, right) => left.zIndex - right.zIndex)) {
       if (!nodeStates.get(node.id)?.visible) continue;
       if (renderedNodeIds && !renderedNodeIds.has(node.id)) continue;
       const visual = projectContainerNodeVisual(node);
