@@ -1,6 +1,7 @@
 import { isJsonObject } from '../../../opencanvas/domain/document/json';
 import { UNTITLED_DOCUMENT_NAME } from '../../../opencanvas/domain/document/defaults';
 import type { SceneDocumentV1 } from '../../../opencanvas/domain/document/types';
+import { excalidrawToDocument, looksLikeExcalidraw } from '../../dsl/excalidraw';
 import { documentFromFileText } from './openDocumentFile';
 import { isV1Backup, openV1Backup } from './v1Import';
 import type { V2DocumentRepository } from './v2Repository';
@@ -62,6 +63,13 @@ export const MAX_IMPORT_CHARS = 2_000_000;
 const withoutExtension = (name: string) => name.replace(/\.[^.]+$/, '');
 const SOURCE = /\.(mmd|mermaid|d2|dsl|ofk|txt)$/i;
 
+/** "3 things didn’t come across: a; b; c." — the first few, so a toast stays readable. */
+function lossNote(losses: readonly string[]): string {
+  const shown = losses.slice(0, 3).join('; ');
+  const more = losses.length > 3 ? `; and ${losses.length - 3} more` : '';
+  return `${losses.length} ${losses.length === 1 ? 'thing' : 'things'} didn’t come across: ${shown}${more}.`;
+}
+
 /**
  * The one way files open, from Home's Import and the editor's Open file…: our .json (one diagram, a v2 backup, a v1
  * backup) is saved as new diagrams (every file gets fresh ids, so a diagram already here is kept beside its copy);
@@ -94,6 +102,13 @@ export async function importFiles(files: readonly File[], repository: V2Document
   for (const file of files.filter((candidate) => !SOURCE.test(candidate.name))) {
     try {
       const text = await file.text();
+      if (looksLikeExcalidraw(text)) {
+        const imported = excalidrawToDocument(text, mintId());
+        if ('error' in imported) { problems.push(`${file.name}: ${imported.error}`); continue; }
+        if (imported.losses.length) notes.push(`${file.name}: ${lossNote(imported.losses)}`);
+        await save({ ...imported.document, name: withoutExtension(file.name) }, file.name);
+        continue;
+      }
       let parsed: unknown = null;
       try { parsed = JSON.parse(text); } catch { /* documentFromFileText reports it */ }
       if (isV1Backup(parsed)) {

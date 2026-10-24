@@ -6,6 +6,7 @@ import {
   pastePlacement,
   type ProductionClipboardSnapshot,
 } from '../../application/selection/clipboard';
+import { excalidrawScene, readExcalidraw } from '../../../services/dsl/excalidraw';
 import {
   buildAlignCommand, buildDistributeCommand, buildFlipCommand, buildStepOrderCommand,
 } from '../../domain/commands/arrangeNodes';
@@ -35,8 +36,16 @@ const CLIPBOARD_FORMAT = 'openflowkit.selection';
 function parseClipboard(text: string): ProductionClipboardSnapshot | null {
   try {
     const parsed = JSON.parse(text) as ({ format?: string } & ProductionClipboardSnapshot) | null;
-    return parsed?.format === CLIPBOARD_FORMAT && Array.isArray(parsed.nodes) ? parsed : null;
+    return parsed?.format === CLIPBOARD_FORMAT && Array.isArray(parsed.nodes) ? parsed : excalidrawClipboard(text);
   } catch { return null; }
+}
+
+/** Shapes copied in Excalidraw (`excalidraw/clipboard`) paste as ours, where they were drawn relative to each other. */
+function excalidrawClipboard(text: string): ProductionClipboardSnapshot | null {
+  const scene = readExcalidraw(text);
+  if (!scene) return null;
+  const { nodes, connectors } = excalidrawScene(scene, 'layer:default');
+  return { version: 1, nodes, connectors };
 }
 
 interface V2EditActionsOptions {
