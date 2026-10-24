@@ -51,6 +51,8 @@ export function assembleStage(h: PixiRendererHost): void {
     h.nodeRenderer.graphics,
     h.nodeRenderer.media,
     h.nodeRenderer.labels,
+    // Frame and section names stay readable over everything, a frame in front included, as Figma's do (owner, #92).
+    // The SVG export paints each name with its frame instead, so a covered one is hidden there.
     h.containerRenderer.labels,
     h.selectionOverlay.graphics,
     h.transformOverlay.graphics,

@@ -3,7 +3,7 @@ import { createBounds2d } from '../../domain/geometry/bounds';
 import type { SceneNode } from '../../domain/document/types';
 import type { Matrix2d } from '../../domain/geometry/types';
 import type { PixiNodeDebugRecord } from './pixiNodeDebug';
-import { PixiMediaLayer } from './PixiMediaLayer';
+import { PixiMediaLayer, type PixiMediaSlot } from './PixiMediaLayer';
 import { applyPixiNodeMatrix } from './pixiNodeTransform';
 import { createPixiText, truncateTextToWidth } from './pixiText';
 import {
@@ -24,8 +24,8 @@ interface PixiWireframeNodeDrawResult {
 export class PixiWireframeNodeRenderer {
   private readonly mediaLayer: PixiMediaLayer;
 
-  constructor(onMediaReady: (nodeId: string) => void) {
-    this.mediaLayer = new PixiMediaLayer(onMediaReady);
+  constructor(onMediaReady: (nodeId: string) => void, mediaSlot?: PixiMediaSlot) {
+    this.mediaLayer = new PixiMediaLayer(onMediaReady, mediaSlot);
   }
 
   get media(): Container {
