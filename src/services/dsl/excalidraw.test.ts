@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SceneDocumentV1 } from '../../opencanvas/domain/document/types';
 import { excalidrawToDocument, looksLikeExcalidraw, readExcalidraw } from './excalidraw';
+import architecture from './fixtures/excalidraw/architecture.excalidraw?raw';
 
 const NOW = '2026-10-24T00:00:00.000Z';
 
@@ -99,6 +100,20 @@ describe('excalidrawToDocument', () => {
   it('reads the clipboard JSON Excalidraw copies', () => {
     const scene = readExcalidraw(JSON.stringify({ type: 'excalidraw/clipboard', elements: [{ ...base, id: 'x', type: 'rectangle' }], files: {} }));
     expect(scene?.elements).toHaveLength(1);
+  });
+
+  it('opens a real excalidraw.com export as drawn', () => {
+    const { document, losses } = open(architecture);
+    const [page] = document.pages;
+    const labelled = (label: string) => page!.nodes.find((node) => node.content.label === label);
+    // 81 live elements: 8 arrows are connectors, one text is its rectangle's label, the other 72 are nodes.
+    expect(page!.nodes).toHaveLength(72);
+    expect(page!.connectors).toHaveLength(8);
+    expect(labelled('API\nGateway')).toMatchObject({ kind: 'process', content: { shape: 'rounded' }, appearance: { fill: '#15aabf', fontFamily: 'hand' } });
+    expect(labelled('CDN')).toMatchObject({ kind: 'text', content: { fontFamily: 'hand', fontSize: 20 } });
+    const gateway = labelled('API\nGateway')!;
+    expect(page!.connectors.filter((connector) => connector.target.nodeId === gateway.id)).toHaveLength(4);
+    expect(losses).toEqual(['hatched fills are drawn solid (17 times)']);
   });
 
   it('says why it can’t open something', () => {

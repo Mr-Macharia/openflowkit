@@ -8,6 +8,7 @@ import { validateSceneDocumentV1 } from '../../opencanvas/domain/document/valida
 import type { Point2d } from '../../opencanvas/domain/geometry/types';
 import { createImageNode } from '../../opencanvas/domain/nodes/imageNode';
 import { createShapeNode, type ShapeKind } from '../../opencanvas/domain/nodes/shapeNode';
+import { measurePortableText } from '../../opencanvas/domain/text/measurement';
 import {
   excalidrawColor, excalidrawConnectorAppearance, excalidrawFont, excalidrawHead, excalidrawNodeAppearance,
   excalidrawStrokeContent, finite, text, type ExcalidrawElement,
@@ -147,13 +148,18 @@ class SceneBuilder {
     }
     if (type === 'text') {
       const ink = excalidrawColor(element.strokeColor);
-      // Our text node keeps 8px each side clear; Excalidraw's box is exactly its words, so it widens around them.
+      // Excalidraw's box is exactly its words; ours keeps 8px clear each side and draws handwriting in a wider
+      // face, so the box widens about the same centre. ponytail: the margin is guessed — measure the canvas face if words break.
+      const label = text(element.originalText) || text(element.text);
+      const fontSize = finite(element.fontSize, 20);
+      const widest = Math.max(0, ...label.split('\n').map((line) => measurePortableText(line, { fontSize, fontWeight: 400 }).width));
+      const width = Math.max(at.size.width + 16, Math.ceil(widest * (excalidrawFont(element.fontFamily) === 'hand' ? 1.25 : 1.05)) + 20);
       return {
         id: at.id, kind: 'text', parentId: null, layerId: this.layerId, zIndex: 0,
-        transform: { translation: { x: at.at.x - 8, y: at.at.y }, rotationRadians: 0, scale: { x: 1, y: 1 } },
-        size: { width: at.size.width + 16, height: at.size.height },
+        transform: { translation: { x: at.at.x + (at.size.width - width) / 2, y: at.at.y }, rotationRadians: 0, scale: { x: 1, y: 1 } },
+        size: { width, height: at.size.height },
         content: {
-          label: text(element.originalText) || text(element.text), fontSize: finite(element.fontSize, 20),
+          label, fontSize,
           fontFamily: excalidrawFont(element.fontFamily), fontWeight: '400',
           ...(ink && ink !== 'transparent' ? { customColor: ink } : {}),
         },
