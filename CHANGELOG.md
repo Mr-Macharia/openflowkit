@@ -11,11 +11,8 @@ separately; its changes are listed under *For developers* in each release.
 
 ### Added
 
-- **Import Excalidraw drawings.** Home's **Import** and the editor's **Open file…** take `.excalidraw` files, and
-  shapes copied in Excalidraw paste straight onto the canvas. Everything stays where it was drawn: shapes with their
-  colours, rotation and labels, arrows tied to the shapes they connect (with their labels and bends), text, freehand
-  strokes, lines, pictures and frames. Whatever has no match here is drawn as a box with its label, and the import
-  says what didn't come across.
+- **Import Excalidraw drawings.** **Import** takes `.excalidraw` files and shapes copied in Excalidraw paste onto the
+  canvas, each where it was drawn; the import names anything that didn't come across.
 - **Private repos in the browser.** On the "not found, or it is private" screen, **Private repo? Use a GitHub token**
   takes a fine-grained token with Contents read-only access; the files are then read through the GitHub API. The
   token stays in this tab.
