@@ -64,6 +64,19 @@ describe('excalidrawToDocument', () => {
     expect(node.transform.translation.x + node.size.width / 2).toBeCloseTo(74);
   });
 
+  it('keeps free text’s alignment, growing away from the edge it is set against', () => {
+    const words = { ...base, type: 'text', y: 0, width: 100, height: 25, text: 'id: uuid', originalText: 'id: uuid', fontSize: 20, containerId: null };
+    const { document } = open(file([
+      { ...words, id: 'l', x: 60, textAlign: 'left' },
+      { ...words, id: 'r', x: 300, textAlign: 'right' },
+    ]));
+    const [left, right] = document.pages[0]!.nodes;
+    // Our text keeps 8px clear each side, so the words start where Excalidraw drew them.
+    expect(left).toMatchObject({ appearance: { textAlign: 'start' }, transform: { translation: { x: 52 } } });
+    expect(right!.appearance.textAlign).toBe('end');
+    expect(right!.transform.translation.x + right!.size.width).toBeCloseTo(408);
+  });
+
   it('leaves default-ink free text to the theme, but keeps it dark on a filled shape', () => {
     const words = { ...base, type: 'text', width: 20, height: 25, text: 'A', originalText: 'A', fontSize: 20, containerId: null };
     const { document } = open(file([

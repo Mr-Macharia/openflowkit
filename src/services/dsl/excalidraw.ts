@@ -127,8 +127,11 @@ class SceneBuilder {
     const bound = this.labels.get(id);
     const label = bound ? text(bound.originalText) || text(bound.text) : '';
     const node = this.nodeFor(element, type, page, { id, at: { x, y }, size: { width, height }, label, bound });
-    // A node drawn wider than the element (free text) keeps the element's centre.
-    const left = x + (width - node.size.width) / 2;
+    // A node drawn wider than the element (free text) grows away from the edge its words are set against,
+    // keeping its 8px margin outside the element: from the centre unless aligned left or right.
+    const grown = node.size.width - width;
+    const align = node.appearance.textAlign;
+    const left = !grown ? x : align === 'start' ? x - 8 : align === 'end' ? x - grown + 8 : x - grown / 2;
     const transform = { translation: rotation ? turnedCorner(left, y, node.size.width, height, rotation) : { x: left, y },
       rotationRadians: rotation, scale: { x: 1, y: 1 } };
     this.nodes.push({ ...node, ...base, transform });
@@ -176,7 +179,8 @@ class SceneBuilder {
           fontFamily: excalidrawFont(element.fontFamily), fontWeight: '400',
           ...(ink ? { customColor: ink } : {}),
         },
-        appearance: {}, ports: [], metadata: {}, extensions: {},
+        appearance: element.textAlign === 'left' ? { textAlign: 'start' } : element.textAlign === 'right' ? { textAlign: 'end' } : {},
+        ports: [], metadata: {}, extensions: {},
       };
     }
     if (type === 'freedraw') {
