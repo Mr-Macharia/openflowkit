@@ -1,7 +1,6 @@
 import { isJsonObject } from '../../../opencanvas/domain/document/json';
 import { UNTITLED_DOCUMENT_NAME } from '../../../opencanvas/domain/document/defaults';
 import type { SceneDocumentV1 } from '../../../opencanvas/domain/document/types';
-import { excalidrawToDocument, looksLikeExcalidraw } from '../../dsl/excalidraw';
 import { documentFromFileText } from './openDocumentFile';
 import { isV1Backup, openV1Backup } from './v1Import';
 import type { V2DocumentRepository } from './v2Repository';
@@ -102,15 +101,17 @@ export async function importFiles(files: readonly File[], repository: V2Document
   for (const file of files.filter((candidate) => !SOURCE.test(candidate.name))) {
     try {
       const text = await file.text();
-      if (looksLikeExcalidraw(text)) {
+      let parsed: unknown = null;
+      try { parsed = JSON.parse(text); } catch { /* documentFromFileText reports it */ }
+      if (isJsonObject(parsed) && (parsed.type === 'excalidraw' || parsed.type === 'excalidraw/clipboard')) {
+        // Loaded on first use: Home's list doesn't wait on the importer.
+        const { excalidrawToDocument } = await import('../../dsl/excalidraw');
         const imported = excalidrawToDocument(text, mintId());
         if ('error' in imported) { problems.push(`${file.name}: ${imported.error}`); continue; }
         if (imported.losses.length) notes.push(`${file.name}: ${lossNote(imported.losses)}`);
         await save({ ...imported.document, name: withoutExtension(file.name) }, file.name);
         continue;
       }
-      let parsed: unknown = null;
-      try { parsed = JSON.parse(text); } catch { /* documentFromFileText reports it */ }
       if (isV1Backup(parsed)) {
         const report = await openV1Backup(parsed, repository);
         fromBackup = true;
