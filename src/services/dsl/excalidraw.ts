@@ -135,6 +135,15 @@ class SceneBuilder {
     this.nodeIds.add(id);
   }
 
+  /** Whether a filled shape already placed covers this box's centre. */
+  private onFill(at: Point2d, size: { width: number; height: number }): boolean {
+    const x = at.x + size.width / 2;
+    const y = at.y + size.height / 2;
+    return this.nodes.some(({ transform: { translation }, size: box, appearance }) =>
+      typeof appearance.fill === 'string' && appearance.fill !== 'transparent'
+      && x >= translation.x && x <= translation.x + box.width && y >= translation.y && y <= translation.y + box.height);
+  }
+
   private nodeFor(
     element: ExcalidrawElement, type: string, page: ScenePage,
     at: { id: string; at: Point2d; size: { width: number; height: number }; label: string; bound: ExcalidrawElement | undefined },
@@ -150,7 +159,8 @@ class SceneBuilder {
         label: at.label, appearance: excalidrawNodeAppearance(element, at.bound) });
     }
     if (type === 'text') {
-      const ink = excalidrawInk(element.strokeColor);
+      // Default ink follows the theme, except on a filled shape drawn below it, where dark ink stays readable.
+      const ink = this.onFill(at.at, at.size) ? excalidrawColor(element.strokeColor) : excalidrawInk(element.strokeColor);
       // Excalidraw's box is exactly its words; ours keeps 8px clear each side and draws handwriting in a wider
       // face, so the box widens about the same centre. ponytail: the margin is guessed — measure the canvas face if words break.
       const label = text(element.originalText) || text(element.text);

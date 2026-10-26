@@ -62,6 +62,18 @@ describe('excalidrawToDocument', () => {
     expect(node.transform.translation.x + node.size.width / 2).toBeCloseTo(74);
   });
 
+  it('leaves default-ink free text to the theme, but keeps it dark on a filled shape', () => {
+    const words = { ...base, type: 'text', width: 20, height: 25, text: 'A', originalText: 'A', fontSize: 20, containerId: null };
+    const { document } = open(file([
+      { ...base, id: 'dot', type: 'ellipse', x: 0, y: 0, width: 60, height: 60, backgroundColor: '#ffd43b' },
+      { ...words, id: 'on', x: 20, y: 18 },
+      { ...words, id: 'off', x: 200, y: 18 },
+    ]));
+    const color = (id: string) => document.pages[0]!.nodes.find((node) => node.id === id)!.content.customColor;
+    expect(color('on')).toBe('#1e1e1e');
+    expect(color('off')).toBeUndefined();
+  });
+
   it('binds arrows to the shapes they were drawn between, with their label, bends and heads', () => {
     const { document, losses } = open(file([
       { ...base, id: 'a', type: 'rectangle', x: 0, y: 0, width: 100, height: 60 },
