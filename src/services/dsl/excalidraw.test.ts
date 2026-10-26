@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { SceneDocumentV1 } from '../../opencanvas/domain/document/types';
 import { excalidrawToDocument, looksLikeExcalidraw, readExcalidraw } from './excalidraw';
 import architecture from './fixtures/excalidraw/architecture.excalidraw?raw';
+import dbSchema from './fixtures/excalidraw/db-schema.excalidraw?raw';
+import linkedList from './fixtures/excalidraw/linked-list.excalidraw?raw';
 
 const NOW = '2026-10-24T00:00:00.000Z';
 
@@ -134,6 +136,23 @@ describe('excalidrawToDocument', () => {
     const gateway = labelled('API\nGateway')!;
     expect(page!.connectors.filter((connector) => connector.target.nodeId === gateway.id)).toHaveLength(4);
     expect(losses).toEqual(['hatched fills are drawn solid (17 times)']);
+  });
+
+  it('opens real exports whose words and arrows are loose, not bound', () => {
+    const color = (page: SceneDocumentV1['pages'][number], label: string) =>
+      page.nodes.find((node) => node.content.label === label)!.content.customColor;
+    const schema = open(dbSchema).document.pages[0]!;
+    // 3 tables and 18 words; the two arrows end in free points.
+    expect(schema.nodes).toHaveLength(21);
+    expect(schema.connectors.map((connector) => [connector.source.nodeId, connector.target.nodeId])).toEqual([[null, null], [null, null]]);
+    // A field over its table keeps Excalidraw's dark ink; an arrow's “1:N” on the canvas follows the theme.
+    expect(color(schema, 'Users')).toBe('#1e1e1e');
+    expect(color(schema, '1:N')).toBeUndefined();
+    const list = open(linkedList).document.pages[0]!;
+    expect(list.nodes).toHaveLength(13);
+    expect(list.connectors).toHaveLength(3);
+    expect(color(list, '3')).toBe('#1e1e1e');
+    expect(color(list, 'head')).toBeUndefined();
   });
 
   it('says why it can’t open something', () => {
