@@ -122,12 +122,15 @@ class SceneBuilder {
     const width = Math.max(1, finite(element.width, 1));
     const height = Math.max(1, finite(element.height, 1));
     const rotation = finite(element.angle);
-    const transform = { translation: rotation ? turnedCorner(x, y, width, height, rotation) : { x, y }, rotationRadians: rotation, scale: { x: 1, y: 1 } };
     const base = { parentId, layerId: this.layerId, zIndex };
     const page = { layers: [{ id: this.layerId }], nodes: this.nodes } as unknown as ScenePage;
     const bound = this.labels.get(id);
     const label = bound ? text(bound.originalText) || text(bound.text) : '';
     const node = this.nodeFor(element, type, page, { id, at: { x, y }, size: { width, height }, label, bound });
+    // A node drawn wider than the element (free text) keeps the element's centre.
+    const left = x + (width - node.size.width) / 2;
+    const transform = { translation: rotation ? turnedCorner(left, y, node.size.width, height, rotation) : { x: left, y },
+      rotationRadians: rotation, scale: { x: 1, y: 1 } };
     this.nodes.push({ ...node, ...base, transform });
     this.nodeIds.add(id);
   }
@@ -156,7 +159,7 @@ class SceneBuilder {
       const width = Math.max(at.size.width + 16, Math.ceil(widest * (excalidrawFont(element.fontFamily) === 'hand' ? 1.25 : 1.05)) + 20);
       return {
         id: at.id, kind: 'text', parentId: null, layerId: this.layerId, zIndex: 0,
-        transform: { translation: { x: at.at.x + (at.size.width - width) / 2, y: at.at.y }, rotationRadians: 0, scale: { x: 1, y: 1 } },
+        transform: { translation: at.at, rotationRadians: 0, scale: { x: 1, y: 1 } },
         size: { width, height: at.size.height },
         content: {
           label, fontSize,

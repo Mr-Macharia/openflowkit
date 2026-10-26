@@ -28,6 +28,23 @@ describe('production clipboard', () => {
     });
     expect(applyDocumentCommand(applied.document, applied.inverse).document).toEqual(document);
   });
+
+  it('pastes an arrow with a free end, the free end moving with the paste (Excalidraw copies these)', () => {
+    const document = createTestDocument({ nodes: [] });
+    const snapshot = { version: 1 as const, nodes: [createTestNode('box')], connectors: [{
+      id: 'loose', source: { nodeId: 'box', portId: null, anchor: null, point: null },
+      target: { nodeId: null, portId: null, anchor: null, point: { x: 300, y: 40 } },
+      route: { kind: 'direct' as const, ownership: 'automatic' as const }, waypoints: [], labels: [],
+      appearance: {}, semantics: {}, metadata: {}, extensions: {},
+    }] };
+    let sequence = 0;
+    const result = buildPasteProductionSelectionCommand(document.pages[0], snapshot,
+      (kind) => `${kind}-${++sequence}`, { offset: { x: 10, y: 20 }, keepParents: false });
+    const applied = applyDocumentCommand(document, result.command);
+    expect(applied.document.pages[0].connectors[0]).toMatchObject({
+      source: { nodeId: 'node-1' }, target: { nodeId: null, point: { x: 310, y: 60 } },
+    });
+  });
 });
 
 describe('where a paste lands', () => {

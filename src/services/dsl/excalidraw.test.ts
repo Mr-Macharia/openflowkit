@@ -54,6 +54,14 @@ describe('excalidrawToDocument', () => {
     expect(node.transform.translation.y).toBeCloseTo(20);
   });
 
+  it('widens free text about its centre, so words over a box stay centred on it', () => {
+    const { document } = open(file([{ ...base, id: 't', type: 'text', x: 44, y: 28, width: 60, height: 25,
+      text: 'Client', originalText: 'Client', fontSize: 20, fontFamily: 5, textAlign: 'center', containerId: null }]));
+    const node = document.pages[0]!.nodes[0]!;
+    expect(node.size.width).toBeGreaterThan(60);
+    expect(node.transform.translation.x + node.size.width / 2).toBeCloseTo(74);
+  });
+
   it('binds arrows to the shapes they were drawn between, with their label, bends and heads', () => {
     const { document, losses } = open(file([
       { ...base, id: 'a', type: 'rectangle', x: 0, y: 0, width: 100, height: 60 },

@@ -63,8 +63,13 @@ test('Home → Import opens an Excalidraw drawing where it was drawn, and its co
     data.setData('text/plain', JSON.stringify({ type: 'excalidraw/clipboard', files: {}, elements: [{
       id: 'pasted', type: 'rectangle', x: 0, y: 0, width: 120, height: 60, angle: 0, strokeColor: '#1e1e1e',
       backgroundColor: '#b2f2bb', fillStyle: 'solid', strokeWidth: 2, strokeStyle: 'solid', opacity: 100, isDeleted: false,
+    }, {
+      // Tied to the box at one end only: its free end pastes too.
+      id: 'half', type: 'arrow', x: 120, y: 30, width: 100, height: 0, points: [[0, 0], [100, 0]], angle: 0, strokeColor: '#1e1e1e',
+      strokeWidth: 2, opacity: 100, isDeleted: false, startBinding: { elementId: 'pasted' }, endBinding: null, endArrowhead: 'arrow',
     }] }));
     document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
   });
   await expect.poll(async () => (await drawn(page)).nodes.length).toBe(before + 1);
+  expect((await drawn(page)).connectors).toHaveLength(scene.connectors.length + 1);
 });
