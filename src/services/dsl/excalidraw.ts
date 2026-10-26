@@ -10,7 +10,7 @@ import { createImageNode } from '../../opencanvas/domain/nodes/imageNode';
 import { createShapeNode, type ShapeKind } from '../../opencanvas/domain/nodes/shapeNode';
 import { measurePortableText } from '../../opencanvas/domain/text/measurement';
 import {
-  excalidrawColor, excalidrawConnectorAppearance, excalidrawFont, excalidrawHead, excalidrawNodeAppearance,
+  excalidrawColor, excalidrawConnectorAppearance, excalidrawFont, excalidrawHead, excalidrawInk, excalidrawNodeAppearance,
   excalidrawStrokeContent, finite, text, type ExcalidrawElement,
 } from './excalidrawStyle';
 
@@ -150,7 +150,7 @@ class SceneBuilder {
         label: at.label, appearance: excalidrawNodeAppearance(element, at.bound) });
     }
     if (type === 'text') {
-      const ink = excalidrawColor(element.strokeColor);
+      const ink = excalidrawInk(element.strokeColor);
       // Excalidraw's box is exactly its words; ours keeps 8px clear each side and draws handwriting in a wider
       // face, so the box widens about the same centre. ponytail: the margin is guessed — measure the canvas face if words break.
       const label = text(element.originalText) || text(element.text);
@@ -164,7 +164,7 @@ class SceneBuilder {
         content: {
           label, fontSize,
           fontFamily: excalidrawFont(element.fontFamily), fontWeight: '400',
-          ...(ink && ink !== 'transparent' ? { customColor: ink } : {}),
+          ...(ink ? { customColor: ink } : {}),
         },
         appearance: {}, ports: [], metadata: {}, extensions: {},
       };

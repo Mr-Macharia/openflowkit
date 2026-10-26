@@ -96,7 +96,7 @@ describe('excalidrawToDocument', () => {
     const nodes = new Map(document.pages[0]!.nodes.map((node) => [node.id, node]));
     expect(nodes.get('f')).toMatchObject({ kind: 'frame', content: { label: 'Sketch' } });
     expect(nodes.get('pen')).toMatchObject({ kind: 'pen', parentId: 'f', transform: { translation: { x: 10, y: 20 } },
-      content: { points: [{ x: 0, y: 0 }, { x: 15, y: 10 }, { x: 30, y: 5 }], strokeColor: '#1e1e1e', strokeWidth: 2 } });
+      content: { points: [{ x: 0, y: 0 }, { x: 15, y: 10 }, { x: 30, y: 5 }], strokeWidth: 2 } });
     // A line drawn up from its start is placed by its highest point.
     expect(nodes.get('zig')).toMatchObject({ kind: 'line', transform: { translation: { x: 100, y: 80 } },
       content: { points: [{ x: 0, y: 20 }, { x: 20, y: 0 }, { x: 40, y: 20 }] } });

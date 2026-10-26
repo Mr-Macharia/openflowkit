@@ -50,6 +50,12 @@ export function excalidrawColor(value: unknown): string | undefined {
   return typeof value === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(value) ? value.toLowerCase() : undefined;
 }
 
+/** Line and text ink: Excalidraw's default black is left unset, so it follows our theme as it follows Excalidraw's. */
+export function excalidrawInk(value: unknown): string | undefined {
+  const ink = excalidrawColor(value);
+  return ink === 'transparent' || ink === '#1e1e1e' || ink === '#000000' || ink === '#000' ? undefined : ink;
+}
+
 /** Excalidraw's font numbers: 1 Virgil, 5 Excalifont and 8 Comic Shanns are handwriting; 3 Cascadia is code. */
 export function excalidrawFont(value: unknown): 'hand' | 'mono' | 'sans' {
   if (value === 1 || value === 5 || value === 8) return 'hand';
@@ -101,8 +107,8 @@ export function excalidrawHead(value: unknown): string | null | { readonly lost:
 /** An arrow's or line's paint; heads are set by the caller, which also reports the ones we can't draw. */
 export function excalidrawConnectorAppearance(element: ExcalidrawElement): Record<string, string | number> {
   const appearance: Record<string, string | number> = {};
-  const stroke = excalidrawColor(element.strokeColor);
-  if (stroke && stroke !== 'transparent') appearance.stroke = stroke;
+  const stroke = excalidrawInk(element.strokeColor);
+  if (stroke) appearance.stroke = stroke;
   if (typeof element.strokeWidth === 'number') appearance.strokeWidth = finite(element.strokeWidth, 2);
   if (element.strokeStyle === 'dashed' || element.strokeStyle === 'dotted') appearance.dashPattern = element.strokeStyle;
   const alpha = opacity(element);
@@ -112,10 +118,10 @@ export function excalidrawConnectorAppearance(element: ExcalidrawElement): Recor
 
 /** A freehand stroke's or loose line's paint, in the keys our pen and line nodes read from `content`. */
 export function excalidrawStrokeContent(element: ExcalidrawElement): JsonObject {
-  const stroke = excalidrawColor(element.strokeColor);
+  const stroke = excalidrawInk(element.strokeColor);
   const alpha = opacity(element);
   return {
-    ...(stroke && stroke !== 'transparent' ? { strokeColor: stroke } : {}),
+    ...(stroke ? { strokeColor: stroke } : {}),
     strokeWidth: finite(element.strokeWidth, 2),
     ...(alpha !== undefined ? { transparency: alpha } : {}),
   };

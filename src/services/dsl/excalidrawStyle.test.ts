@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  excalidrawColor, excalidrawConnectorAppearance, excalidrawFont, excalidrawHead, excalidrawNodeAppearance, excalidrawStrokeContent,
+  excalidrawColor, excalidrawConnectorAppearance, excalidrawFont, excalidrawHead, excalidrawInk, excalidrawNodeAppearance, excalidrawStrokeContent,
 } from './excalidrawStyle';
 
 describe('Excalidraw styles', () => {
@@ -35,7 +35,15 @@ describe('Excalidraw styles', () => {
   it('paints connectors and freehand strokes in the keys they read', () => {
     expect(excalidrawConnectorAppearance({ strokeColor: '#2f9e44', strokeWidth: 1, strokeStyle: 'dashed' }))
       .toEqual({ stroke: '#2f9e44', strokeWidth: 1, dashPattern: 'dashed' });
-    expect(excalidrawStrokeContent({ strokeColor: '#000', strokeWidth: 4, opacity: 50 }))
-      .toEqual({ strokeColor: '#000', strokeWidth: 4, transparency: 0.5 });
+    expect(excalidrawStrokeContent({ strokeColor: '#e03131', strokeWidth: 4, opacity: 50 }))
+      .toEqual({ strokeColor: '#e03131', strokeWidth: 4, transparency: 0.5 });
+  });
+
+  it('leaves Excalidraw’s default ink to the theme, as Excalidraw’s dark mode shows it white', () => {
+    expect(excalidrawInk('#1e1e1e')).toBeUndefined();
+    expect(excalidrawInk('#000000')).toBeUndefined();
+    expect(excalidrawInk('#e03131')).toBe('#e03131');
+    expect(excalidrawConnectorAppearance({ strokeColor: '#1e1e1e', strokeWidth: 2 })).toEqual({ strokeWidth: 2 });
+    expect(excalidrawStrokeContent({ strokeColor: '#1e1e1e', strokeWidth: 2 })).toEqual({ strokeWidth: 2 });
   });
 });
