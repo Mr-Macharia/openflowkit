@@ -72,7 +72,7 @@ const opacity = (element: ExcalidrawElement): number | undefined => {
 export function excalidrawNodeAppearance(element: ExcalidrawElement, label?: ExcalidrawElement): JsonObject {
   const appearance: Record<string, string | number> = {};
   const fill = excalidrawColor(element.backgroundColor);
-  const stroke = excalidrawColor(element.strokeColor);
+  const stroke = excalidrawInk(element.strokeColor);
   if (fill) appearance.fill = fill;
   if (stroke) appearance.stroke = stroke;
   if (typeof element.strokeWidth === 'number') appearance.strokeWidth = finite(element.strokeWidth, 2);

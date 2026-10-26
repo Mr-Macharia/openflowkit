@@ -45,5 +45,6 @@ describe('Excalidraw styles', () => {
     expect(excalidrawInk('#e03131')).toBe('#e03131');
     expect(excalidrawConnectorAppearance({ strokeColor: '#1e1e1e', strokeWidth: 2 })).toEqual({ strokeWidth: 2 });
     expect(excalidrawStrokeContent({ strokeColor: '#1e1e1e', strokeWidth: 2 })).toEqual({ strokeWidth: 2 });
+    expect(excalidrawNodeAppearance({ strokeColor: '#1e1e1e', backgroundColor: 'transparent' })).toEqual({ fill: 'transparent' });
   });
 });
